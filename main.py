@@ -13,10 +13,8 @@ def print_hi(name):
 
 # Press the green button in the gutter to run the script.
 if __name__ == '__main__':
-    a=0
     print_hi('PyCharm')
     substrate = np.zeros((10, 10, 10, 2), dtype=np.float)
     substrate[:, :, :, 1] = 2
-    a=0
     #exec("Process")
 # See PyCharm help at https://www.jetbrains.com/help/pycharm/
