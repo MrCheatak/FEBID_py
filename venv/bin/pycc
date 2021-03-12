@@ -1,0 +1,3 @@
+#!/Users/sandrik1742/PycharmProjects/FEBID/venv/bin/python
+from numba.pycc import main
+main()
