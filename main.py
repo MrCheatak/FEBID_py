@@ -1,6 +1,10 @@
 # This is a sample Python script.
-#import Process
+# import Process
+import Tests
 import numpy as np
+from timebudget import timebudget
+import itertools
+import cProfile
 
 # Press ⌃R to execute it or replace it with your code.
 # Press Double ⇧ to search everywhere for classes, files, tool windows, actions, and settings.
@@ -14,7 +18,8 @@ def print_hi(name):
 # Press the green button in the gutter to run the script.
 if __name__ == '__main__':
     print_hi('PyCharm')
-    substrate = np.zeros((10, 10, 10, 2), dtype=np.float)
-    substrate[:, :, :, 1] = 2
-    #exec("Process")
+    #cProfile.runctx('Process', globals(),locals())
+    #cProfile.runctx('main',globals(),locals())
+    # exec("Process")
+    exec("Tests")
 # See PyCharm help at https://www.jetbrains.com/help/pycharm/
