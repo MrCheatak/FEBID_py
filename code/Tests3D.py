@@ -1,16 +1,7 @@
 import numpy as np
-from timebudget import timebudget
-import itertools
 import matplotlib.pyplot as plt
 import cProfile
 import numexpr
-import numpy.ma as ma
-import numba as nb
-import scipy as sc
-from scipy import ndimage
-from numba import njit, jit
-from collections import namedtuple
-from recordclass import recordclass
 
 D = 10
 dt = 0.001

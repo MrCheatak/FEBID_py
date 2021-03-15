@@ -11,6 +11,12 @@ import cProfile
 
 
 def print_hi(name):
+    """
+    Prints stuff
+
+    :param name: string to print
+    :return: Output to terminal
+    """
     # Use a breakpoint in the code line below to debug your script.
     print(f'Hi, {name}')  # Press ⌘F8 to toggle the breakpoint.
 
