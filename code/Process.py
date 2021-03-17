@@ -155,13 +155,13 @@ def update_surface(deposit, substrate, surface, surf, semi_surface, init_y=0, in
     :return: changes surface array, semi-surface and ghosts collections
     """
     # because all arrays are sent to the function as views of the currently irradiated area (relative coordinate system), offsets are needed to update semi-surface and ghost cells collection, because they are stored in absolute coordinates
-    with np.nditer(surface, flags=['multi_index'], op_flags=['readwrite'], casting='safe') as it: # TODO: maybe no need to iterate through the whole matrix, it could be quicker to just find overfilled cells and address only them
-        for z in it:
-            if deposit[z, it.multi_index[0],it.multi_index[1]] >= 1:  # if the cell is fully deposited
-                semi_surface.add((0, 0, 0))
-                ghosts.add((np.int16(z), it.multi_index[0]+init_y,it.multi_index[1]+init_x)) # add fully deposited cell to the ghost shell
-                z +=1  # rising the surface one cell up (new cell)
-                refresh(deposit, substrate, semi_surface, np.int16(z),it.multi_index[0],it.multi_index[1], init_y, init_x)
+    new_deposits = np.argwhere(deposit>1)
+    for cell in new_deposits:
+        if deposit[cell[0], cell[1], cell[2]] >= 1:  # if the cell is fully deposited
+            semi_surface.add((0, 0, 0))
+            ghosts.add((cell[0], cell[1] + init_y, cell[2] + init_x))  # add fully deposited cell to the ghost shell
+            surface[cell[1], cell[2]] +=1  # rising the surface one cell up (new cell)
+            refresh(deposit, substrate, semi_surface, cell[0]+1, cell[1], cell[2], init_y, init_x)
     surf = make_tuple(surface)
 
 
