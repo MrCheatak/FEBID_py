@@ -4,7 +4,7 @@ import math
 import matplotlib.pyplot as plt
 import numexpr
 import cProfile
-from numba import jit, typeof
+from numba import jit, typeof, generated_jit
 from numba.experimental import jitclass
 from numba.core.errors import NumbaDeprecationWarning, NumbaPendingDeprecationWarning
 import warnings
@@ -121,10 +121,26 @@ def make_tuple(arr): # TODO: make a quicker conversation
             x.append(j)
             y.append(i)
             z.append(arr[i,j])
-    return [z, y , x]
+    # return (arr.flatten(), stub[0], stub[1])
+    return (z, y, x)
 
 
-# @jit(nopython=True, parallel=True)
+def flush_structure(substrate, deposit, init_density = nr, init_deposit = .0):
+    """
+
+    :param substrate:
+    :param deposit:
+    :param init_density:
+    :param init_deposit:
+    :return:
+    """
+    substrate[...] = 0
+    substrate[0, :, :] = init_density  # filling substrate surface with initial precursor density
+    deposit[...] = 0
+    deposit[0, :, :] = init_deposit
+
+
+# @generated_jit(nopython=True, parallel=True)
 def deposition(deposit, substrate, flux_matrix, surf, dt):
     """
     Calculates deposition on the surface for a given time step dt (outer loop).
@@ -139,11 +155,12 @@ def deposition(deposit, substrate, flux_matrix, surf, dt):
     :return: writes back to deposition array
     """
     #with timebudget("Deposition time"):
-    deposit[surf]+=substrate[surf]*sigma*flux_matrix.view().reshape(flux_matrix.shape[0]**2)*V*dt
+    # numexpr.evaluate("d+s*sigma*fl*V*dt", out=deposit[surf], local_dict={'d':deposit[surf], 's': substrate[surf], 'fl': flux_matrix.view().reshape(flux_matrix.shape[0]**2)}, casting='same_kind')
+    deposit[surf] += substrate[surf] * sigma * flux_matrix.view().reshape(flux_matrix.shape[0] ** 2) * V * dt
 
 
 # @jit(nopython=True)
-def update_surface(deposit, substrate, surface, surf, semi_surface, init_y=0, init_x=0):
+def update_surface(deposit, substrate, surface, surf, semi_surface, ghosts, ghosts_index, init_y=0, init_x=0):
     """
         Evolves surface upon a full deposition of a cell
 
@@ -158,16 +175,16 @@ def update_surface(deposit, substrate, surface, surf, semi_surface, init_y=0, in
     """
     # because all arrays are sent to the function as views of the currently irradiated area (relative coordinate system), offsets are needed to update semi-surface and ghost cells collection, because they are stored in absolute coordinates
     new_deposits = np.argwhere(deposit>1)
-    global ghosts_index
     for cell in new_deposits:
         if deposit[cell[0], cell[1], cell[2]] >= 1:  # if the cell is fully deposited
             semi_surface.add((0, 0, 0))
             ghosts.add((cell[0], cell[1] + init_y, cell[2] + init_x))  # add fully deposited cell to the ghost shell
             surface[cell[1], cell[2]] +=1  # rising the surface one cell up (new cell)
             refresh(deposit, substrate, semi_surface, cell[0]+1, cell[1], cell[2], init_y, init_x)
+    if new_deposits.any():
         temp = tuple(zip(*ghosts))  # casting a set of coordinates to a list of index sequences for every dimension
         ghosts_index = ([np.asarray(temp[0]), np.asarray(temp[1]), np.asarray(temp[2])])  # constructing a tuple of ndarray sequences
-    surf = make_tuple(surface) # TODO: this conversion can be done fewer times throughout the code
+        surf = make_tuple(surface) # TODO: this conversion can be done fewer times throughout the code
 
 
 def refresh(deposit, substrate, semi_surface, z,y,x, init_y=0, init_x=0):  # TODO: implement and include evolution of a ghost "shell" here, that should proceed along with the evolution of surface
@@ -245,34 +262,9 @@ def refresh_ghosts(substrate, x, xx, y, yy, z):
         ghosts.add((z, y, x - 1))
     if substrate[z, yy, xx + 1] == 0:
         ghosts.add((z, y, x + 1))
- # <editor-fold desc="Lists pipeline">
-        # for ghost, val in zip([ghost_zf, ghost_zb, ghost_yf, ghost_yb, ghost_xf, ghost_xb], [val_zf, val_zb, val_yf, val_yb, val_xf, val_xb]):
-        #     try:
-        #         ghost = list(set(ghost))
-        #         remove_index = ghost.index((z, y - 1 + init_y, x + init_x))
-        #         ghost.pop(remove_index)
-        #         val.pop(remove_index)
-        #         val.append(substrate[z, yy, xx])
-        #     except ValueError:
-        #         pass
-        # if substrate[z-1, yy - 1, xx] == 0:
-        #     ghost_zb.append((z-1, y - 1 + init_y, x + init_x))
-        # if substrate[z+1, yy - 1, xx] == 0:
-        #     ghost_zf.append((z+1, y - 1 + init_y, x + init_x))
-        # if substrate[z, yy - 1-1, xx] == 0:
-        #     ghost_yb.append((z, y - 1 -1 + init_y, x + init_x))
-        # if substrate[z, yy - 1+1, xx] == 0:
-        #     ghost_yf.append((z, y - 1 +1 + init_y, x + init_x))
-        # if substrate[z, yy - 1, xx-1] == 0:
-        #     ghost_xb.append((z, y - 1 + init_y, x  - 1 + init_x))
-        # if substrate[z, yy - 1, xx+1] == 0:
-        #     ghost_xf.append((z, y - 1 + init_y, x  + 1 + init_x))
 
 
-# @jit(nopython=True, parallel=True)
-
-
-def precursor_density(flux_matrix, substrate, dt):
+def precursor_density(flux_matrix, substrate, surface, ghosts_index, dt):
     """
     Recalculates precursor density on the surface of the deposit
 
@@ -288,7 +280,7 @@ def precursor_density(flux_matrix, substrate, dt):
     #     for z in it:
     #         sub[it.multi_index] = substrate[z, it.multi_index[0],it.multi_index[1]]
     # diffusion_matrix = laplace_term(substrate, surface, semi_surface, D, dt)
-    diffusion_matrix = laplace_term_rolling(substrate, D, dt)  # Diffusion term is calculated seperately and added in the end
+    diffusion_matrix = laplace_term_rolling(substrate, ghosts_index, D, dt)  # Diffusion term is calculated seperately and added in the end
     rk4(dt, sub, flux_matrix) # An increment is calculated through Runge-Kutta method without the diffusion term
     substrate[surface.flatten(), stub[0], stub[1]] += sub[stub]
     # with np.nditer(surface, flags=['multi_index'], op_flags=['readonly']) as it:
@@ -543,7 +535,7 @@ def define_ghosts(substrate, surface, semi_surface =[] ): # TODO: find a mutable
     return [zzf, zyf, zxf], [zzb, zyb, zxb], [yzf, yyf, yxf], [yzb, yyb, yxb], [xzf, xyf, xxf], [xzb, xyb, xxb], gzf, gzb, gyf, gyb, gxf, gxb
 
 
-def laplace_term_rolling(grid, D, dt):
+def laplace_term_rolling(grid, ghosts_index, D, dt):
     """
     Calculates diffusion term for all surface cells using rolling
 
@@ -649,7 +641,7 @@ def test_laplace(substrate, D, dt):
         laplace_term_rolling(substrate, D, dt)
 
 @jit(nopython=True, parallel=True, cache=True)
-def show_yeld(deposit, summ, summ1, res):
+def show_yield(deposit, summ, summ1, res):
     summ1 = np.sum(deposit)
     res = summ1-summ
     return summ, summ1, res
@@ -666,29 +658,41 @@ def printing(loops=1): # TODO: maybe it could be a good idea to switch to an arr
     """
     warnings.simplefilter('ignore', category=NumbaDeprecationWarning)
     warnings.simplefilter('ignore', category=NumbaPendingDeprecationWarning)
-    t = 2E-5 # absolute time, s
+    flush_structure(substrate, deposit, init_deposit = 0.97)
+    surface[...]=0
+    semi_surface.clear()
+    global ghost_zf, ghost_zb, ghost_yf, ghost_yb, ghost_xf, ghost_xb, val_zf, val_zb, val_yf, val_yb, val_xf, val_xb, ghosts, ghosts_index
+    ghost_zf.clear()
+    ghost_zf, ghost_zb, ghost_yf, ghost_yb, ghost_xf, ghost_xb, val_zf, val_zb, val_yf, val_yb, val_xf, val_xb = define_ghosts(substrate, surface)
+    ghost_zf = set(zip(*ghost_zf))
+    ghosts.clear()
+    ghosts = set.copy(ghost_zf)
+    temp = tuple(zip(*ghosts))  # casting a set of coordinates to a list of index sequences for every dimension
+    ghosts_index = (np.asarray(temp[0]), np.asarray(temp[1]), np.asarray(temp[2]))  # constructing a tuple of ndarray sequences
+
+    t = 2E-6 # absolute time, s
+    refresh_dt = dt*2 # dt for precursor density recalculation
+
     dwell_step = beam_d / 2
     x_offset = 90  # offset on the X-axis on both sides
     y_offset = 90  # offset on the Y-axis on both sides
     x_limit = xmax * cell_dimension - x_offset
     y_limit = ymax * cell_dimension - y_offset
+
     beam = Positionb(0, y_offset, x_offset)  # coordinates of the beam
     beam_matrix = np.zeros((system_size,system_size), dtype=int) # matrix for electron beam flux distribution
     beam_exposure = np.zeros((system_size,system_size), dtype=int) # see usage in the loop
+
     summ1,summ, result=0,0,0
-    refresh_dt = dt*2 # dt for precursor density recalculation
-    global ghost_zf, ghost_zb, ghost_yf, ghost_yb, ghost_xf, ghost_xb, val_zf, val_zb, val_yf, val_yb, val_xf, val_xb, ghosts
-    ghost_zf, ghost_zb, ghost_yf, ghost_yb, ghost_xf, ghost_xb, val_zf, val_zb, val_yf, val_yb, val_xf, val_xb = define_ghosts(substrate, surface)
-    ghost_zf = set(zip(*ghost_zf))
-    ghosts = set.copy(ghost_zf)
+
     for l in range(loops):  # loop repeats, currently beam travels in a zig-zack manner (array indexing)
-        # summ1, summ, result = show_yeld(deposit, summ, summ1,result)
+        # summ1, summ, result = show_yield(deposit, summ, summ1,result)
         # print(f'Deposit yield:{result}  Loop:{l}')
         print(f'Loop:{l}')
         for beam.y in np.arange(y_offset, y_limit, dwell_step):  # beam travel along Y-axis
             for beam.x in np.arange(x_offset, x_limit, dwell_step):  # beam travel alon X-axis
                 norm_y_start, norm_y_end, norm_x_start, norm_x_end = define_irradiated_area(beam,effective_radius) # Determining the area around the beam that is effectively irradiated
-                irradiated_area_2D=np.s_[norm_y_start:norm_y_end, norm_x_start:norm_x_end] # a slice of the selecting currently irradiated area
+                irradiated_area_2D=np.s_[norm_y_start:norm_y_end, norm_x_start:norm_x_end] # a slice of the currently irradiated area
                 irradiated_area_3D=np.s_[:surface.max()+3, norm_y_start:norm_y_end, norm_x_start:norm_x_end]
                 flux_matrix(beam_matrix, norm_y_start, norm_y_end, norm_x_start, norm_x_end)
                 beam_exposure += beam_matrix # accumulates beam exposure for precursor density if it is called with an interval bigger that dt
@@ -696,9 +700,9 @@ def printing(loops=1): # TODO: maybe it could be a good idea to switch to an arr
                 # section = substrate[:, 20, :]
                 while True:
                     deposition(deposit[irradiated_area_3D], substrate[irradiated_area_3D], beam_matrix[irradiated_area_2D], surf, dt) # depositing on a selected area
-                    update_surface(deposit[irradiated_area_3D], substrate[:surface.max()+3, norm_y_start-2:norm_y_end+2, norm_x_start-2:norm_x_end+2], surface[irradiated_area_2D], surf, semi_surface, norm_y_start, norm_x_start) # updating surface on a selected area
+                    update_surface(deposit[irradiated_area_3D], substrate[:surface.max()+3, norm_y_start-2:norm_y_end+2, norm_x_start-2:norm_x_end+2], surface[irradiated_area_2D], surf, semi_surface, ghosts, ghosts_index, norm_y_start, norm_x_start) # updating surface on a selected area
                     if t % refresh_dt < 1E-6:
-                        precursor_density(beam_matrix, substrate[:surface.max()+3,:,:], refresh_dt) # TODO: add tracking of the deposit's highest point and send only a reduced view to avoid unecessary operations on empty volume
+                        precursor_density(beam_matrix, substrate[:surface.max()+3,:,:], surface, ghosts_index, refresh_dt) # TODO: add tracking of the deposit's highest point and send only a reduced view to avoid unecessary operations on empty volume
                         # if l==4 :
                         #     cProfile.runctx('test_laplace(substrate,D,dt)', globals(), locals())
                         #     nn=0
@@ -710,15 +714,16 @@ def printing(loops=1): # TODO: maybe it could be a good idea to switch to an arr
 
 
 if __name__ == '__main__':
-    # flux_matrix([1, 2, 3], 34)
-    printing(1)
-    cProfile.runctx('printing(20)',globals(),locals())
+    repetitions = int(input("Enter your value: "))
+    # test_grid = np.full((2,50,50), 0.83, dtype=np.float32)
+    printing(3)
+    cProfile.runctx('printing(repetitions)',globals(),locals())
     section = np.zeros((substrate.shape[0], ymax), dtype=float)
     fig, (ax0) = plt.subplots(1)
     pos = np.int16(xmax/2)
     for i in range(0, substrate.shape[0]):
         for j in range(0, substrate.shape[1]):
-            section[i,j] = deposit[i, j,pos]
+            section[i,j] = substrate[i, j,pos]
     ax0.pcolor(section)
     # if substrate[i,j,pos,0] ==0:
     #     ax0.pcolor(substrate[i,:,pos,0], color="white")
@@ -730,4 +735,5 @@ if __name__ == '__main__':
     fig.tight_layout()
     plt.show()
     q=0
+
 

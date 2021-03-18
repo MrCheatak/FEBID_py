@@ -7,24 +7,21 @@
     <option name="autoReloadType" value="SELECTIVE" />
   </component>
   <component name="ChangeListManager">
-    <list default="true" id="88fcfbbf-9994-46dd-90d0-f4a8304fcbdd" name="Default Changelist" comment="Depricated 'Position' class, its is now only used for beam position iteration, which is also due for deprication.&#10;Introduced a new indices mangement system to support Numpy array trickery.&#10;Introduced laplacian operator based on rolling and a set of 'ghost' cells.&#10;Introduced a pre-calculated electron beam matrix, which renews on every beam step.&#10;Rewritten logic of deposition: it is now done in one line due to streaming of the surface indices.&#10;Rewritten and separated Surface evolution method: it now eloves the 'ghost shell' as well&#10;Precursor density increment method is now utilizing Numexrp thanks to Electron beam flux matrix&#10;and other minor changes...&#10;Code is messy, not properly commented, but working.">
-      <change afterPath="$PROJECT_DIR$/venv/lib/python3.7/site-packages/__init__.py" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/venv/lib/python3.7/site-packages/pkg_resources/tests/__init__.py" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/venv/lib/python3.7/site-packages/pkg_resources/tests/data/__init__.py" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/venv/lib/python3.7/site-packages/pkg_resources/tests/data/my-test-package-source/__init__.py" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/venv/lib/python3.7/site-packages/sphinxcontrib/__init__.py" afterDir="false" />
+    <list default="true" id="88fcfbbf-9994-46dd-90d0-f4a8304fcbdd" name="Default Changelist" comment="">
+      <change afterPath="$PROJECT_DIR$/wall_long_corner_p.vti" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/.idea/FEBID.iml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/FEBID.iml" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/.idea/misc.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/misc.xml" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/.idea/workspace.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/workspace.xml" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/Process.py" beforeDir="false" afterPath="$PROJECT_DIR$/code/Process.py" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/Tests.py" beforeDir="false" afterPath="$PROJECT_DIR$/code/Tests.py" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/Tests3D.py" beforeDir="false" afterPath="$PROJECT_DIR$/code/Tests3D.py" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/heat3dvkt.py" beforeDir="false" afterPath="$PROJECT_DIR$/code/heat3dvkt.py" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/main.py" beforeDir="false" afterPath="$PROJECT_DIR$/code/main.py" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/test_Process.py" beforeDir="false" afterPath="$PROJECT_DIR$/code/test_Process.py" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/wall.cfg" beforeDir="false" afterPath="$PROJECT_DIR$/code/wall.cfg" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/wall_long_corner_p.vti" beforeDir="false" afterPath="$PROJECT_DIR$/code/wall_long_corner_p.vti" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/code/Process.py" beforeDir="false" afterPath="$PROJECT_DIR$/code/Process.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/code/heat3dvkt.py" beforeDir="false" afterPath="$PROJECT_DIR$/code/heat3dvkt.py" afterDir="false" />
     </list>
+    <list id="4ae695ed-902f-4945-8d4d-54c0f4ea71f4" name="Add parameter import from a file" comment="">
+      <change beforePath="$PROJECT_DIR$/code/Process.py" beforeDir="false" afterPath="$PROJECT_DIR$/code/Process.py" afterDir="false" />
+    </list>
+    <list id="f3bf3533-d27f-40c9-9f33-f51c566a3b9a" name="Clean up &quot;define_ghosts&quot; and all associated variables" comment="" />
+    <list id="c7f6d105-70a7-4dba-bb3e-7857179782af" name="Implement printing path generation/following" comment="" />
+    <list id="16d2fe1e-882c-4143-8f19-f2064f6f44a5" name="Rewrite &quot;make_tuple&quot; function" comment="" />
+    <list id="996350b8-e865-4cf5-aee5-4613e04929e9" name="Switch to array coordinate system" comment="" />
     <option name="SHOW_DIALOG" value="false" />
     <option name="HIGHLIGHT_CONFLICTS" value="true" />
     <option name="HIGHLIGHT_NON_ACTIVE_CHANGELIST" value="false" />
@@ -56,6 +53,38 @@
   <component name="HighlightingSettingsPerFile">
     <setting file="file://$PROJECT_DIR$/code/Process.py" root0="FORCE_HIGHLIGHTING" />
   </component>
+  <component name="LineStatusTrackerManager">
+    <file path="$PROJECT_DIR$/code/Process.py">
+      <ranges>
+        <range start1="6" end1="7" start2="6" end2="7" changelist="88fcfbbf-9994-46dd-90d0-f4a8304fcbdd" />
+        <range start1="123" end1="124" start2="123" end2="126" changelist="88fcfbbf-9994-46dd-90d0-f4a8304fcbdd" />
+        <range start1="125" end1="125" start2="127" end2="129" changelist="88fcfbbf-9994-46dd-90d0-f4a8304fcbdd" />
+        <range start1="126" end1="127" start2="130" end2="143" changelist="88fcfbbf-9994-46dd-90d0-f4a8304fcbdd" />
+        <range start1="141" end1="142" start2="157" end2="159" changelist="88fcfbbf-9994-46dd-90d0-f4a8304fcbdd" />
+        <range start1="145" end1="146" start2="162" end2="163" changelist="88fcfbbf-9994-46dd-90d0-f4a8304fcbdd" />
+        <range start1="160" end1="161" start2="177" end2="177" changelist="88fcfbbf-9994-46dd-90d0-f4a8304fcbdd" />
+        <range start1="167" end1="167" start2="183" end2="184" changelist="88fcfbbf-9994-46dd-90d0-f4a8304fcbdd" />
+        <range start1="169" end1="170" start2="186" end2="187" changelist="88fcfbbf-9994-46dd-90d0-f4a8304fcbdd" />
+        <range start1="172" end1="173" start2="189" end2="190" changelist="4ae695ed-902f-4945-8d4d-54c0f4ea71f4" />
+        <range start1="247" end1="272" start2="264" end2="264" changelist="88fcfbbf-9994-46dd-90d0-f4a8304fcbdd" />
+        <range start1="274" end1="275" start2="266" end2="267" changelist="88fcfbbf-9994-46dd-90d0-f4a8304fcbdd" />
+        <range start1="290" end1="291" start2="282" end2="283" changelist="88fcfbbf-9994-46dd-90d0-f4a8304fcbdd" />
+        <range start1="545" end1="546" start2="537" end2="538" changelist="88fcfbbf-9994-46dd-90d0-f4a8304fcbdd" />
+        <range start1="651" end1="652" start2="643" end2="644" changelist="88fcfbbf-9994-46dd-90d0-f4a8304fcbdd" />
+        <range start1="668" end1="669" start2="660" end2="675" changelist="88fcfbbf-9994-46dd-90d0-f4a8304fcbdd" />
+        <range start1="674" end1="674" start2="680" end2="681" changelist="88fcfbbf-9994-46dd-90d0-f4a8304fcbdd" />
+        <range start1="677" end1="677" start2="684" end2="685" changelist="88fcfbbf-9994-46dd-90d0-f4a8304fcbdd" />
+        <range start1="678" end1="683" start2="686" end2="687" changelist="88fcfbbf-9994-46dd-90d0-f4a8304fcbdd" />
+        <range start1="684" end1="685" start2="688" end2="689" changelist="88fcfbbf-9994-46dd-90d0-f4a8304fcbdd" />
+        <range start1="690" end1="691" start2="694" end2="695" changelist="88fcfbbf-9994-46dd-90d0-f4a8304fcbdd" />
+        <range start1="698" end1="699" start2="702" end2="703" changelist="88fcfbbf-9994-46dd-90d0-f4a8304fcbdd" />
+        <range start1="700" end1="701" start2="704" end2="705" changelist="88fcfbbf-9994-46dd-90d0-f4a8304fcbdd" />
+        <range start1="712" end1="715" start2="716" end2="720" changelist="88fcfbbf-9994-46dd-90d0-f4a8304fcbdd" />
+        <range start1="720" end1="721" start2="725" end2="726" changelist="88fcfbbf-9994-46dd-90d0-f4a8304fcbdd" />
+        <range start1="734" end1="734" start2="739" end2="740" changelist="88fcfbbf-9994-46dd-90d0-f4a8304fcbdd" />
+      </ranges>
+    </file>
+  </component>
   <component name="ProjectId" id="1nhbox7duSe9gCs3TWNzP9QMNVg" />
   <component name="ProjectLevelVcsManager" settingsEditedManually="true" />
   <component name="ProjectViewState">
@@ -68,7 +97,7 @@
     <property name="TODO_SCOPE" value="All Places" />
     <property name="last_opened_file_path" value="$PROJECT_DIR$" />
     <property name="run.code.analysis.last.selected.profile" value="aDefault" />
-    <property name="settings.editor.selected.configurable" value="com.jetbrains.python.configuration.PyIntegratedToolsModulesConfigurable" />
+    <property name="settings.editor.selected.configurable" value="preferences.startup.tasks" />
   </component>
   <component name="RecentsManager">
     <key name="CopyFile.RECENT_KEYS">
@@ -211,8 +240,8 @@
     </configuration>
     <recent_temporary>
       <list>
-        <item itemvalue="Python.Process" />
         <item itemvalue="Python.Tests3D" />
+        <item itemvalue="Python.Process" />
         <item itemvalue="Python.heat3dvtk1" />
         <item itemvalue="Python.heat3dvtk" />
         <item itemvalue="Python.heat3dvkt" />
@@ -229,7 +258,7 @@
       <created>1611845447515</created>
       <option name="number" value="Default" />
       <option name="presentableId" value="Default" />
-      <updated>1611845447515</updated>
+      <updated>1616078803784</updated>
     </task>
     <task id="LOCAL-00001" summary="Straight ported from C#&#10;A bit of numexpr optimization">
       <created>1612451460238</created>
@@ -245,17 +274,85 @@
       <option name="project" value="LOCAL" />
       <updated>1612451570644</updated>
     </task>
-    <option name="localTasksCounter" value="3" />
+    <task id="LOCAL-00003" summary="Functions are now properly commented.  &#10;More comments and explanations are added to the code.  &#10;Documentation of Process.py is now available through Sphinx.  &#10;Switched from iterating using np.nditer to index streaming in precursor_density function, which resulted in 10x speedup.&#10;Cleaned up a little bit.">
+      <created>1615820078058</created>
+      <option name="number" value="00003" />
+      <option name="presentableId" value="LOCAL-00003" />
+      <option name="project" value="LOCAL" />
+      <updated>1615820078058</updated>
+    </task>
+    <task id="LOCAL-00004" summary="Switch to array coordinate system">
+      <changelist id="996350b8-e865-4cf5-aee5-4613e04929e9" name="Switch to array coordinate system" comment="" />
+      <created>1615903464527</created>
+      <option name="number" value="00004" />
+      <option name="presentableId" value="LOCAL-00004" />
+      <option name="project" value="LOCAL" />
+      <updated>1615903706104</updated>
+    </task>
+    <task id="LOCAL-00006" summary="Rewrite &quot;make_tuple&quot; function">
+      <changelist id="16d2fe1e-882c-4143-8f19-f2064f6f44a5" name="Rewrite &quot;make_tuple&quot; function" comment="" />
+      <created>1615903778044</created>
+      <option name="number" value="00006" />
+      <option name="presentableId" value="LOCAL-00006" />
+      <option name="project" value="LOCAL" />
+      <updated>1615903846629</updated>
+    </task>
+    <task id="LOCAL-00007" summary="Clean up &quot;define_ghosts&quot; and all associated variables">
+      <changelist id="f3bf3533-d27f-40c9-9f33-f51c566a3b9a" name="Clean up &quot;define_ghosts&quot; and all associated variables" comment="" />
+      <created>1615903841767</created>
+      <option name="number" value="00007" />
+      <option name="presentableId" value="LOCAL-00007" />
+      <option name="project" value="LOCAL" />
+      <updated>1615974724326</updated>
+    </task>
+    <task id="LOCAL-00010" summary="Add parameter import from a file">
+      <changelist id="4ae695ed-902f-4945-8d4d-54c0f4ea71f4" name="Add parameter import from a file" comment="" />
+      <created>1615974857623</created>
+      <option name="number" value="00010" />
+      <option name="presentableId" value="LOCAL-00010" />
+      <option name="project" value="LOCAL" />
+      <updated>1615975052773</updated>
+    </task>
+    <task id="LOCAL-00011" summary="Implement printing path generation/following">
+      <changelist id="c7f6d105-70a7-4dba-bb3e-7857179782af" name="Implement printing path generation/following" comment="" />
+      <created>1615976702646</created>
+      <option name="number" value="00011" />
+      <option name="presentableId" value="LOCAL-00011" />
+      <option name="project" value="LOCAL" />
+      <updated>1615976726952</updated>
+    </task>
+    <task id="LOCAL-00012" summary="Eliminated iterative search for depositions in &quot;update_surface&quot;. &#10;Now implemented through np.argwhere(). 30x speed up of the &quot;update_surface&quot; function">
+      <created>1615991071161</created>
+      <option name="number" value="00012" />
+      <option name="presentableId" value="LOCAL-00012" />
+      <option name="project" value="LOCAL" />
+      <updated>1615991071161</updated>
+    </task>
+    <task id="LOCAL-00013" summary="Moved two most time consuming operations (unzipping a set and constructing a tuple) from 'laplace_term_rolling' to 'update_surface'&#10;2x speedup of 'laplace_term_rolling' function&#10;Added global 'ghost_index' variable">
+      <created>1616077887329</created>
+      <option name="number" value="00013" />
+      <option name="presentableId" value="LOCAL-00013" />
+      <option name="project" value="LOCAL" />
+      <updated>1616077887329</updated>
+    </task>
+    <option name="localTasksCounter" value="14" />
+    <option name="clearContext" value="false" />
+    <option name="createBranch" value="false" />
+    <option name="commitChanges" value="false" />
     <servers />
   </component>
   <component name="VcsManagerConfiguration">
+    <option name="CHECK_NEW_TODO" value="false" />
     <ignored-roots>
       <path value="$PROJECT_DIR$" />
     </ignored-roots>
     <MESSAGE value="Straight ported from C#&#10;A bit of numexpr optimization" />
     <MESSAGE value="." />
     <MESSAGE value="Depricated 'Position' class, its is now only used for beam position iteration, which is also due for deprication.&#10;Introduced a new indices mangement system to support Numpy array trickery.&#10;Introduced laplacian operator based on rolling and a set of 'ghost' cells.&#10;Introduced a pre-calculated electron beam matrix, which renews on every beam step.&#10;Rewritten logic of deposition: it is now done in one line due to streaming of the surface indices.&#10;Rewritten and separated Surface evolution method: it now eloves the 'ghost shell' as well&#10;Precursor density increment method is now utilizing Numexrp thanks to Electron beam flux matrix&#10;and other minor changes...&#10;Code is messy, not properly commented, but working." />
-    <option name="LAST_COMMIT_MESSAGE" value="Depricated 'Position' class, its is now only used for beam position iteration, which is also due for deprication.&#10;Introduced a new indices mangement system to support Numpy array trickery.&#10;Introduced laplacian operator based on rolling and a set of 'ghost' cells.&#10;Introduced a pre-calculated electron beam matrix, which renews on every beam step.&#10;Rewritten logic of deposition: it is now done in one line due to streaming of the surface indices.&#10;Rewritten and separated Surface evolution method: it now eloves the 'ghost shell' as well&#10;Precursor density increment method is now utilizing Numexrp thanks to Electron beam flux matrix&#10;and other minor changes...&#10;Code is messy, not properly commented, but working." />
+    <MESSAGE value="Functions are now properly commented.  &#10;More comments and explanations are added to the code.  &#10;Documentation of Process.py is now available through Sphinx.  &#10;Switched from iterating using np.nditer to index streaming in precursor_density function, which resulted in 10x speedup.&#10;Cleaned up a little bit." />
+    <MESSAGE value="Eliminated iterative search for depositions in &quot;update_surface&quot;. &#10;Now implemented through np.argwhere(). 30x speed up of the &quot;update_surface&quot; function" />
+    <MESSAGE value="Moved two most time consuming operations (unzipping a set and constructing a tuple) from 'laplace_term_rolling' to 'update_surface'&#10;2x speedup of 'laplace_term_rolling' function&#10;Added global 'ghost_index' variable" />
+    <option name="LAST_COMMIT_MESSAGE" value="Moved two most time consuming operations (unzipping a set and constructing a tuple) from 'laplace_term_rolling' to 'update_surface'&#10;2x speedup of 'laplace_term_rolling' function&#10;Added global 'ghost_index' variable" />
   </component>
   <component name="XDebuggerManager">
     <breakpoint-manager>
@@ -282,7 +379,7 @@
         </line-breakpoint>
         <line-breakpoint enabled="true" suspend="THREAD" type="python-line">
           <url>file://$PROJECT_DIR$/code/Process.py</url>
-          <line>720</line>
+          <line>716</line>
           <option name="timeStamp" value="84" />
         </line-breakpoint>
         <line-breakpoint enabled="true" suspend="THREAD" type="python-line">
@@ -342,11 +439,6 @@
         </line-breakpoint>
         <line-breakpoint enabled="true" suspend="THREAD" type="python-line">
           <url>file://$PROJECT_DIR$/code/heat3dvkt.py</url>
-          <line>252</line>
-          <option name="timeStamp" value="213" />
-        </line-breakpoint>
-        <line-breakpoint enabled="true" suspend="THREAD" type="python-line">
-          <url>file://$PROJECT_DIR$/code/heat3dvkt.py</url>
           <line>204</line>
           <option name="timeStamp" value="218" />
         </line-breakpoint>
@@ -355,48 +447,45 @@
           <line>249</line>
           <option name="timeStamp" value="221" />
         </line-breakpoint>
-        <line-breakpoint enabled="true" suspend="THREAD" type="python-line">
-          <url>file://$PROJECT_DIR$/code/heat3dvkt.py</url>
-          <line>100</line>
-          <option name="timeStamp" value="232" />
-        </line-breakpoint>
-        <line-breakpoint enabled="true" suspend="THREAD" type="python-line">
-          <url>file://$PROJECT_DIR$/code/heat3dvkt.py</url>
-          <line>177</line>
-          <option name="timeStamp" value="242" />
-        </line-breakpoint>
         <line-breakpoint suspend="THREAD" type="python-line">
-          <condition expression="l == 4" language="Python" />
+          <condition expression="l == 8" language="Python" />
           <url>file://$PROJECT_DIR$/code/Process.py</url>
-          <line>690</line>
+          <line>686</line>
           <option name="timeStamp" value="296" />
         </line-breakpoint>
         <line-breakpoint suspend="THREAD" type="python-line">
           <condition expression="(l == 3) and (beam.y == 110)" language="Python" />
           <url>file://$PROJECT_DIR$/code/Process.py</url>
-          <line>679</line>
+          <line>675</line>
           <option name="timeStamp" value="314" />
         </line-breakpoint>
         <line-breakpoint suspend="THREAD" type="python-line">
           <condition expression="(l == 3) and (beam.y == 110) and (beam.x == 125)" language="Python" />
           <url>file://$PROJECT_DIR$/code/Process.py</url>
-          <line>689</line>
+          <line>685</line>
           <option name="timeStamp" value="317" />
-        </line-breakpoint>
-        <line-breakpoint enabled="true" suspend="THREAD" type="python-line">
-          <url>file://$PROJECT_DIR$/code/Process.py</url>
-          <line>704</line>
-          <option name="timeStamp" value="325" />
-        </line-breakpoint>
-        <line-breakpoint enabled="true" suspend="THREAD" type="python-line">
-          <url>file://$PROJECT_DIR$/code/Process.py</url>
-          <line>705</line>
-          <option name="timeStamp" value="326" />
         </line-breakpoint>
         <line-breakpoint enabled="true" suspend="THREAD" type="python-line">
           <url>file://$PROJECT_DIR$/code/Tests3D.py</url>
           <line>52</line>
           <option name="timeStamp" value="327" />
+        </line-breakpoint>
+        <line-breakpoint enabled="true" suspend="THREAD" type="python-line">
+          <url>file://$PROJECT_DIR$/code/heat3dvkt.py</url>
+          <line>256</line>
+          <option name="timeStamp" value="328" />
+        </line-breakpoint>
+        <line-breakpoint suspend="THREAD" type="python-line">
+          <condition expression="(xx==50) or (yy==50)" language="Python" />
+          <url>file://$PROJECT_DIR$/code/Process.py</url>
+          <line>244</line>
+          <option name="timeStamp" value="332" />
+        </line-breakpoint>
+        <line-breakpoint enabled="true" suspend="THREAD" type="python-line">
+          <condition expression="z&gt;48" language="Python" />
+          <url>file://$PROJECT_DIR$/code/Process.py</url>
+          <line>207</line>
+          <option name="timeStamp" value="337" />
         </line-breakpoint>
       </breakpoints>
       <default-breakpoints>

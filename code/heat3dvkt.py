@@ -248,8 +248,8 @@ if __name__ == '__main__':
     #     print('Usage: python3 heat3dvtk1.py <cfg-file name> <save-to file name (.vti)>')
     #     exit(0)
     # cfg_file, ofile = sys.argv[1], sys.argv[2]
-    cfg_file = "/wall.cfg"
-    ofile ="/Users/sandrik1742/PycharmProjects/FEBID/wall_long_corner_p.vti","r"
+    cfg_file = "/Users/sandrik1742/Documents/PycharmProjects/FEBID/code/wall.cfg"
+    ofile ="/Users/sandrik1742/Documents/PycharmProjects/FEBID/code/wall_long_corner_p.vti","r"
     params = read_cfg(cfg_file)
     grid, timetrace = run_sim(params)
     timetrace = np.array(timetrace)
