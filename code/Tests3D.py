@@ -2,9 +2,10 @@ import numpy as np
 import matplotlib.pyplot as plt
 import cProfile
 import numexpr
+from line_profiler import LineProfiler
 
-D = 10
-dt = 0.001
+D = 10000
+dt = 0.00001
 
 q=np.arange(25).reshape(5,5)
 z=np.zeros((5,5))
@@ -24,7 +25,6 @@ grid = np.zeros((1000,1000,100))
 grid[480:520,480:520,48:52] = 5
 grid[495:505,490:500,49:50] = 20
 sample = np.arange(27).reshape(3,3,3)
-
 
 c=[]
 c.append((1,1,1))
@@ -46,6 +46,15 @@ l.add((0,2,2))
 l.add((0,2,0))
 l.add((0,2,1))
 l.add((1,2,1))
+
+ghosts=set()
+ghosts_index = ()
+test_grid = np.full((2, 50, 50), 0.83, dtype=np.float32)
+for i in range(test_grid.shape[1]):
+    for j in range(test_grid.shape[2]):
+        ghosts.add((1,i,j))
+
+test = zip(*ghosts)
 
 ll = list(zip(*l))
 lar = (np.asarray(ll[0]), np.asarray(ll[1]), np.asarray(ll[2]))
@@ -126,6 +135,63 @@ def kernel_convolution(grid, add=0):
             sum += grid[1,1,1]
     return sum - add*6
 
+
+# @profile
+def laplace_term_rolling(grid, D,  dt):
+    """
+    Calculates diffusion term for all surface cells using rolling
+
+    :param grid: 3D precursor density array
+    :param D: diffusion coefficient
+    :param dt: time step
+    :return: to grid array
+    """
+    # for i in range(3000):
+    grid_out = np.copy(grid)
+    grid_out *= -6
+    temp = tuple(zip(*ghosts)) # casting a set of coordinates to a list of index sequences for every dimension
+    ghosts_index = np.asarray([np.asarray(temp[0]), np.asarray(temp[1]), np.asarray(temp[2])]) # constructing a tuple of ndarray sequences
+    # X axis:
+    # No need to have a separate array of values, when whe can conveniently call them from the origin:
+    grid[ghosts_index[0], ghosts_index[1], ghosts_index[2]] = grid[ghosts_index[0], ghosts_index[1], ghosts_index[2]-1] # assinging precursor density values to ghost cells along the rolling axis and direction
+    grid_out[:,:, :-1]+=grid[:,:, 1:] #rolling forward
+    grid_out[:,:,-1] += grid[:,:,-1] #taking care of edge values
+    grid[ghosts_index] = 0 # flushing ghost cells
+    # While Numpy allows negative indicies, indicies that are greater than the given dimention cause IndexiError and thus has to be taken care of
+    temp = np.where(ghosts_index[2] > grid.shape[2] - 2, ghosts_index[2] - 1, ghosts_index[2]) # decreasing all the edge indices by one to exclude falling out of the array
+    grid[ghosts_index] = grid[ghosts_index[0], ghosts_index[1], temp+1]
+    grid_out[:,:,1:] += grid[:,:,:-1] #rolling backwards
+    grid_out[:, :, 0] += grid[:, :, 0]
+    grid[ghosts_index] = 0
+    # Y axis:
+    grid[ghosts_index] = grid[ghosts_index[0], ghosts_index[1]-1, ghosts_index[2]]
+    grid_out[:, :-1, :] += grid[:, 1:, :]
+    grid_out[:, -1, :] += grid[:, -1, :]
+    grid[ghosts_index] = 0
+    temp = np.where(ghosts_index[1] > grid.shape[1] - 2, ghosts_index[1] - 1, ghosts_index[1])
+    grid[ghosts_index] = grid[ghosts_index[0], temp+1, ghosts_index[2]]
+    grid_out[:, 1:, :] += grid[:, :-1, :]
+    grid_out[:, 0, :] += grid[:, 0, :]
+    grid[ghosts_index] = 0
+    # Z-axis:
+    grid[ghosts_index] = grid[ghosts_index[0]-1, ghosts_index[1], ghosts_index[2]]
+    grid_out[:-1, :, :] += grid[1:, :, :]
+    grid_out[-1, :, :] += grid[-1, :, :]
+    grid[ghosts_index] = 0
+    temp = np.where(ghosts_index[0] > grid.shape[0] - 2, ghosts_index[0] - 1, ghosts_index[0])
+    grid[ghosts_index] = grid[temp+1, ghosts_index[1], ghosts_index[2]]
+    grid_out[1:, :, :] += grid[:-1, :, :]
+    grid_out[0, :, :] += grid[0, :, :]
+    grid[ghosts_index] = 0
+    grid_out[ghosts_index]=0 # result has to also be cleaned as it has redundant values
+    # numexpr.evaluate("grid_out*dt*D", casting='same_kind')
+    return numexpr.evaluate("grid_out*dt*D", casting='same_kind')
+
+def test_laplace(substrate, D, dt):
+    for i in range(3000):
+        laplace_term_rolling(substrate, D, dt)
+
+
 t=0
 
 def plot_it(grid):
@@ -139,6 +205,11 @@ def plot_it(grid):
 
 
 if __name__ == '__main__':
+
+    lp = LineProfiler()
+    lp_wrapper = lp(test_laplace(test_grid, D, dt))
+    lp_wrapper()
+    lp.print_stats()
     print("Tests")
     g = np.copy(grid[500, :, :])
     # plot_it(g)
@@ -146,7 +217,8 @@ if __name__ == '__main__':
     #     while t<0.01:
     #         laplace_term_(grid, surf)
     #         t+=dt
-    cProfile.runctx('laplace_term_(grid, dd)',globals(),locals())
+    # cProfile.runctx('laplace_term_(grid, dd)',globals(),locals())
+    cProfile.runctx('test_laplace(test_grid, D, dt)', globals(), locals())
     # exec("Tests3D")
     g = np.copy(grid[500, :, :])
     plot_it(g)

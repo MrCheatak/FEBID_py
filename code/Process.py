@@ -8,6 +8,7 @@ from numba import jit, typeof
 from numba.experimental import jitclass
 from numba.core.errors import NumbaDeprecationWarning, NumbaPendingDeprecationWarning
 import warnings
+import line_profiler
 
 
 class Positionb:
@@ -79,6 +80,7 @@ ghost_zf, ghost_zb, ghost_yf, ghost_yb, ghost_xf, ghost_xb = set(), set(), set()
 # 3. Doesn't allow duplicates: if set already contains an item being added, effectively nothing happens
 # 4. Have a convenient set().discard function, that quietly passes if an item is not in the set
 ghosts = set() # all the ghost cells, that represent a closed shell of the surface to prevent diffusion into the void or back to deposit
+ghosts_index = ()
 val_zf, val_zb, val_yf, val_yb, val_xf, val_xb = [], [], [], [], [], [] # TODO clean up laplace_term_roll function and all corresponding variables
 
 # Semi-surface cells are cells that have precursor density but do not have deposit right under them
@@ -156,13 +158,16 @@ def update_surface(deposit, substrate, surface, surf, semi_surface, init_y=0, in
     """
     # because all arrays are sent to the function as views of the currently irradiated area (relative coordinate system), offsets are needed to update semi-surface and ghost cells collection, because they are stored in absolute coordinates
     new_deposits = np.argwhere(deposit>1)
+    global ghosts_index
     for cell in new_deposits:
         if deposit[cell[0], cell[1], cell[2]] >= 1:  # if the cell is fully deposited
             semi_surface.add((0, 0, 0))
             ghosts.add((cell[0], cell[1] + init_y, cell[2] + init_x))  # add fully deposited cell to the ghost shell
             surface[cell[1], cell[2]] +=1  # rising the surface one cell up (new cell)
             refresh(deposit, substrate, semi_surface, cell[0]+1, cell[1], cell[2], init_y, init_x)
-    surf = make_tuple(surface)
+        temp = tuple(zip(*ghosts))  # casting a set of coordinates to a list of index sequences for every dimension
+        ghosts_index = ([np.asarray(temp[0]), np.asarray(temp[1]), np.asarray(temp[2])])  # constructing a tuple of ndarray sequences
+    surf = make_tuple(surface) # TODO: this conversion can be done fewer times throughout the code
 
 
 def refresh(deposit, substrate, semi_surface, z,y,x, init_y=0, init_x=0):  # TODO: implement and include evolution of a ghost "shell" here, that should proceed along with the evolution of surface
@@ -538,7 +543,7 @@ def define_ghosts(substrate, surface, semi_surface =[] ): # TODO: find a mutable
     return [zzf, zyf, zxf], [zzb, zyb, zxb], [yzf, yyf, yxf], [yzb, yyb, yxb], [xzf, xyf, xxf], [xzb, xyb, xxb], gzf, gzb, gyf, gyb, gxf, gxb
 
 
-def laplace_term_rolling(grid, D,  dt):
+def laplace_term_rolling(grid, D, dt):
     """
     Calculates diffusion term for all surface cells using rolling
 
@@ -549,8 +554,8 @@ def laplace_term_rolling(grid, D,  dt):
     """
     grid_out = np.copy(grid)
     grid_out *= -6
-    temp = list(zip(*ghosts)) # casting a set of coordinates to a list of index sequences for every dimension
-    ghosts_index = (np.asarray(temp[0]), np.asarray(temp[1]), np.asarray(temp[2])) # constructing a tuple of ndarray sequences
+    # temp = list(zip(*ghosts), ) # casting a set of coordinates to a list of index sequences for every dimension
+    # ghosts_index = (np.asarray(temp[0]), np.asarray(temp[1]), np.asarray(temp[2])) # constructing a tuple of ndarray sequences
     # X axis:
     # No need to have a separate array of values, when whe can conveniently call them from the origin:
     grid[ghosts_index] = grid[ghosts_index[0], ghosts_index[1], ghosts_index[2]-1] # assinging precursor density values to ghost cells along the rolling axis and direction
@@ -639,6 +644,9 @@ def define_irradiated_area(beam, effective_radius): # TODO: this function will h
         norm_x_end = xmax
     return  norm_y_start, norm_y_end, norm_x_start, norm_x_end
 
+def test_laplace(substrate, D, dt):
+    for i in range(3000):
+        laplace_term_rolling(substrate, D, dt)
 
 @jit(nopython=True, parallel=True, cache=True)
 def show_yeld(deposit, summ, summ1, res):
@@ -691,6 +699,9 @@ def printing(loops=1): # TODO: maybe it could be a good idea to switch to an arr
                     update_surface(deposit[irradiated_area_3D], substrate[:surface.max()+3, norm_y_start-2:norm_y_end+2, norm_x_start-2:norm_x_end+2], surface[irradiated_area_2D], surf, semi_surface, norm_y_start, norm_x_start) # updating surface on a selected area
                     if t % refresh_dt < 1E-6:
                         precursor_density(beam_matrix, substrate[:surface.max()+3,:,:], refresh_dt) # TODO: add tracking of the deposit's highest point and send only a reduced view to avoid unecessary operations on empty volume
+                        # if l==4 :
+                        #     cProfile.runctx('test_laplace(substrate,D,dt)', globals(), locals())
+                        #     nn=0
                         beam_exposure = 0 # flushing accumulated radiation
                     t += dt
 
