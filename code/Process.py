@@ -160,7 +160,7 @@ def deposition(deposit, substrate, flux_matrix, surf, dt):
 
 
 # @jit(nopython=True)
-def update_surface(deposit, substrate, surface, surf, semi_surface, ghosts, ghosts_index, init_y=0, init_x=0):
+def update_surface(deposit, substrate, surface, surf, semi_surface, ghosts, ghosts_ind, init_y=0, init_x=0):
     """
         Evolves surface upon a full deposition of a cell
 
@@ -169,6 +169,8 @@ def update_surface(deposit, substrate, surface, surf, semi_surface, ghosts, ghos
     :param surface: array corresponding to surface cells
     :param surf: collection of surface cells indices
     :param semi_surface: collection of semi-surface cells
+    :param ghosts:
+    :param ghosts_ind:
     :param init_y: offset for y-axis
     :param init_x: offset for x-axis
     :return: changes surface array, semi-surface and ghosts collections
@@ -183,9 +185,9 @@ def update_surface(deposit, substrate, surface, surf, semi_surface, ghosts, ghos
             refresh(deposit, substrate, semi_surface, cell[0]+1, cell[1], cell[2], init_y, init_x)
     if new_deposits.any():
         temp = tuple(zip(*ghosts))  # casting a set of coordinates to a list of index sequences for every dimension
-        ghosts_index = ([np.asarray(temp[0]), np.asarray(temp[1]), np.asarray(temp[2])])  # constructing a tuple of ndarray sequences
+        ghosts_ind = (np.asarray(temp[0]), np.asarray(temp[1]), np.asarray(temp[2]))  # constructing a tuple of ndarray sequences
         surf = make_tuple(surface) # TODO: this conversion can be done fewer times throughout the code
-
+    return surf, ghosts_ind
 
 def refresh(deposit, substrate, semi_surface, z,y,x, init_y=0, init_x=0):  # TODO: implement and include evolution of a ghost "shell" here, that should proceed along with the evolution of surface
     """
@@ -700,7 +702,7 @@ def printing(loops=1): # TODO: maybe it could be a good idea to switch to an arr
                 # section = substrate[:, 20, :]
                 while True:
                     deposition(deposit[irradiated_area_3D], substrate[irradiated_area_3D], beam_matrix[irradiated_area_2D], surf, dt) # depositing on a selected area
-                    update_surface(deposit[irradiated_area_3D], substrate[:surface.max()+3, norm_y_start-2:norm_y_end+2, norm_x_start-2:norm_x_end+2], surface[irradiated_area_2D], surf, semi_surface, ghosts, ghosts_index, norm_y_start, norm_x_start) # updating surface on a selected area
+                    surf, ghosts_index = update_surface(deposit[irradiated_area_3D], substrate[:surface.max()+3, norm_y_start-2:norm_y_end+2, norm_x_start-2:norm_x_end+2], surface[irradiated_area_2D], surf, semi_surface, ghosts, ghosts_index, norm_y_start, norm_x_start) # updating surface on a selected area
                     if t % refresh_dt < 1E-6:
                         precursor_density(beam_matrix, substrate[:surface.max()+3,:,:], surface, ghosts_index, refresh_dt) # TODO: add tracking of the deposit's highest point and send only a reduced view to avoid unecessary operations on empty volume
                         # if l==4 :
