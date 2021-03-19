@@ -7,9 +7,10 @@
     <option name="autoReloadType" value="SELECTIVE" />
   </component>
   <component name="ChangeListManager">
-    <list default="true" id="88fcfbbf-9994-46dd-90d0-f4a8304fcbdd" name="Default Changelist" comment="">
+    <list default="true" id="88fcfbbf-9994-46dd-90d0-f4a8304fcbdd" name="Default Changelist" comment="'pe_flux' is now taking an array and implemented with numexpr, 4x speed up&#10;'make_tuple' is completely rewritten, 20x speed up&#10;'flux_matrix' is no longer using iterator, but a stream of indices, 20x speed up&#10;'pythagor' is no longer used, its functionality is done inside 'flux_matrix' with numexpr&#10;'deposition' is working faster, idk lol&#10;So far the speed-ups provided by numexpr are a effectively a bit less than reported in the latest optimization. Since then numexpr.evaluate has grown from ~9 to ~11s for 100 loops test.&#10;Although, the overall computing time has decreased more that twice (from 78s to  with the latest optimizations.">
       <change beforePath="$PROJECT_DIR$/.idea/workspace.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/workspace.xml" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/code/Process.py" beforeDir="false" afterPath="$PROJECT_DIR$/code/Process.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/code/Tests3D.py" beforeDir="false" afterPath="$PROJECT_DIR$/code/Tests3D.py" afterDir="false" />
     </list>
     <list id="4ae695ed-902f-4945-8d4d-54c0f4ea71f4" name="Add parameter import from a file" comment="">
       <change beforePath="$PROJECT_DIR$/code/Process.py" beforeDir="false" afterPath="$PROJECT_DIR$/code/Process.py" afterDir="false" />
@@ -52,12 +53,15 @@
   <component name="LineStatusTrackerManager">
     <file path="$PROJECT_DIR$/code/Process.py">
       <ranges>
-        <range start1="162" end1="163" start2="162" end2="163" changelist="88fcfbbf-9994-46dd-90d0-f4a8304fcbdd" />
-        <range start1="171" end1="171" start2="171" end2="173" changelist="88fcfbbf-9994-46dd-90d0-f4a8304fcbdd" />
-        <range start1="185" end1="186" start2="187" end2="188" changelist="88fcfbbf-9994-46dd-90d0-f4a8304fcbdd" />
-        <range start1="187" end1="188" start2="189" end2="190" changelist="88fcfbbf-9994-46dd-90d0-f4a8304fcbdd" />
-        <range start1="189" end1="190" start2="191" end2="192" changelist="4ae695ed-902f-4945-8d4d-54c0f4ea71f4" />
-        <range start1="702" end1="703" start2="704" end2="705" changelist="88fcfbbf-9994-46dd-90d0-f4a8304fcbdd" />
+        <range start1="99" end1="100" start2="99" end2="100" changelist="88fcfbbf-9994-46dd-90d0-f4a8304fcbdd" />
+        <range start1="106" end1="107" start2="106" end2="107" changelist="88fcfbbf-9994-46dd-90d0-f4a8304fcbdd" />
+        <range start1="117" end1="125" start2="117" end2="126" changelist="88fcfbbf-9994-46dd-90d0-f4a8304fcbdd" />
+        <range start1="157" end1="158" start2="158" end2="160" changelist="88fcfbbf-9994-46dd-90d0-f4a8304fcbdd" />
+        <range start1="191" end1="192" start2="193" end2="194" changelist="4ae695ed-902f-4945-8d4d-54c0f4ea71f4" />
+        <range start1="599" end1="600" start2="601" end2="602" changelist="88fcfbbf-9994-46dd-90d0-f4a8304fcbdd" />
+        <range start1="601" end1="602" start2="603" end2="603" changelist="88fcfbbf-9994-46dd-90d0-f4a8304fcbdd" />
+        <range start1="603" end1="608" start2="604" end2="614" changelist="88fcfbbf-9994-46dd-90d0-f4a8304fcbdd" />
+        <range start1="610" end1="611" start2="616" end2="617" changelist="88fcfbbf-9994-46dd-90d0-f4a8304fcbdd" />
       </ranges>
     </file>
   </component>
@@ -318,7 +322,14 @@
       <option name="project" value="LOCAL" />
       <updated>1616079114712</updated>
     </task>
-    <option name="localTasksCounter" value="15" />
+    <task id="LOCAL-00015" summary="Fixed ghosts_index and surf not attaining values from 'update_surface'">
+      <created>1616160426196</created>
+      <option name="number" value="00015" />
+      <option name="presentableId" value="LOCAL-00015" />
+      <option name="project" value="LOCAL" />
+      <updated>1616160426196</updated>
+    </task>
+    <option name="localTasksCounter" value="16" />
     <option name="clearContext" value="false" />
     <option name="createBranch" value="false" />
     <option name="commitChanges" value="false" />
@@ -336,7 +347,8 @@
     <MESSAGE value="Eliminated iterative search for depositions in &quot;update_surface&quot;. &#10;Now implemented through np.argwhere(). 30x speed up of the &quot;update_surface&quot; function" />
     <MESSAGE value="Moved two most time consuming operations (unzipping a set and constructing a tuple) from 'laplace_term_rolling' to 'update_surface'&#10;2x speedup of 'laplace_term_rolling' function&#10;Added global 'ghost_index' variable" />
     <MESSAGE value="Now sending 'ghosts' and 'ghosts_index' as parameters instead of referring to globals from all sub-functions&#10;Just moved make_tuple operation under a condition if there are newly deposited cells and it led to 8x speed up of 'update_surface'" />
-    <option name="LAST_COMMIT_MESSAGE" value="Now sending 'ghosts' and 'ghosts_index' as parameters instead of referring to globals from all sub-functions&#10;Just moved make_tuple operation under a condition if there are newly deposited cells and it led to 8x speed up of 'update_surface'" />
+    <MESSAGE value="Fixed ghosts_index and surf not attaining values from 'update_surface'" />
+    <option name="LAST_COMMIT_MESSAGE" value="Fixed ghosts_index and surf not attaining values from 'update_surface'" />
   </component>
   <component name="XDebuggerManager">
     <breakpoint-manager>
@@ -388,27 +400,27 @@
         </line-breakpoint>
         <line-breakpoint enabled="true" suspend="THREAD" type="python-line">
           <url>file://$PROJECT_DIR$/code/Tests3D.py</url>
-          <line>152</line>
+          <line>154</line>
           <option name="timeStamp" value="151" />
         </line-breakpoint>
         <line-breakpoint enabled="true" suspend="THREAD" type="python-line">
           <url>file://$PROJECT_DIR$/code/Tests3D.py</url>
-          <line>144</line>
+          <line>146</line>
           <option name="timeStamp" value="156" />
         </line-breakpoint>
         <line-breakpoint enabled="true" suspend="THREAD" type="python-line">
           <url>file://$PROJECT_DIR$/code/Tests3D.py</url>
-          <line>143</line>
+          <line>145</line>
           <option name="timeStamp" value="160" />
         </line-breakpoint>
         <line-breakpoint enabled="true" suspend="THREAD" type="python-line">
           <url>file://$PROJECT_DIR$/code/Tests3D.py</url>
-          <line>66</line>
+          <line>68</line>
           <option name="timeStamp" value="162" />
         </line-breakpoint>
         <line-breakpoint enabled="true" suspend="THREAD" type="python-line">
           <url>file://$PROJECT_DIR$/code/Tests3D.py</url>
-          <line>119</line>
+          <line>121</line>
           <option name="timeStamp" value="182" />
         </line-breakpoint>
         <line-breakpoint enabled="true" suspend="THREAD" type="python-line">
@@ -429,24 +441,24 @@
         <line-breakpoint suspend="THREAD" type="python-line">
           <condition expression="l == 8" language="Python" />
           <url>file://$PROJECT_DIR$/code/Process.py</url>
-          <line>688</line>
+          <line>694</line>
           <option name="timeStamp" value="296" />
         </line-breakpoint>
         <line-breakpoint suspend="THREAD" type="python-line">
           <condition expression="(l == 3) and (beam.y == 110)" language="Python" />
           <url>file://$PROJECT_DIR$/code/Process.py</url>
-          <line>677</line>
+          <line>683</line>
           <option name="timeStamp" value="314" />
         </line-breakpoint>
         <line-breakpoint suspend="THREAD" type="python-line">
           <condition expression="(l == 3) and (beam.y == 110) and (beam.x == 125)" language="Python" />
           <url>file://$PROJECT_DIR$/code/Process.py</url>
-          <line>687</line>
+          <line>693</line>
           <option name="timeStamp" value="317" />
         </line-breakpoint>
         <line-breakpoint enabled="true" suspend="THREAD" type="python-line">
           <url>file://$PROJECT_DIR$/code/Tests3D.py</url>
-          <line>52</line>
+          <line>54</line>
           <option name="timeStamp" value="327" />
         </line-breakpoint>
         <line-breakpoint enabled="true" suspend="THREAD" type="python-line">
@@ -457,24 +469,29 @@
         <line-breakpoint suspend="THREAD" type="python-line">
           <condition expression="(xx==50) or (yy==50)" language="Python" />
           <url>file://$PROJECT_DIR$/code/Process.py</url>
-          <line>246</line>
+          <line>248</line>
           <option name="timeStamp" value="332" />
         </line-breakpoint>
         <line-breakpoint enabled="true" suspend="THREAD" type="python-line">
           <condition expression="z&gt;48" language="Python" />
           <url>file://$PROJECT_DIR$/code/Process.py</url>
-          <line>209</line>
+          <line>211</line>
           <option name="timeStamp" value="337" />
         </line-breakpoint>
         <line-breakpoint enabled="true" suspend="THREAD" type="python-line">
           <url>file://$PROJECT_DIR$/code/Process.py</url>
-          <line>721</line>
+          <line>727</line>
           <option name="timeStamp" value="378" />
         </line-breakpoint>
         <line-breakpoint enabled="true" suspend="THREAD" type="python-line">
+          <url>file://$PROJECT_DIR$/code/Tests3D.py</url>
+          <line>28</line>
+          <option name="timeStamp" value="415" />
+        </line-breakpoint>
+        <line-breakpoint enabled="true" suspend="THREAD" type="python-line">
           <url>file://$PROJECT_DIR$/code/Process.py</url>
-          <line>710</line>
-          <option name="timeStamp" value="414" />
+          <line>728</line>
+          <option name="timeStamp" value="421" />
         </line-breakpoint>
       </breakpoints>
       <default-breakpoints>

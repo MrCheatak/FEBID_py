@@ -26,6 +26,8 @@ grid[480:520,480:520,48:52] = 5
 grid[495:505,490:500,49:50] = 20
 sample = np.arange(27).reshape(3,3,3)
 
+gg=np.mgrid[0:5, 0:5]
+gh = (gg[0,:].flatten(), gg[1,:].flatten())
 c=[]
 c.append((1,1,1))
 c.append((2,2,2))

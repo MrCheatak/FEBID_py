@@ -97,14 +97,14 @@ for i in range(50):
         b.append(i)
 stub = (np.asarray(b), np.asarray(a))
 
-@jit(nopython=True)
+# @jit(nopython=True)
 def pe_flux(r):
     """Calculates PE flux at the given radius according to Gaussian distribution.
 
     :param r: radius from the center of the beam.
     """
     #with timebudget("Flux time"):
-    return f*math.exp(-r*r/(2*beam_d*beam_d))
+    return numexpr.evaluate("f*exp(-r*r/(2*beam_d*beam_d))")
 
 
 # @jit(nopython=False, forceobj=True)
@@ -115,14 +115,15 @@ def make_tuple(arr): # TODO: make a quicker conversation
     :param arr: array to convert
     :return: tuple(list[z], list[y], list[x]), indexing-ready
     """
-    x,y,z =[],[],[]
-    for i in range(arr.shape[0]):
-        for j in range(arr.shape[1]):
-            x.append(j)
-            y.append(i)
-            z.append(arr[i,j])
-    # return (arr.flatten(), stub[0], stub[1])
-    return (z, y, x)
+    temp = np.mgrid[0:(arr.shape[0]), 0:arr.shape[1]]
+    # x,y,z =[],[],[]
+    # for i in range(arr.shape[0]):
+    #     for j in range(arr.shape[1]):
+    #         x.append(j)
+    #         y.append(i)
+    #         z.append(arr[i,j])
+    # return (z, y, x)
+    return (arr.flatten(), temp[0,:].flatten(), temp[1,:].flatten())
 
 
 def flush_structure(substrate, deposit, init_density = nr, init_deposit = .0):
@@ -155,7 +156,8 @@ def deposition(deposit, substrate, flux_matrix, surf, dt):
     :return: writes back to deposition array
     """
     #with timebudget("Deposition time"):
-    # numexpr.evaluate("d+s*sigma*fl*V*dt", out=deposit[surf], local_dict={'d':deposit[surf], 's': substrate[surf], 'fl': flux_matrix.view().reshape(flux_matrix.shape[0]**2)}, casting='same_kind')
+    # delta = numexpr.evaluate("d+s*sigma*fl*V*dt", out=deposit[surf], local_dict={'d':deposit[surf], 's': substrate[surf], 'fl': flux_matrix.view().reshape(flux_matrix.shape[0]**2)}, casting='same_kind')
+    # deposit[surf] += numexpr.evaluate("s*sigma*fl*V*dt", local_dict={'s': substrate[surf], 'fl': flux_matrix.view().reshape(flux_matrix.shape[0]**2)}, casting='same_kind')
     deposit[surf] += substrate[surf] * sigma * flux_matrix.view().reshape(flux_matrix.shape[0] ** 2) * V * dt
 
 
@@ -597,18 +599,22 @@ def flux_matrix(matrix, y1, y2, x1, x2):
     :param y1: y2, x1 – x2 – boundaries of the effectively irradiated area
     :return: to matrix array
     """
-    matrix[:,:]=0 # flushing previous values
+    matrix[:, :] = 0  # flushing previous values
     irradiated_area = matrix[y1:y2, x1:x2]
-    # irradiated_area = np.zeros((7,7), dtype=int)
     center = irradiated_area.shape[0]/2*cell_dimension # beam center in array-coordinates
-    with np.nditer(irradiated_area, flags=['multi_index'], op_flags=['readwrite']) as it:
-        for x in it:
-            r = pythagor(it.multi_index[0]*cell_dimension-center, it.multi_index[1]*cell_dimension-center)
-            if r<effective_radius:
-                x[...]=pe_flux(r)
+    temp = np.mgrid[0:(y2 - y1), 0:(x2 - x1)]
+    index_y, index_x = temp[0,:].flatten(), temp[1,:].flatten()
+    dist = numexpr.evaluate("((index_x*cell_dimension-center)*(index_x*cell_dimension-center))**0.5+((index_y*cell_dimension-center)*(index_y*cell_dimension-center))**0.5")
+    # irradiated_area[index]=pythagor(index[0]-center, index[1]-center)
+    irradiated_area[index_y, index_x] = pe_flux(dist)
+    # with np.nditer(irradiated_area, flags=['multi_index'], op_flags=['readwrite']) as it:
+    #     for x in it:
+    #         r = pythagor(it.multi_index[0]*cell_dimension-center, it.multi_index[1]*cell_dimension-center)
+    #         if r<effective_radius:
+    #             x[...]=pe_flux
 
 
-@jit(nopython=True)
+# @jit(nopython=True)
 def pythagor(a,b):
     return math.sqrt(a*a+b*b)
 
