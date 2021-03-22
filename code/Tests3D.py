@@ -5,7 +5,7 @@ import numexpr
 from line_profiler import LineProfiler
 
 D = 10000
-dt = 0.00001
+dt = 0.000001
 
 q=np.arange(25).reshape(5,5)
 z=np.zeros((5,5))
@@ -151,27 +151,27 @@ def laplace_term_rolling(grid, D,  dt):
     # for i in range(3000):
     grid_out = np.copy(grid)
     grid_out *= -6
-    temp = tuple(zip(*ghosts)) # casting a set of coordinates to a list of index sequences for every dimension
-    ghosts_index = np.asarray([np.asarray(temp[0]), np.asarray(temp[1]), np.asarray(temp[2])]) # constructing a tuple of ndarray sequences
+    # temp = tuple(zip(*ghosts)) # casting a set of coordinates to a list of index sequences for every dimension
+    # ghosts_index = np.asarray([np.asarray(temp[0]), np.asarray(temp[1]), np.asarray(temp[2])]) # constructing a tuple of ndarray sequences
     # X axis:
     # No need to have a separate array of values, when whe can conveniently call them from the origin:
-    grid[ghosts_index[0], ghosts_index[1], ghosts_index[2]] = grid[ghosts_index[0], ghosts_index[1], ghosts_index[2]-1] # assinging precursor density values to ghost cells along the rolling axis and direction
+    # grid[ghosts_index[0], ghosts_index[1], ghosts_index[2]] = grid[ghosts_index[0], ghosts_index[1], ghosts_index[2]-1] # assinging precursor density values to ghost cells along the rolling axis and direction
     grid_out[:,:, :-1]+=grid[:,:, 1:] #rolling forward
     grid_out[:,:,-1] += grid[:,:,-1] #taking care of edge values
-    grid[ghosts_index] = 0 # flushing ghost cells
+    # grid[ghosts_index] = 0 # flushing ghost cells
     # While Numpy allows negative indicies, indicies that are greater than the given dimention cause IndexiError and thus has to be taken care of
-    temp = np.where(ghosts_index[2] > grid.shape[2] - 2, ghosts_index[2] - 1, ghosts_index[2]) # decreasing all the edge indices by one to exclude falling out of the array
-    grid[ghosts_index] = grid[ghosts_index[0], ghosts_index[1], temp+1]
+    # temp = np.where(ghosts_index[2] > grid.shape[2] - 2, ghosts_index[2] - 1, ghosts_index[2]) # decreasing all the edge indices by one to exclude falling out of the array
+    # grid[ghosts_index] = grid[ghosts_index[0], ghosts_index[1], temp+1]
     grid_out[:,:,1:] += grid[:,:,:-1] #rolling backwards
     grid_out[:, :, 0] += grid[:, :, 0]
-    grid[ghosts_index] = 0
+    # grid[ghosts_index] = 0
     # Y axis:
-    grid[ghosts_index] = grid[ghosts_index[0], ghosts_index[1]-1, ghosts_index[2]]
+    # grid[ghosts_index] = grid[ghosts_index[0], ghosts_index[1]-1, ghosts_index[2]]
     grid_out[:, :-1, :] += grid[:, 1:, :]
     grid_out[:, -1, :] += grid[:, -1, :]
-    grid[ghosts_index] = 0
-    temp = np.where(ghosts_index[1] > grid.shape[1] - 2, ghosts_index[1] - 1, ghosts_index[1])
-    grid[ghosts_index] = grid[ghosts_index[0], temp+1, ghosts_index[2]]
+    # grid[ghosts_index] = 0
+    # temp = np.where(ghosts_index[1] > grid.shape[1] - 2, ghosts_index[1] - 1, ghosts_index[1])
+    # grid[ghosts_index] = grid[ghosts_index[0], temp+1, ghosts_index[2]]
     grid_out[:, 1:, :] += grid[:, :-1, :]
     grid_out[:, 0, :] += grid[:, 0, :]
     grid[ghosts_index] = 0
@@ -179,13 +179,13 @@ def laplace_term_rolling(grid, D,  dt):
     grid[ghosts_index] = grid[ghosts_index[0]-1, ghosts_index[1], ghosts_index[2]]
     grid_out[:-1, :, :] += grid[1:, :, :]
     grid_out[-1, :, :] += grid[-1, :, :]
-    grid[ghosts_index] = 0
-    temp = np.where(ghosts_index[0] > grid.shape[0] - 2, ghosts_index[0] - 1, ghosts_index[0])
-    grid[ghosts_index] = grid[temp+1, ghosts_index[1], ghosts_index[2]]
+    # grid[ghosts_index] = 0
+    # temp = np.where(ghosts_index[0] > grid.shape[0] - 2, ghosts_index[0] - 1, ghosts_index[0])
+    # grid[ghosts_index] = grid[temp+1, ghosts_index[1], ghosts_index[2]]
     grid_out[1:, :, :] += grid[:-1, :, :]
     grid_out[0, :, :] += grid[0, :, :]
-    grid[ghosts_index] = 0
-    grid_out[ghosts_index]=0 # result has to also be cleaned as it has redundant values
+    # grid[ghosts_index] = 0
+    # grid_out[ghosts_index]=0 # result has to also be cleaned as it has redundant values
     # numexpr.evaluate("grid_out*dt*D", casting='same_kind')
     return numexpr.evaluate("grid_out*dt*D", casting='same_kind')
 
@@ -208,10 +208,10 @@ def plot_it(grid):
 
 if __name__ == '__main__':
 
-    lp = LineProfiler()
-    lp_wrapper = lp(test_laplace(test_grid, D, dt))
-    lp_wrapper()
-    lp.print_stats()
+    # lp = LineProfiler()
+    # lp_wrapper = lp(test_laplace(test_grid, D, dt))
+    # lp_wrapper()
+    # lp.print_stats()
     print("Tests")
     g = np.copy(grid[500, :, :])
     # plot_it(g)
@@ -220,7 +220,7 @@ if __name__ == '__main__':
     #         laplace_term_(grid, surf)
     #         t+=dt
     # cProfile.runctx('laplace_term_(grid, dd)',globals(),locals())
-    cProfile.runctx('test_laplace(test_grid, D, dt)', globals(), locals())
+    # cProfile.runctx('test_laplace(test_grid, D, dt)', globals(), locals())
     # exec("Tests3D")
     g = np.copy(grid[500, :, :])
     plot_it(g)

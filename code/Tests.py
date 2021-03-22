@@ -7,7 +7,7 @@ import numpy.ma as ma
 from scipy import ndimage
 
 D = 10
-dt = 0.001
+dt = 0.0001
 
 class Position:
     def __init__(self, z, y, x, dtype=int):
@@ -24,9 +24,11 @@ system_size = 5
 substratee = np.zeros((system_size, system_size, system_size, 2), dtype=np.float)
 grid = np.linspace(0, 0.8, num=125).reshape((5, 5, 5))
 
-grid = np.zeros((1000,1000))
-grid[470:530, 470:530] = 5
-grid[490:510, 490:510] = 20
+grid = np.zeros((50,50))
+# grid[470:530, 470:530] = 5
+# grid[490:510, 490:510] = 20
+grid[20:30, 20:30] = 5
+# grid[23:27, 23:27] = 20
 a=np.array([1,2,3,4,5])
 b=np.array([1,2,np.NAN,4,5])
 a = a+b
@@ -56,7 +58,7 @@ tt = x[ss]
 ss = np.s_[3,3]
 tt = x[ss]
 tt=ss[0]
-ss[0] += 1
+# ss[0] += 1
 
 def conv_scipy(grid):
     grid_out = np.pad(grid, (1), 'constant')
@@ -100,14 +102,24 @@ def loops_test():
             n += 2.5 * i
     q=0
 
+# @jit(nopython=True)
+def rk4_roll(grid):
+    grid_op=np.copy(grid)
+    k1=roll_add_2d(dt, grid)
+    k2=roll_add_2d(dt/2, grid, k1/2)
+    k3=roll_add_2d(dt/2,  grid, k2/2)
+    k4=roll_add_2d(dt, grid, k3)
+    return numexpr.evaluate("(k1+k4)/6 +(k2+k3)/3+grid")
+
 
 # @jit( parallel=True, forceobj=True)
-def roll_add_2d(grid_a):
+def roll_add_2d(dt, grid_a, add=0):
     # a=np.amin(np.argwhere(grid>0.000001))-1
     # b=np.amax(np.argwhere(grid>0.000001))+2
     # grid_a = grid[a:b, a:b]
     grid_out = np.copy(grid_a)
     grid_out *= -4
+    grid_out+=add
     grid_out[1:, :] += grid_a[:-1, :]
     # grid_out[0, :] += grid_a[-1, :]
     grid_out[:-1, :] += grid_a[1:, :]
@@ -116,7 +128,8 @@ def roll_add_2d(grid_a):
     # grid_out[:, 0] += grid_a[:, -1]
     grid_out[:, :-1] += grid_a[:, 1:]
     # grid_out[:, -1] += grid_a[:, 0]
-    numexpr.evaluate("grid_out*dt*D+grid_a", out=grid_a, casting='same_kind')
+    return numexpr.evaluate("grid_out*dt*D", casting='same_kind')
+    # rk4(grid_a)
     # grid += grid_out * dt * D
 
 def update_shell(grid):
@@ -245,52 +258,55 @@ y=np.copy(x)
 # conv_scipy(x)
 # roll_add_2d(y)
 
-laplace_term(x)
-# roll_add_2d(test_trid)
-t=0
-g=np.copy(grid)
-with timebudget("Time Term +JIT"):
-    while t<3:
-        laplace_term(g)
+if __name__ == '__main__':
+
+    # laplace_term(x)
+    # roll_add_2d(test_trid)
+    # t=0
+    # g=np.copy(grid)
+    # with timebudget("Time Term +JIT"):
+    #     while t<3:
+    #         laplace_term(g)
+    #         t+=dt
+    #     plot_it(g)
+    # t=0
+    # g=np.copy(grid)
+    # with timebudget("Time Roll 1"):
+    #     while t<1:
+    #         laplace_roll(g)
+    #         t+=dt
+    #     plot_it(g)
+    # t=0
+    # g=np.copy(grid)
+    # with timebudget("Time Roll 2"):
+    #     while t<1:
+    #         laplace_roll_ev(g)
+    #         t+=dt
+    #     plot_it(g)
+    t=0
+    g=np.copy(grid)
+    plot_it(g)
+    # with timebudget("Time Roll 3"):
+    while t<0.5:
+        g=rk4_roll(g)
+        # roll_add_2d(g)
         t+=dt
     plot_it(g)
-# t=0
-# g=np.copy(grid)
-# with timebudget("Time Roll 1"):
-#     while t<1:
-#         laplace_roll(g)
-#         t+=dt
-#     plot_it(g)
-# t=0
-# g=np.copy(grid)
-# with timebudget("Time Roll 2"):
-#     while t<1:
-#         laplace_roll_ev(g)
-#         t+=dt
-#     plot_it(g)
-# t=0
-# g=np.copy(grid)
-# plot_it(g)
-# with timebudget("Time Roll 3"):
-#     while t<0.5:
-#         roll_add_2d(g)
-#         t+=dt
-#     plot_it(g)
-# t=0
-# g=np.copy(grid)
-# with timebudget("Time Convolve Scipy"):
-#     while t<0.5:
-#         conv_scipy(g)
-#         t+=dt
-#     plot_it(g)
-# g=np.copy(grid)
-# g1=np.copy(grid)
-# with timebudget("Time Scipy Laplace"):
-#     while t<1:
-#         # g1 *=-4
-#         g1 = ndimage.laplace(g, mode='nearest')
-#         numexpr.evaluate('g+g1*D*dt', out=g)
-#         # g1, g = g,g1
-#         t+=dt
-#     plot_it(g)
-q=0
+    # t=0
+    # g=np.copy(grid)
+    # with timebudget("Time Convolve Scipy"):
+    #     while t<0.5:
+    #         conv_scipy(g)
+    #         t+=dt
+    #     plot_it(g)
+    # g=np.copy(grid)
+    # g1=np.copy(grid)
+    # with timebudget("Time Scipy Laplace"):
+    #     while t<1:
+    #         # g1 *=-4
+    #         g1 = ndimage.laplace(g, mode='nearest')
+    #         numexpr.evaluate('g+g1*D*dt', out=g)
+    #         # g1, g = g,g1
+    #         t+=dt
+    #     plot_it(g)
+    q=0

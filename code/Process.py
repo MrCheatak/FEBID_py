@@ -30,15 +30,14 @@ F = 3000  # precursor flux at the surface, 1/(nm^2*s)   here assumed a constant,
 tau = 500E-6  # average residence time, s; may be dependent on temperature
 
 # Precursor properties
-sigma = 2.2E-2  # dissociation cross section, nm^2 is averaged from cross sections of all electron types (PE,BSE, SE1, SE2)
+sigma = 2.2E-2  # dissociation cross section, nm^2; is averaged from cross sections of all electron types (PE,BSE, SE1, SE2)
 n0 = 1.9  # inversed molecule size, Me3PtCpMe, 1/nm^2
 M_Me3PtCpMe = 305  # molar mass of the precursor Me3Pt(IV)CpMe, g/mole
 p_Me3PtCpMe = 1.5E-20  # density of the precursor Me3Pt(IV)CpMe, g/nm^3
 V = 4 / 3 * math.pi * math.pow(0.139, 3)  # atomic volume of the deposited atom (Pt), nm^3
 D = np.float32(1E5)  # diffusion coefficient, nm^2/s
 
-###
-dt = np.float32(1E-6)  # time step, s
+
 # t = 2E-6  # absolute time, s
 
 kd = F / n0 + 1 / tau + sigma * f  # depletion rate
@@ -48,8 +47,17 @@ nd = F / kd  # depleted absolute density
 t_out = 1 / (1 / tau + F / n0)  # effective residence time
 p_out = 2 * math.sqrt(D * t_out) / beam_d
 cell_dimension = 5  # side length of a square cell, nm
-diffusion_dt = math.pow(cell_dimension * cell_dimension, 2) / (2 * D * (cell_dimension * cell_dimension + cell_dimension * cell_dimension))  # maximum stability lime of the diffusion solution
+
 effective_radius_relative = math.floor(effective_radius/cell_dimension/2)
+# </editor-fold>
+
+
+
+# <editor-fold desc="Timings">
+dt = np.float32(1E-6)  # time step, s
+t_flux = 1/(sigma+f) # dissociation event time
+diffusion_dt = math.pow(cell_dimension * cell_dimension, 2) / (2 * D * (cell_dimension * cell_dimension + cell_dimension * cell_dimension))   # maximum stability lime of the diffusion solution
+tau = 500E-6  # average residence time, s; may be dependent on temperature
 # </editor-fold>
 
 # <editor-fold desc="Framework">
@@ -70,7 +78,7 @@ zmax, ymax, xmax = substrate.shape # dimensions of the grid
 # It is assumed, that surface cell is a cell with a fully deposited cell(or substrate) under it and thus able produce deposit under irradiation.
 # Thus the number of surface cells is fixed.
 # TODO: is it possible to create a non-contiguous and evolvable view to the 3D array? Later on all the surface should be able to produce deposit
-surface = np.zeros((system_size, system_size), dtype=np.int16) # TODO: since lists allow sending a list of indices without a loop, surface matrix should be untilizing such data type for speed, but preserve addressability or quick search
+surface = np.zeros((system_size, system_size), dtype=np.int64) # TODO: since lists allow sending a list of indices without a loop, surface matrix should be untilizing such data type for speed, but preserve addressability or quick search
 surf =[] # a stub for holding a sequence of indices of surface cells for quick processing
 
 ghost_zf, ghost_zb, ghost_yf, ghost_yb, ghost_xf, ghost_xb = set(), set(), set(), set(), set(), set()
@@ -107,7 +115,7 @@ def pe_flux(r):
     return numexpr.evaluate("f*exp(-r*r/(2*beam_d*beam_d))")
 
 
-# @jit(nopython=False, forceobj=True)
+@jit(nopython=False, forceobj=True)
 def make_tuple(arr): # TODO: make a quicker conversation
     """
     Converts an matrix array of z-indices(y=i, x=j) to a sequence of indices
@@ -126,6 +134,7 @@ def make_tuple(arr): # TODO: make a quicker conversation
     return (arr.flatten(), temp[0,:].flatten(), temp[1,:].flatten())
 
 
+@jit(nopython=True)
 def flush_structure(substrate, deposit, init_density = nr, init_deposit = .0):
     """
 
@@ -141,7 +150,7 @@ def flush_structure(substrate, deposit, init_density = nr, init_deposit = .0):
     deposit[0, :, :] = init_deposit
 
 
-# @generated_jit(nopython=True, parallel=True)
+# @jit(nopython=True, parallel=True)
 def deposition(deposit, substrate, flux_matrix, surf, dt):
     """
     Calculates deposition on the surface for a given time step dt (outer loop).
@@ -161,7 +170,7 @@ def deposition(deposit, substrate, flux_matrix, surf, dt):
     deposit[surf] += substrate[surf] * sigma * flux_matrix.view().reshape(flux_matrix.shape[0] ** 2) * V * dt
 
 
-# @jit(nopython=True)
+# @jit(nopython=False)
 def update_surface(deposit, substrate, surface, surf, semi_surface, ghosts, ghosts_ind, init_y=0, init_x=0):
     """
         Evolves surface upon a full deposition of a cell
@@ -181,10 +190,10 @@ def update_surface(deposit, substrate, surface, surf, semi_surface, ghosts, ghos
     new_deposits = np.argwhere(deposit>1)
     for cell in new_deposits:
         if deposit[cell[0], cell[1], cell[2]] >= 1:  # if the cell is fully deposited
-            semi_surface.add((0, 0, 0))
+
             ghosts.add((cell[0], cell[1] + init_y, cell[2] + init_x))  # add fully deposited cell to the ghost shell
             surface[cell[1], cell[2]] +=1  # rising the surface one cell up (new cell)
-            refresh(deposit, substrate, semi_surface, cell[0]+1, cell[1], cell[2], init_y, init_x)
+            refresh(deposit, substrate, semi_surface, ghosts, cell[0]+1, cell[1], cell[2], init_y, init_x)
     if new_deposits.any():
         temp = tuple(zip(*ghosts))  # casting a set of coordinates to a list of index sequences for every dimension
         ghosts_ind = (np.asarray(temp[0]), np.asarray(temp[1]), np.asarray(temp[2]))  # constructing a tuple of ndarray sequences
@@ -223,22 +232,22 @@ def refresh(deposit, substrate, semi_surface, z,y,x, init_y=0, init_x=0):  # TOD
     if substrate[z, yy - 1, xx] == 0:
         semi_surface.add((z, y - 1+init_y, x+init_x))  # adding cell to the list
         substrate[z, yy - 1, xx] += 1E-7 # "marks" cell as a surface one, because some of the checks refer to if the cell is empty. This assignment is essential
-        refresh_ghosts(substrate, x + init_x, xx, y-1 + init_y, yy-1, z) # update ghost shell around
+        refresh_ghosts(substrate, ghosts, x + init_x, xx, y-1 + init_y, yy-1, z) # update ghost shell around
     if substrate[z, yy + 1, xx] == 0:
         semi_surface.add((z, y + 1+init_y, x+init_x))
         substrate[z, yy + 1, xx] += 1E-7
-        refresh_ghosts(substrate, x + init_x, xx, y+1 + init_y, yy+1, z)
+        refresh_ghosts(substrate, ghosts, x + init_x, xx, y+1 + init_y, yy+1, z)
     if substrate[z, yy, xx - 1] == 0:
         semi_surface.add((z, y+init_y, x - 1+init_x))
         substrate[z, yy, xx - 1] += 1E-7
-        refresh_ghosts(substrate, x -1 + init_x, xx-1, y + init_y, yy, z)
+        refresh_ghosts(substrate, ghosts, x -1 + init_x, xx-1, y + init_y, yy, z)
     if substrate[z, yy, xx + 1] == 0:
         semi_surface.add((z, y+init_y, x + 1+init_x))
         substrate[z, yy, xx + 1] += 1E-7
-        refresh_ghosts(substrate, x + 1 + init_x, xx+1, y + init_y, yy, z)
+        refresh_ghosts(substrate, ghosts, x + 1 + init_x, xx+1, y + init_y, yy, z)
 
-
-def refresh_ghosts(substrate, x, xx, y, yy, z):
+@jit(nopython=True)
+def refresh_ghosts(substrate, ghosts, x, xx, y, yy, z):
     """
     Updates ghost shell registry around the specified cell
 
@@ -251,7 +260,6 @@ def refresh_ghosts(substrate, x, xx, y, yy, z):
     :return: changes ghosts collection
     """
     # z-coordinates are same for both cases, because the view to a substrate is taken from the x-y plane
-    global ghosts #TODO: send ghost shell collection as a parameter
     # First deleting current cell from ghost shell and then adding all neighboring cells(along all axis) if they are zero
     ghosts.discard((z, y, x))
     if substrate[z - 1, yy, xx] == 0:
@@ -705,6 +713,7 @@ def printing(loops=1): # TODO: maybe it could be a good idea to switch to an arr
                 flux_matrix(beam_matrix, norm_y_start, norm_y_end, norm_x_start, norm_x_end)
                 beam_exposure += beam_matrix # accumulates beam exposure for precursor density if it is called with an interval bigger that dt
                 surf = make_tuple(surface[irradiated_area_2D]) # getting an indexing-ready surface cells coordinates
+                semi_surface.add((0, 0, 0))
                 # section = substrate[:, 20, :]
                 while True:
                     deposition(deposit[irradiated_area_3D], substrate[irradiated_area_3D], beam_matrix[irradiated_area_2D], surf, dt) # depositing on a selected area
