@@ -1,4 +1,5 @@
 import numpy as np
+import math
 from timebudget import timebudget
 import itertools
 import matplotlib.pyplot as plt
@@ -8,6 +9,7 @@ from scipy import ndimage
 
 D = 10
 dt = 0.0001
+diffusion_dt = math.pow(1, 2) / (2 * D * (1 + 1))
 
 class Position:
     def __init__(self, z, y, x, dtype=int):
@@ -24,7 +26,7 @@ system_size = 5
 substratee = np.zeros((system_size, system_size, system_size, 2), dtype=np.float)
 grid = np.linspace(0, 0.8, num=125).reshape((5, 5, 5))
 
-grid = np.zeros((50,50))
+grid = np.zeros((50,50), dtype=np.float64)
 # grid[470:530, 470:530] = 5
 # grid[490:510, 490:510] = 20
 grid[20:30, 20:30] = 5
@@ -128,7 +130,8 @@ def rk4_roll(grid, n=numexpr.get_num_threads()):
 def roll_add_2d(dt, grid_a, add=0, n=numexpr.get_num_threads()):
     # a=np.amin(np.argwhere(grid>0.000001))-1
     # b=np.amax(np.argwhere(grid>0.000001))+2
-    # grid_a = grid[a:b, a:b]
+    numexpr.set_num_threads(n)
+    grid_a = grid_a+add
     grid_out = np.copy(grid_a)
     grid_out *= -4
     # grid_out+=add
@@ -298,12 +301,18 @@ if __name__ == '__main__':
     #     plot_it(g)
     t=0
     g=np.copy(grid)
-    plot_it(g)
-    # with timebudget("Time Roll 3"):
-    while t<0.5:
-        g=rk4_roll(g)
-        # roll_add_2d(g)
-        t+=dt
+    z=numexpr.get_num_threads()
+    # plot_it(g)
+    for i in range (8, 0, -1):
+        numexpr.set_num_threads(i)
+        numexpr.use_vml = False
+        t=0
+        g = np.copy(grid)
+        with timebudget("Time Roll 3"):
+            while t<0.5:
+                g=rk4_roll(g, i)
+                # g+=roll_add_2d(dt, g)
+                t+=dt
     plot_it(g)
     # t=0
     # g=np.copy(grid)
