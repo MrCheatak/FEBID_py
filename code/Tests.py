@@ -60,6 +60,16 @@ tt = x[ss]
 tt=ss[0]
 # ss[0] += 1
 
+def threads_test(*args):
+    for i in range(1, 8, 1):
+        numexpr.set_num_threads(i)
+        numexpr.use_vml = False
+        with timebudget(f'Process, Cores: {i}'):
+            for k in range(1000):
+                numexpr.evaluate("")
+    print('\n')
+    return numexpr.evaluate("")
+
 def conv_scipy(grid):
     grid_out = np.pad(grid, (1), 'constant')
     ndimage.convolve(grid_out, kernel, output=grid_out, mode='reflect')
@@ -103,23 +113,25 @@ def loops_test():
     q=0
 
 # @jit(nopython=True)
-def rk4_roll(grid):
+def rk4_roll(grid, n=numexpr.get_num_threads()):
+    numexpr.set_num_threads(n)
     grid_op=np.copy(grid)
-    k1=roll_add_2d(dt, grid)
-    k2=roll_add_2d(dt/2, grid, k1/2)
-    k3=roll_add_2d(dt/2,  grid, k2/2)
-    k4=roll_add_2d(dt, grid, k3)
+    k1=roll_add_2d(dt, grid, n=n)
+    k2=roll_add_2d(dt, grid, k1/2, n=n)
+    k3=roll_add_2d(dt, grid, k2/2, n=n)
+    k4=roll_add_2d(dt, grid, k3, n=n)
+    z=numexpr.get_num_threads()
     return numexpr.evaluate("(k1+k4)/6 +(k2+k3)/3+grid")
 
 
 # @jit( parallel=True, forceobj=True)
-def roll_add_2d(dt, grid_a, add=0):
+def roll_add_2d(dt, grid_a, add=0, n=numexpr.get_num_threads()):
     # a=np.amin(np.argwhere(grid>0.000001))-1
     # b=np.amax(np.argwhere(grid>0.000001))+2
     # grid_a = grid[a:b, a:b]
     grid_out = np.copy(grid_a)
     grid_out *= -4
-    grid_out+=add
+    # grid_out+=add
     grid_out[1:, :] += grid_a[:-1, :]
     # grid_out[0, :] += grid_a[-1, :]
     grid_out[:-1, :] += grid_a[1:, :]
@@ -128,6 +140,7 @@ def roll_add_2d(dt, grid_a, add=0):
     # grid_out[:, 0] += grid_a[:, -1]
     grid_out[:, :-1] += grid_a[:, 1:]
     # grid_out[:, -1] += grid_a[:, 0]
+
     return numexpr.evaluate("grid_out*dt*D", casting='same_kind')
     # rk4(grid_a)
     # grid += grid_out * dt * D

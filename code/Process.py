@@ -1,21 +1,30 @@
 import numpy as np
+from numpy import asarray, zeros, copy, where, mgrid, s_
 import scipy.constants as scpc
 import math
 import matplotlib.pyplot as plt
+from numexpr import evaluate, re_evaluate_from_cache
 import numexpr
 import cProfile
+from timebudget import timebudget
 from numba import jit, typeof, generated_jit
 from numba.experimental import jitclass
 from numba.core.errors import NumbaDeprecationWarning, NumbaPendingDeprecationWarning
 import warnings
+import sys
 import line_profiler
-
+# TODO: avoid dots in using libraries
+# TODO: rise systemcheckinterval in sys
+# TODO: look into k-d trees
+# TODO: check if numba likes
+interval_def = sys.getswitchinterval()
+sys.setswitchinterval(1000)
 
 class Positionb:
-    def __init__(self, z, y, x):
-        self.x = x
-        self.y = y
-        self.z = z
+    def __init__(self, z:int, y:int, x:int):
+        self.x = np.int16(x)
+        self.y = np.int16(y)
+        self.z = np.int16(z)
 
 # Position = namedtuple('Position', 'z,y,x')
 
@@ -24,7 +33,7 @@ class Positionb:
 td = 1E-6  # dwell time of a beam, s
 Ie = 1E-10  # beam current, A
 beam_d = 10  # electron beam diameter, nm
-effective_radius = beam_d * 3.3 # radius of an area which gets 99% of the electron beam
+effective_diameter = beam_d * 3.3 # radius of an area which gets 99% of the electron beam
 f = Ie / scpc.elementary_charge / (math.pi * beam_d * beam_d / 4)  # electron flux at the surface, 1/(nm^2*s)
 F = 3000  # precursor flux at the surface, 1/(nm^2*s)   here assumed a constant, but may be dependent on time and position
 tau = 500E-6  # average residence time, s; may be dependent on temperature
@@ -48,11 +57,11 @@ t_out = 1 / (1 / tau + F / n0)  # effective residence time
 p_out = 2 * math.sqrt(D * t_out) / beam_d
 cell_dimension = 5  # side length of a square cell, nm
 
-effective_radius_relative = math.floor(effective_radius/cell_dimension/2)
+effective_radius_relative = math.floor(effective_diameter / cell_dimension / 2)
 # </editor-fold>
 
 
-
+nn=1
 # <editor-fold desc="Timings">
 dt = np.float32(1E-6)  # time step, s
 t_flux = 1/(sigma+f) # dissociation event time
@@ -65,7 +74,7 @@ tau = 500E-6  # average residence time, s; may be dependent on temperature
 # substrate[z,x,y] holds precursor density,
 # deposit[z,y,x] holds deposit density.
 system_size = 50
-substrate = np.zeros((system_size, system_size, system_size), dtype=np.float32)
+substrate = zeros((system_size, system_size, system_size), dtype=np.float32)
 deposit = np.full((system_size, system_size, system_size),0 , dtype=np.float32)
 substrate[0, :, :] = nr # filling substrate surface with initial precursor density
 deposit[0, :, :] = 0.97
@@ -78,7 +87,7 @@ zmax, ymax, xmax = substrate.shape # dimensions of the grid
 # It is assumed, that surface cell is a cell with a fully deposited cell(or substrate) under it and thus able produce deposit under irradiation.
 # Thus the number of surface cells is fixed.
 # TODO: is it possible to create a non-contiguous and evolvable view to the 3D array? Later on all the surface should be able to produce deposit
-surface = np.zeros((system_size, system_size), dtype=np.int64) # TODO: since lists allow sending a list of indices without a loop, surface matrix should be untilizing such data type for speed, but preserve addressability or quick search
+surface = zeros((system_size, system_size), dtype=np.int64) # TODO: since lists allow sending a list of indices without a loop, surface matrix should be untilizing such data type for speed, but preserve addressability or quick search
 surf =[] # a stub for holding a sequence of indices of surface cells for quick processing
 
 ghost_zf, ghost_zb, ghost_yf, ghost_yb, ghost_xf, ghost_xb = set(), set(), set(), set(), set(), set()
@@ -98,12 +107,18 @@ semi_surface = set() # TODO: Numba doesn't really like sets (listed for depricat
 # TODO: maybe combine surface and semi-surface by utilizing subsets?
 # </editor-fold>
 
-a,b =[],[]
-for i in range(50):
-    for j in range(50):
-        a.append(j)
-        b.append(i)
-stub = (np.asarray(b), np.asarray(a))
+tempy = mgrid[0:50, 0:50]
+stub = (tempy[0, :].flatten(), tempy[1, :].flatten()) # for indexing purposes of surface array
+tempy = mgrid[0:effective_radius_relative*2+1, 0:effective_radius_relative*2+1]
+index_y, index_x = tempy[0, :].flatten(), tempy[1, :].flatten() # for indexing purposes of flux matrix
+index_yy, index_xx = index_y*cell_dimension, index_x*cell_dimension
+
+expressions = dict(pe_flux=numexpr.cache_expression("f*exp(-r*r/(2*beam_d*beam_d))", [('beam_d', np.int64), ('f', np.float64), ('r', np.float64)]),
+                   rk4=numexpr.cache_expression("(k1+k4)/6 +(k2+k3)/3", [('k1', np.float64), ('k2', np.float64), ('k3', np.float64), ('k4', np.float64)]),
+                   precursor_density=numexpr.cache_expression("(F * (1 - (sub + addon) / n0) - (sub + addon) / tau - (sub + addon) * sigma * flux_matrix)*dt", [('F', np.int64), ('addon', np.float64), ('dt', np.float64), ('flux_matrix', np.int64), ('n0', np.float64), ('sigma',np.float64), ('sub', np.float64), ('tau', np.float64)]),
+                   laplace1=numexpr.cache_expression("grid_out*dt*D", [('D', float), ('dt', np.float64), ('grid_out', float)]),
+                   laplace2=numexpr.cache_expression("grid_out*dt*D/div", [('D', float), ('dt', np.float64), ('grid_out', float), ('div', np.int64)]),
+                   flux_matrix=numexpr.cache_expression("((index_xx-center)*(index_xx-center)+(index_yy-center)*(index_yy-center))**0.5", [('center', np.int64), ('index_xx', np.int64), ('index_yy', np.int64)]))
 
 # @jit(nopython=True)
 def pe_flux(r):
@@ -111,8 +126,8 @@ def pe_flux(r):
 
     :param r: radius from the center of the beam.
     """
-    #with timebudget("Flux time"):
-    return numexpr.evaluate("f*exp(-r*r/(2*beam_d*beam_d))")
+    # numexpr: no impact from number of cores or vml
+    return re_evaluate_from_cache(expressions["pe_flux"])
 
 
 @jit(nopython=False, forceobj=True)
@@ -123,7 +138,7 @@ def make_tuple(arr): # TODO: make a quicker conversation
     :param arr: array to convert
     :return: tuple(list[z], list[y], list[x]), indexing-ready
     """
-    temp = np.mgrid[0:(arr.shape[0]), 0:arr.shape[1]]
+    temp = mgrid[0:(arr.shape[0]), 0:arr.shape[1]]
     # x,y,z =[],[],[]
     # for i in range(arr.shape[0]):
     #     for j in range(arr.shape[1]):
@@ -165,8 +180,8 @@ def deposition(deposit, substrate, flux_matrix, surf, dt):
     :return: writes back to deposition array
     """
     #with timebudget("Deposition time"):
-    # delta = numexpr.evaluate("d+s*sigma*fl*V*dt", out=deposit[surf], local_dict={'d':deposit[surf], 's': substrate[surf], 'fl': flux_matrix.view().reshape(flux_matrix.shape[0]**2)}, casting='same_kind')
-    # deposit[surf] += numexpr.evaluate("s*sigma*fl*V*dt", local_dict={'s': substrate[surf], 'fl': flux_matrix.view().reshape(flux_matrix.shape[0]**2)}, casting='same_kind')
+    # delta = evaluate("d+s*sigma*fl*V*dt", out=deposit[surf], local_dict={'d':deposit[surf], 's': substrate[surf], 'fl': flux_matrix.view().reshape(flux_matrix.shape[0]**2)}, casting='same_kind')
+    # deposit[surf] += evaluate("s*sigma*fl*V*dt", local_dict={'s': substrate[surf], 'fl': flux_matrix.view().reshape(flux_matrix.shape[0]**2)}, casting='same_kind')
     deposit[surf] += substrate[surf] * sigma * flux_matrix.view().reshape(flux_matrix.shape[0] ** 2) * V * dt
 
 
@@ -196,11 +211,13 @@ def update_surface(deposit, substrate, surface, surf, semi_surface, ghosts, ghos
             refresh(deposit, substrate, semi_surface, ghosts, cell[0]+1, cell[1], cell[2], init_y, init_x)
     if new_deposits.any():
         temp = tuple(zip(*ghosts))  # casting a set of coordinates to a list of index sequences for every dimension
-        ghosts_ind = (np.asarray(temp[0]), np.asarray(temp[1]), np.asarray(temp[2]))  # constructing a tuple of ndarray sequences
+        ghosts_ind = (asarray(temp[0]), asarray(temp[1]), asarray(temp[2]))  # constructing a tuple of ndarray sequences
         surf = make_tuple(surface) # TODO: this conversion can be done fewer times throughout the code
     return surf, ghosts_ind
 
-def refresh(deposit, substrate, semi_surface, z,y,x, init_y=0, init_x=0):  # TODO: implement and include evolution of a ghost "shell" here, that should proceed along with the evolution of surface
+
+@jit(nopython=True)
+def refresh(deposit, substrate, semi_surface, ghosts, z,y,x, init_y=0, init_x=0):
     """
         Updates surface, semi-surface and ghost cells collections according to the provided coordinate of a fully deposited cell
 
@@ -285,13 +302,19 @@ def precursor_density(flux_matrix, substrate, surface, ghosts_index, dt):
     :param dt: time step
     :return: changes substrate array
     """
-    sub = np.zeros([ymax, xmax])  # surface cells array that will be processed to calculate a precursor density increment
-    semi_sub = np.zeros((len(semi_surface))) # same for semi-surface cells
+    sub = zeros([ymax, xmax])  # surface cells array that will be processed to calculate a precursor density increment
+    semi_sub = zeros((len(semi_surface))) # same for semi-surface cells
     sub[stub] = substrate[surface.flatten(), stub[0], stub[1]] # not using np.nditer speeded up the program by 10 times
     # with np.nditer(surface, flags=['multi_index'], op_flags=['readonly']) as it:
     #     for z in it:
     #         sub[it.multi_index] = substrate[z, it.multi_index[0],it.multi_index[1]]
     # diffusion_matrix = laplace_term(substrate, surface, semi_surface, D, dt)
+    # for i in range (8, 0, -1):
+    #     numexpr.set_num_threads(i)
+    #     numexpr.use_vml = True
+    #     with timebudget("Diffusion"):
+    #         for k in range(1000):
+    #             diffusion_matrix = laplace_term_rolling(substrate, ghosts_index, D, dt, n=i)
     diffusion_matrix = laplace_term_rolling(substrate, ghosts_index, D, dt)  # Diffusion term is calculated seperately and added in the end
     rk4(dt, sub, flux_matrix) # An increment is calculated through Runge-Kutta method without the diffusion term
     substrate[surface.flatten(), stub[0], stub[1]] += sub[stub]
@@ -300,7 +323,7 @@ def precursor_density(flux_matrix, substrate, surface, ghosts_index, dt):
     #          substrate[z, it.multi_index[0],it.multi_index[1]] += sub[it.multi_index] # adding increment to the matrix
     if any(semi_surface): # same process for semi-cells
         temp = list(zip(*semi_surface))
-        temp = (np.asarray(temp[0]), np.asarray(temp[1]), np.asarray(temp[2]))
+        temp = (asarray(temp[0]), asarray(temp[1]), asarray(temp[2]))
         semi_sub=substrate[temp]
         # i=0
         # for cell in semi_surface:  # calculating increment for semi_surface cells (without disosisiation term)
@@ -330,7 +353,9 @@ def rk4(dt, sub, flux_matrix=0):
     k2 = precursor_density_increment(dt/2, sub, flux_matrix, k1 / 2)
     k3 = precursor_density_increment(dt/2, sub, flux_matrix, k2 / 2)
     k4 = precursor_density_increment(dt, sub, flux_matrix, k3)
-    numexpr.evaluate("(k1+k4)/6 +(k2+k3)/3", out=sub, casting='same_kind')
+    # numexpr: 1 core performs better
+    numexpr.set_num_threads(nn)
+    re_evaluate_from_cache(expressions["rk4"], out=sub, casting='same_kind')
 
 
 # @jit(nopython=False, parallel=True)
@@ -347,7 +372,77 @@ def precursor_density_increment(dt, sub, flux_matrix, addon=0):
     """
     #with timebudget("Precursor density time"):
     # a=(F * (1 - (sub[18,18] + addon) / n0) - (sub[18,18] + addon) / tau - (sub[18,18] + addon) * sigma * flux_matrix[18,18])*dt
-    return numexpr.evaluate("(F * (1 - (sub + addon) / n0) - (sub + addon) / tau - (sub + addon) * sigma * flux_matrix)*dt")
+    # prec_expr = numexpr.cache_expression("(F * (1 - (sub + addon) / n0) - (sub + addon) / tau - (sub + addon) * sigma * flux_matrix)*dt")
+    # evaluate("(F * (1 - (sub + addon) / n0) - (sub + addon) / tau - (sub + addon) * sigma * flux_matrix)*dt")
+    # u = numexpr.re_evaluate_from_cache(prec_expr)
+    # numexpr: 1 core performs better
+    numexpr.set_num_threads(nn)
+    # return evaluate("(F * (1 - (sub + addon) / n0) - (sub + addon) / tau - (sub + addon) * sigma * flux_matrix)*dt")
+    return re_evaluate_from_cache(expressions["precursor_density"])
+
+def rk4_d(grid, ghosts_index, D, dt):
+    k1=laplace_term_rolling(grid, ghosts_index, D, dt)
+    k2=laplace_term_rolling(grid, ghosts_index, D, dt, k1,2)
+    k3=laplace_term_rolling(grid, ghosts_index, D, dt, k2,2)
+    k4=laplace_term_rolling(grid, ghosts_index, D, dt, k3)
+    numexpr.set_num_threads(nn)
+    return evaluate("(k1+k4)/6 +(k2+k3)/3", casting='same_kind')
+
+
+# @jit(nopython=True, parallel=True, forceobj=False)
+def laplace_term_rolling(grid, ghosts_index, D, dt , add = 0, div = 0, n = numexpr.get_num_threads()):
+    """
+    Calculates diffusion term for all surface cells using rolling
+
+    :param grid: 3D precursor density array
+    :param D: diffusion coefficient
+    :param dt: time step
+    :return: to grid array
+    """
+    grid = grid + add
+    grid_out = copy(grid)
+    grid_out *= -6
+    # temp = list(zip(*ghosts), ) # casting a set of coordinates to a list of index sequences for every dimension
+    # ghosts_index = (asarray(temp[0]), asarray(temp[1]), asarray(temp[2])) # constructing a tuple of ndarray sequences
+    # X axis:
+    # No need to have a separate array of values, when whe can conveniently call them from the origin:
+    grid[ghosts_index] = grid[ghosts_index[0], ghosts_index[1], ghosts_index[2]-1] # assinging precursor density values to ghost cells along the rolling axis and direction
+    grid_out[:,:, :-1]+=grid[:,:, 1:] #rolling forward
+    grid_out[:,:,-1] += grid[:,:,-1] #taking care of edge values
+    grid[ghosts_index] = 0 # flushing ghost cells
+    # While Numpy allows negative indicies, indicies that are greater than the given dimention cause IndexiError and thus has to be taken care of
+    temp = where(ghosts_index[2] > system_size - 2, ghosts_index[2] - 1, ghosts_index[2]) # decreasing all the edge indices by one to exclude falling out of the array
+    grid[ghosts_index] = grid[ghosts_index[0], ghosts_index[1], temp+1]
+    grid_out[:,:,1:] += grid[:,:,:-1] #rolling backwards
+    grid_out[:, :, 0] += grid[:, :, 0]
+    grid[ghosts_index] = 0
+    # Y axis:
+    grid[ghosts_index] = grid[ghosts_index[0], ghosts_index[1]-1, ghosts_index[2]]
+    grid_out[:, :-1, :] += grid[:, 1:, :]
+    grid_out[:, -1, :] += grid[:, -1, :]
+    grid[ghosts_index] = 0
+    temp = where(ghosts_index[1] > system_size - 2, ghosts_index[1] - 1, ghosts_index[1])
+    grid[ghosts_index] = grid[ghosts_index[0], temp+1, ghosts_index[2]]
+    grid_out[:, 1:, :] += grid[:, :-1, :]
+    grid_out[:, 0, :] += grid[:, 0, :]
+    grid[ghosts_index] = 0
+    # Z-axis:
+    grid[ghosts_index] = grid[ghosts_index[0]-1, ghosts_index[1], ghosts_index[2]]
+    grid_out[:-1, :, :] += grid[1:, :, :]
+    grid_out[-1, :, :] += grid[-1, :, :]
+    grid[ghosts_index] = 0
+    temp = where(ghosts_index[0] > system_size - 2, ghosts_index[0] - 1, ghosts_index[0])
+    grid[ghosts_index] = grid[temp+1, ghosts_index[1], ghosts_index[2]]
+    grid_out[1:, :, :] += grid[:-1, :, :]
+    grid_out[0, :, :] += grid[0, :, :]
+    grid[ghosts_index] = 0
+    grid_out[ghosts_index]=0 # result has to also be cleaned as it has redundant values
+    # numexpr: 1 core performs better
+    numexpr.set_num_threads(nn)
+    if div == 0:
+        return re_evaluate_from_cache(expressions["laplace1"], casting='same_kind')
+    else:
+        return re_evaluate_from_cache(expressions["laplace2"], casting='same_kind')
 
 
 # @jit(nopython=False, parallel=True)
@@ -363,9 +458,9 @@ def laplace_term(grid, surfa, semi_surf, D, dt):
     :return: to grid array
     """
     p_grid = np.pad(grid, 1, mode='constant', constant_values=0)
-    sub_grid = np.copy(grid)
+    sub_grid = copy(grid)
     convolute(sub_grid, p_grid, surfa, semi_surf)
-    return numexpr.evaluate("sub_grid*D*dt")
+    return evaluate("sub_grid*D*dt")
 
 
 # @jit(nopython=False, parallel=True)
@@ -547,59 +642,11 @@ def define_ghosts(substrate, surface, semi_surface =[] ): # TODO: find a mutable
     return [zzf, zyf, zxf], [zzb, zyb, zxb], [yzf, yyf, yxf], [yzb, yyb, yxb], [xzf, xyf, xxf], [xzb, xyb, xxb], gzf, gzb, gyf, gyb, gxf, gxb
 
 
-def laplace_term_rolling(grid, ghosts_index, D, dt):
-    """
-    Calculates diffusion term for all surface cells using rolling
-
-    :param grid: 3D precursor density array
-    :param D: diffusion coefficient
-    :param dt: time step
-    :return: to grid array
-    """
-    grid_out = np.copy(grid)
-    grid_out *= -6
-    # temp = list(zip(*ghosts), ) # casting a set of coordinates to a list of index sequences for every dimension
-    # ghosts_index = (np.asarray(temp[0]), np.asarray(temp[1]), np.asarray(temp[2])) # constructing a tuple of ndarray sequences
-    # X axis:
-    # No need to have a separate array of values, when whe can conveniently call them from the origin:
-    grid[ghosts_index] = grid[ghosts_index[0], ghosts_index[1], ghosts_index[2]-1] # assinging precursor density values to ghost cells along the rolling axis and direction
-    grid_out[:,:, :-1]+=grid[:,:, 1:] #rolling forward
-    grid_out[:,:,-1] += grid[:,:,-1] #taking care of edge values
-    grid[ghosts_index] = 0 # flushing ghost cells
-    # While Numpy allows negative indicies, indicies that are greater than the given dimention cause IndexiError and thus has to be taken care of
-    temp = np.where(ghosts_index[2] > system_size - 2, ghosts_index[2] - 1, ghosts_index[2]) # decreasing all the edge indices by one to exclude falling out of the array
-    grid[ghosts_index] = grid[ghosts_index[0], ghosts_index[1], temp+1]
-    grid_out[:,:,1:] += grid[:,:,:-1] #rolling backwards
-    grid_out[:, :, 0] += grid[:, :, 0]
-    grid[ghosts_index] = 0
-    # Y axis:
-    grid[ghosts_index] = grid[ghosts_index[0], ghosts_index[1]-1, ghosts_index[2]]
-    grid_out[:, :-1, :] += grid[:, 1:, :]
-    grid_out[:, -1, :] += grid[:, -1, :]
-    grid[ghosts_index] = 0
-    temp = np.where(ghosts_index[1] > system_size - 2, ghosts_index[1] - 1, ghosts_index[1])
-    grid[ghosts_index] = grid[ghosts_index[0], temp+1, ghosts_index[2]]
-    grid_out[:, 1:, :] += grid[:, :-1, :]
-    grid_out[:, 0, :] += grid[:, 0, :]
-    grid[ghosts_index] = 0
-    # Z-axis:
-    grid[ghosts_index] = grid[ghosts_index[0]-1, ghosts_index[1], ghosts_index[2]]
-    grid_out[:-1, :, :] += grid[1:, :, :]
-    grid_out[-1, :, :] += grid[-1, :, :]
-    grid[ghosts_index] = 0
-    temp = np.where(ghosts_index[0] > system_size - 2, ghosts_index[0] - 1, ghosts_index[0])
-    grid[ghosts_index] = grid[temp+1, ghosts_index[1], ghosts_index[2]]
-    grid_out[1:, :, :] += grid[:-1, :, :]
-    grid_out[0, :, :] += grid[0, :, :]
-    grid[ghosts_index] = 0
-    grid_out[ghosts_index]=0 # result has to also be cleaned as it has redundant values
-
-    return numexpr.evaluate("grid_out*dt*D", casting='same_kind')
 
 
 # @jit(nopython=False, parallel=True)
 # noinspection PyIncorrectDocstring
-def flux_matrix(matrix, y1, y2, x1, x2):
+def flux_matrix(matrix, y1:int, y2:int, x1:int, x2:int):
     """
     Calculates a matrix with electron flux distribution
 
@@ -609,48 +656,38 @@ def flux_matrix(matrix, y1, y2, x1, x2):
     """
     matrix[:, :] = 0  # flushing previous values
     irradiated_area = matrix[y1:y2, x1:x2]
-    center = irradiated_area.shape[0]/2*cell_dimension # beam center in array-coordinates
-    temp = np.mgrid[0:(y2 - y1), 0:(x2 - x1)]
-    index_y, index_x = temp[0,:].flatten(), temp[1,:].flatten()
-    dist = numexpr.evaluate("((index_x*cell_dimension-center)*(index_x*cell_dimension-center))**0.5+((index_y*cell_dimension-center)*(index_y*cell_dimension-center))**0.5")
-    # irradiated_area[index]=pythagor(index[0]-center, index[1]-center)
+    center = effective_radius_relative*cell_dimension # beam center in array-coordinates
+    # temp = mgrid[0:(y2 - y1), 0:(x2 - x1)] # just
+    # index_y, index_x = temp[0,:].flatten(), temp[1,:].flatten()
+    # numexpr: expression is not affected by the number of cores
+    dist = evaluate("((index_xx-center)*(index_xx-center)+(index_yy-center)*(index_yy-center))**0.5")
     irradiated_area[index_y, index_x] = pe_flux(dist)
-    # with np.nditer(irradiated_area, flags=['multi_index'], op_flags=['readwrite']) as it:
-    #     for x in it:
-    #         r = pythagor(it.multi_index[0]*cell_dimension-center, it.multi_index[1]*cell_dimension-center)
-    #         if r<effective_radius:
-    #             x[...]=pe_flux
 
 
 # @jit(nopython=True)
-def pythagor(a,b):
-    return math.sqrt(a*a+b*b)
-
-
-# @jit(nopython=True)
-def define_irradiated_area(beam, effective_radius): # TODO: this function will have most of its math redundant if coordinates system will be switched to array-based
+def define_irradiated_area(beam:Positionb, effective_radius_relative:int): # TODO: this function will have most of its math redundant if coordinates system will be switched to array-based
     """
     Defines boundaries of the effectively irradiated area
 
     :param beam: beam position
-    :param effective_radius: a distance at which intensity is lower than 99% of the distribution
+    :param effective_radius_relative: a distance at which intensity is lower than 99% of the distribution
     :return: four values limiting an area in x-y plane
     """
     norm_y_start = 0
-    norm_y_end = math.floor((beam.y + effective_radius) / cell_dimension)
+    norm_y_end = beam.y + effective_radius_relative
     norm_x_start = 0
-    norm_x_end = math.floor((beam.x + effective_radius) / cell_dimension)
-    temp = math.ceil((beam.y - effective_radius) / cell_dimension)
+    norm_x_end = beam.x + effective_radius_relative
+    temp = beam.y - effective_radius_relative
     if temp > 0:
         norm_y_start = temp
     if norm_y_end > ymax:
         norm_y_end = ymax
-    temp = math.ceil((beam.x - effective_radius) / cell_dimension)
+    temp = beam.x - effective_radius_relative
     if temp > 0:
         norm_x_start = temp
     if norm_x_end > xmax:
         norm_x_end = xmax
-    return  norm_y_start, norm_y_end, norm_x_start, norm_x_end
+    return  norm_y_start, norm_y_end+1, norm_x_start, norm_x_end+1
 
 def test_laplace(substrate, D, dt):
     for i in range(3000):
@@ -684,20 +721,20 @@ def printing(loops=1): # TODO: maybe it could be a good idea to switch to an arr
     ghosts.clear()
     ghosts = set.copy(ghost_zf)
     temp = tuple(zip(*ghosts))  # casting a set of coordinates to a list of index sequences for every dimension
-    ghosts_index = (np.asarray(temp[0]), np.asarray(temp[1]), np.asarray(temp[2]))  # constructing a tuple of ndarray sequences
+    ghosts_index = (asarray(temp[0]), asarray(temp[1]), asarray(temp[2]))  # constructing a tuple of ndarray sequences
 
     t = 2E-6 # absolute time, s
     refresh_dt = dt*2 # dt for precursor density recalculation
 
-    dwell_step = beam_d / 2
-    x_offset = 90  # offset on the X-axis on both sides
-    y_offset = 90  # offset on the Y-axis on both sides
-    x_limit = xmax * cell_dimension - x_offset
-    y_limit = ymax * cell_dimension - y_offset
+    dwell_step = int(beam_d / 2/cell_dimension)
+    x_offset = 18  # offset on the X-axis on both sides
+    y_offset = 18  # offset on the Y-axis on both sides
+    x_limit = xmax - x_offset
+    y_limit = ymax - y_offset
 
     beam = Positionb(0, y_offset, x_offset)  # coordinates of the beam
-    beam_matrix = np.zeros((system_size,system_size), dtype=int) # matrix for electron beam flux distribution
-    beam_exposure = np.zeros((system_size,system_size), dtype=int) # see usage in the loop
+    beam_matrix = zeros((system_size,system_size), dtype=int) # matrix for electron beam flux distribution
+    beam_exposure = zeros((system_size,system_size), dtype=int) # see usage in the loop
 
     summ1,summ, result=0,0,0
 
@@ -705,16 +742,15 @@ def printing(loops=1): # TODO: maybe it could be a good idea to switch to an arr
         # summ1, summ, result = show_yield(deposit, summ, summ1,result)
         # print(f'Deposit yield:{result}  Loop:{l}')
         print(f'Loop:{l}')
-        for beam.y in np.arange(y_offset, y_limit, dwell_step):  # beam travel along Y-axis
-            for beam.x in np.arange(x_offset, x_limit, dwell_step):  # beam travel alon X-axis
-                norm_y_start, norm_y_end, norm_x_start, norm_x_end = define_irradiated_area(beam,effective_radius) # Determining the area around the beam that is effectively irradiated
-                irradiated_area_2D=np.s_[norm_y_start:norm_y_end, norm_x_start:norm_x_end] # a slice of the currently irradiated area
-                irradiated_area_3D=np.s_[:surface.max()+3, norm_y_start:norm_y_end, norm_x_start:norm_x_end]
+        for beam.y in range(y_offset, y_limit, dwell_step):  # beam travel along Y-axis
+            for beam.x in range(x_offset, x_limit, dwell_step):  # beam travel alon X-axis
+                norm_y_start, norm_y_end, norm_x_start, norm_x_end = define_irradiated_area(beam, effective_radius_relative) # Determining the area around the beam that is effectively irradiated
+                irradiated_area_2D=s_[norm_y_start:norm_y_end, norm_x_start:norm_x_end] # a slice of the currently irradiated area
+                irradiated_area_3D=s_[:surface.max()+3, norm_y_start:norm_y_end, norm_x_start:norm_x_end]
                 flux_matrix(beam_matrix, norm_y_start, norm_y_end, norm_x_start, norm_x_end)
                 beam_exposure += beam_matrix # accumulates beam exposure for precursor density if it is called with an interval bigger that dt
                 surf = make_tuple(surface[irradiated_area_2D]) # getting an indexing-ready surface cells coordinates
                 semi_surface.add((0, 0, 0))
-                # section = substrate[:, 20, :]
                 while True:
                     deposition(deposit[irradiated_area_3D], substrate[irradiated_area_3D], beam_matrix[irradiated_area_2D], surf, dt) # depositing on a selected area
                     surf, ghosts_index = update_surface(deposit[irradiated_area_3D], substrate[:surface.max()+3, norm_y_start-2:norm_y_end+2, norm_x_start-2:norm_x_end+2], surface[irradiated_area_2D], surf, semi_surface, ghosts, ghosts_index, norm_y_start, norm_x_start) # updating surface on a selected area
@@ -735,7 +771,7 @@ if __name__ == '__main__':
     # test_grid = np.full((2,50,50), 0.83, dtype=np.float32)
     printing(3)
     cProfile.runctx('printing(repetitions)',globals(),locals())
-    section = np.zeros((substrate.shape[0], ymax), dtype=float)
+    section = zeros((substrate.shape[0], ymax), dtype=float)
     fig, (ax0) = plt.subplots(1)
     pos = np.int16(xmax/2)
     for i in range(0, substrate.shape[0]):
