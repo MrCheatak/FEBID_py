@@ -10,16 +10,13 @@
     <list default="true" id="ef5210a6-02e3-47f5-bc37-2e99bbf2c6c6" name="Uncommitted changes before Checkout at 24.03.2021, 11:09 [Default Changelist]" comment="Uncommitted changes before Checkout at 24.03.2021, 11:09 [Default Changelist]">
       <change beforePath="$PROJECT_DIR$/.idea/workspace.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/workspace.xml" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/code/Process.py" beforeDir="false" afterPath="$PROJECT_DIR$/code/Process.py" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/code/Tests.py" beforeDir="false" afterPath="$PROJECT_DIR$/code/Tests.py" afterDir="false" />
     </list>
     <list id="4ae695ed-902f-4945-8d4d-54c0f4ea71f4" name="Add parameter import from a file" comment="" />
     <list id="f3bf3533-d27f-40c9-9f33-f51c566a3b9a" name="Clean up &quot;define_ghosts&quot; and all associated variables" comment="" />
-    <list id="88fcfbbf-9994-46dd-90d0-f4a8304fcbdd" name="Default Changelist" comment="Introduced adapted function numexpr.re_evaluate_from_cache, that takes in already precompiled expressions, which eliminates unnecessary expression analysis on every call &#10;Tests showed, that numexpr.evaluate works best on a single core(MacBook pro i7 mid 2012). Thus all threads are set to one.&#10;Introduced Runge-Kutta 4 method for diffusion.">
+    <list id="88fcfbbf-9994-46dd-90d0-f4a8304fcbdd" name="Default Changelist" comment="Introduced adapted function numexpr.re_evaluate_from_cache, that takes in already precompiled expressions, which eliminates unnecessary expression analysis on every call &#10;Tests showed, that numexpr.evaluate works best on a single core(MacBook pro i7 mid 2012). Thus all threads are set to one.&#10;Introduced Runge-Kutta 4 method for diffusion.&#10;Switched to array coordinate system">
       <change beforePath="$PROJECT_DIR$/code/Tests.py" beforeDir="false" afterPath="$PROJECT_DIR$/code/Tests.py" afterDir="false" />
     </list>
     <list id="c7f6d105-70a7-4dba-bb3e-7857179782af" name="Implement printing path generation/following" comment="" />
-    <list id="16d2fe1e-882c-4143-8f19-f2064f6f44a5" name="Rewrite &quot;make_tuple&quot; function" comment="" />
-    <list id="996350b8-e865-4cf5-aee5-4613e04929e9" name="Switch to array coordinate system" comment="" />
     <list id="4d5920e6-a1b0-4024-ad26-f0fda6df3820" name="Uncommitted changes before Checkout at 24.03.2021, 11:28 [Default Changelist]" comment="" />
     <option name="SHOW_DIALOG" value="false" />
     <option name="HIGHLIGHT_CONFLICTS" value="true" />
@@ -58,23 +55,6 @@
   </component>
   <component name="HighlightingSettingsPerFile">
     <setting file="file://$PROJECT_DIR$/code/Process.py" root0="FORCE_HIGHLIGHTING" />
-  </component>
-  <component name="LineStatusTrackerManager">
-    <file path="$PROJECT_DIR$/code/Tests.py">
-      <ranges>
-        <range start1="1" end1="1" start2="1" end2="2" changelist="88fcfbbf-9994-46dd-90d0-f4a8304fcbdd" />
-        <range start1="10" end1="10" start2="11" end2="12" changelist="88fcfbbf-9994-46dd-90d0-f4a8304fcbdd" />
-        <range start1="26" end1="27" start2="28" end2="29" changelist="88fcfbbf-9994-46dd-90d0-f4a8304fcbdd" />
-        <range start1="61" end1="61" start2="63" end2="73" changelist="ef5210a6-02e3-47f5-bc37-2e99bbf2c6c6" />
-        <range start1="105" end1="106" start2="117" end2="119" changelist="ef5210a6-02e3-47f5-bc37-2e99bbf2c6c6" />
-        <range start1="107" end1="111" start2="120" end2="125" changelist="ef5210a6-02e3-47f5-bc37-2e99bbf2c6c6" />
-        <range start1="115" end1="116" start2="129" end2="130" changelist="ef5210a6-02e3-47f5-bc37-2e99bbf2c6c6" />
-        <range start1="118" end1="119" start2="132" end2="134" changelist="88fcfbbf-9994-46dd-90d0-f4a8304fcbdd" />
-        <range start1="121" end1="122" start2="136" end2="137" changelist="ef5210a6-02e3-47f5-bc37-2e99bbf2c6c6" />
-        <range start1="130" end1="130" start2="145" end2="146" changelist="ef5210a6-02e3-47f5-bc37-2e99bbf2c6c6" />
-        <range start1="287" end1="293" start2="303" end2="315" changelist="88fcfbbf-9994-46dd-90d0-f4a8304fcbdd" />
-      </ranges>
-    </file>
   </component>
   <component name="ProjectId" id="1nhbox7duSe9gCs3TWNzP9QMNVg" />
   <component name="ProjectLevelVcsManager" settingsEditedManually="true" />
@@ -273,22 +253,6 @@
       <option name="project" value="LOCAL" />
       <updated>1615820078058</updated>
     </task>
-    <task id="LOCAL-00004" summary="Switch to array coordinate system">
-      <changelist id="996350b8-e865-4cf5-aee5-4613e04929e9" name="Switch to array coordinate system" comment="" />
-      <created>1615903464527</created>
-      <option name="number" value="00004" />
-      <option name="presentableId" value="LOCAL-00004" />
-      <option name="project" value="LOCAL" />
-      <updated>1615903706104</updated>
-    </task>
-    <task id="LOCAL-00006" summary="Rewrite &quot;make_tuple&quot; function">
-      <changelist id="16d2fe1e-882c-4143-8f19-f2064f6f44a5" name="Rewrite &quot;make_tuple&quot; function" comment="" />
-      <created>1615903778044</created>
-      <option name="number" value="00006" />
-      <option name="presentableId" value="LOCAL-00006" />
-      <option name="project" value="LOCAL" />
-      <updated>1615903846629</updated>
-    </task>
     <task id="LOCAL-00007" summary="Clean up &quot;define_ghosts&quot; and all associated variables">
       <changelist id="f3bf3533-d27f-40c9-9f33-f51c566a3b9a" name="Clean up &quot;define_ghosts&quot; and all associated variables" comment="" />
       <created>1615903841767</created>
@@ -348,7 +312,21 @@
       <option name="project" value="LOCAL" />
       <updated>1616168307056</updated>
     </task>
-    <option name="localTasksCounter" value="17" />
+    <task id="LOCAL-00017" summary="Introduced adapted function numexpr.re_evaluate_from_cache, that takes in already precompiled expressions, which eliminates unnecessary expression analysis on every call &#10;Tests showed, that numexpr.evaluate works best on a single core(MacBook pro i7 mid 2012). Thus all threads are set to one.&#10;Introduced Runge-Kutta 4 method for diffusion.&#10;Switched to array coordinate system">
+      <created>1616708948097</created>
+      <option name="number" value="00017" />
+      <option name="presentableId" value="LOCAL-00017" />
+      <option name="project" value="LOCAL" />
+      <updated>1616708948097</updated>
+    </task>
+    <task id="LOCAL-00018" summary="Introduced adapted function numexpr.re_evaluate_from_cache, that takes in already precompiled expressions, which eliminates unnecessary expression analysis on every call &#10;Tests showed, that numexpr.evaluate works best on a single core(MacBook pro i7 mid 2012). Thus all threads are set to one.&#10;Introduced Runge-Kutta 4 method for diffusion.&#10;Switched to array coordinate system">
+      <created>1616709011412</created>
+      <option name="number" value="00018" />
+      <option name="presentableId" value="LOCAL-00018" />
+      <option name="project" value="LOCAL" />
+      <updated>1616709011412</updated>
+    </task>
+    <option name="localTasksCounter" value="19" />
     <option name="clearContext" value="false" />
     <option name="createBranch" value="false" />
     <option name="commitChanges" value="false" />
@@ -386,7 +364,8 @@
     <MESSAGE value="Fixed ghosts_index and surf not attaining values from 'update_surface'" />
     <MESSAGE value="'pe_flux' is now taking an array and implemented with numexpr, 4x speed up&#10;'make_tuple' is completely rewritten, 20x speed up&#10;'flux_matrix' is no longer using iterator, but a stream of indices, 20x speed up&#10;'pythagor' is no longer used, its functionality is done inside 'flux_matrix' with numexpr&#10;'deposition' is working faster, idk lol&#10;So far the speed-ups provided by numexpr are a effectively a bit less than reported in the latest optimization. Since then numexpr.evaluate has grown from ~9 to ~11s for 100 loops test.&#10;Although, the overall computing time has decreased more that twice (from 78s to 34s) with the latest optimizations." />
     <MESSAGE value="Introduced adapted function numexpr.re_evaluate_from_cache, that takes in already precompiled expressions, which eliminates unnecessary expression analysis on every call &#10;Tests showed, that numexpr.evaluate works best on a single core(MacBook pro i7 mid 2012). Thus all threads are set to one.&#10;Introduced Runge-Kutta 4 method for diffusion." />
-    <option name="LAST_COMMIT_MESSAGE" value="Introduced adapted function numexpr.re_evaluate_from_cache, that takes in already precompiled expressions, which eliminates unnecessary expression analysis on every call &#10;Tests showed, that numexpr.evaluate works best on a single core(MacBook pro i7 mid 2012). Thus all threads are set to one.&#10;Introduced Runge-Kutta 4 method for diffusion." />
+    <MESSAGE value="Introduced adapted function numexpr.re_evaluate_from_cache, that takes in already precompiled expressions, which eliminates unnecessary expression analysis on every call &#10;Tests showed, that numexpr.evaluate works best on a single core(MacBook pro i7 mid 2012). Thus all threads are set to one.&#10;Introduced Runge-Kutta 4 method for diffusion.&#10;Switched to array coordinate system" />
+    <option name="LAST_COMMIT_MESSAGE" value="Introduced adapted function numexpr.re_evaluate_from_cache, that takes in already precompiled expressions, which eliminates unnecessary expression analysis on every call &#10;Tests showed, that numexpr.evaluate works best on a single core(MacBook pro i7 mid 2012). Thus all threads are set to one.&#10;Introduced Runge-Kutta 4 method for diffusion.&#10;Switched to array coordinate system" />
     <option name="MAKE_NEW_CHANGELIST_ACTIVE" value="true" />
   </component>
   <component name="XDebuggerManager">
@@ -394,7 +373,7 @@
       <breakpoints>
         <line-breakpoint enabled="true" suspend="THREAD" type="python-line">
           <url>file://$PROJECT_DIR$/code/Tests.py</url>
-          <line>331</line>
+          <line>333</line>
           <option name="timeStamp" value="45" />
         </line-breakpoint>
         <line-breakpoint enabled="true" suspend="THREAD" type="python-line">
@@ -460,19 +439,19 @@
         <line-breakpoint suspend="THREAD" type="python-line">
           <condition expression="l == 8" language="Python" />
           <url>file://$PROJECT_DIR$/code/Process.py</url>
-          <line>741</line>
+          <line>707</line>
           <option name="timeStamp" value="296" />
         </line-breakpoint>
         <line-breakpoint suspend="THREAD" type="python-line">
           <condition expression="(l == 3) and (beam.y == 110)" language="Python" />
           <url>file://$PROJECT_DIR$/code/Process.py</url>
-          <line>730</line>
+          <line>696</line>
           <option name="timeStamp" value="314" />
         </line-breakpoint>
         <line-breakpoint suspend="THREAD" type="python-line">
           <condition expression="(l == 3) and (beam.y == 110) and (beam.x == 125)" language="Python" />
           <url>file://$PROJECT_DIR$/code/Process.py</url>
-          <line>740</line>
+          <line>706</line>
           <option name="timeStamp" value="317" />
         </line-breakpoint>
         <line-breakpoint enabled="true" suspend="THREAD" type="python-line">
@@ -488,13 +467,8 @@
         <line-breakpoint suspend="THREAD" type="python-line">
           <condition expression="(xx==50) or (yy==50)" language="Python" />
           <url>file://$PROJECT_DIR$/code/Process.py</url>
-          <line>276</line>
+          <line>355</line>
           <option name="timeStamp" value="332" />
-        </line-breakpoint>
-        <line-breakpoint enabled="true" suspend="THREAD" type="python-line">
-          <url>file://$PROJECT_DIR$/code/Process.py</url>
-          <line>774</line>
-          <option name="timeStamp" value="378" />
         </line-breakpoint>
         <line-breakpoint enabled="true" suspend="THREAD" type="python-line">
           <url>file://$PROJECT_DIR$/code/Tests3D.py</url>
@@ -503,7 +477,7 @@
         </line-breakpoint>
         <line-breakpoint enabled="true" suspend="THREAD" type="python-line">
           <url>file://$PROJECT_DIR$/code/Process.py</url>
-          <line>775</line>
+          <line>749</line>
           <option name="timeStamp" value="421" />
         </line-breakpoint>
         <line-breakpoint enabled="true" suspend="THREAD" type="python-line">
@@ -513,43 +487,57 @@
         </line-breakpoint>
         <line-breakpoint enabled="true" suspend="THREAD" type="python-line">
           <url>file://$PROJECT_DIR$/code/Tests.py</url>
-          <line>304</line>
+          <line>306</line>
           <option name="timeStamp" value="427" />
         </line-breakpoint>
         <line-breakpoint enabled="true" suspend="THREAD" type="python-line">
           <url>file://$PROJECT_DIR$/code/Process.py</url>
-          <line>789</line>
+          <line>763</line>
           <option name="timeStamp" value="446" />
         </line-breakpoint>
         <line-breakpoint enabled="true" suspend="THREAD" type="python-line">
-          <url>file://$PROJECT_DIR$/code/Process.py</url>
-          <line>376</line>
-          <option name="timeStamp" value="462" />
-        </line-breakpoint>
-        <line-breakpoint enabled="true" suspend="THREAD" type="python-line">
           <url>file://$PROJECT_DIR$/code/Tests.py</url>
-          <line>315</line>
+          <line>317</line>
           <option name="timeStamp" value="463" />
         </line-breakpoint>
         <line-breakpoint enabled="true" suspend="THREAD" type="python-line">
           <url>file://$PROJECT_DIR$/code/Tests.py</url>
-          <line>312</line>
+          <line>314</line>
           <option name="timeStamp" value="472" />
         </line-breakpoint>
-        <line-breakpoint enabled="true" suspend="THREAD" type="python-line">
+        <line-breakpoint suspend="THREAD" type="python-line">
+          <condition expression="len(new_deposits) != 0" language="Python" />
           <url>file://$PROJECT_DIR$/code/Process.py</url>
-          <line>311</line>
-          <option name="timeStamp" value="473" />
+          <line>284</line>
+          <option name="timeStamp" value="509" />
+        </line-breakpoint>
+        <line-breakpoint suspend="THREAD" type="python-line">
+          <condition expression="cell[0]==2 and (cell[1]+init_y)==26 and (cell[2]+init_x)==18" language="Python" />
+          <url>file://$PROJECT_DIR$/code/Process.py</url>
+          <line>287</line>
+          <option name="timeStamp" value="510" />
+        </line-breakpoint>
+        <line-breakpoint enabled="true" suspend="THREAD" type="python-line">
+          <url>file://$PROJECT_DIR$/code/Tests.py</url>
+          <line>303</line>
+          <option name="timeStamp" value="515" />
+        </line-breakpoint>
+        <line-breakpoint suspend="THREAD" type="python-line">
+          <condition expression="substrate[2, 26, 18] &gt;0" language="Python" />
+          <url>file://$PROJECT_DIR$/code/Process.py</url>
+          <line>735</line>
+          <option name="timeStamp" value="518" />
+        </line-breakpoint>
+        <line-breakpoint suspend="THREAD" type="python-line">
+          <condition expression="substrate[2, 26, 18] &gt;0" language="Python" />
+          <url>file://$PROJECT_DIR$/code/Process.py</url>
+          <line>722</line>
+          <option name="timeStamp" value="519" />
         </line-breakpoint>
         <line-breakpoint enabled="true" suspend="THREAD" type="python-line">
           <url>file://$PROJECT_DIR$/code/Process.py</url>
-          <line>379</line>
-          <option name="timeStamp" value="481" />
-        </line-breakpoint>
-        <line-breakpoint enabled="true" suspend="THREAD" type="python-line">
-          <url>file://$PROJECT_DIR$/code/Process.py</url>
-          <line>374</line>
-          <option name="timeStamp" value="487" />
+          <line>729</line>
+          <option name="timeStamp" value="529" />
         </line-breakpoint>
       </breakpoints>
       <default-breakpoints>
