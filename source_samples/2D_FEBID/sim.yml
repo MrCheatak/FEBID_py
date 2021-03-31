@@ -1,0 +1,8 @@
+# beam and gis geometry correction factor, simulation size
+beam_type: 'Gaussian'
+beam_current: 270.0E-12 #30.0E-12 # A
+beam_fwhm: 21.0 #7.0 # nm
+gis_factor: 1.0
+length_scale: 1.0 # nm
+sim_width: 200 # in length_scale units
+sim_height: 200 # in length_scale units

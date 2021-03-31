@@ -1,0 +1,11 @@
+# filled rectangle
+pattern_type: 'rectangle_filled'
+path_type: 'serpentine'
+x0: 50.0 # nm
+y0: 50.0 # nm
+width: 100.0 # nm
+height: 100.0 # nm
+pitch: 20.0 # nm
+dwell_time: 1.0E-6 # s
+refresh: False
+loops: 100

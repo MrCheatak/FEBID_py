@@ -48,6 +48,15 @@ l.add((0,2,2))
 l.add((0,2,0))
 l.add((0,2,1))
 l.add((1,2,1))
+tt=np.array(list(l))
+cc=np.transpose(tt)
+vv=np.meshgrid(cc[0], cc[1], cc[2], indexing='ij')
+tt=(vv[0], vv[1], vv[2])
+dd=sample[tt]
+hh=np.fromiter(l, tuple(), len(l))
+jj=hh.transpose()
+
+
 
 ghosts=set()
 ghosts_index = ()

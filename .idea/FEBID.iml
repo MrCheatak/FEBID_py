@@ -9,6 +9,7 @@
   </component>
   <component name="PackageRequirementsSettings">
     <option name="requirementsPath" value="" />
+    <option name="versionSpecifier" value="Don't specify version" />
   </component>
   <component name="ReSTService">
     <option name="DOC_DIR" value="$MODULE_DIR$/docs" />

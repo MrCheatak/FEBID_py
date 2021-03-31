@@ -6,6 +6,7 @@ import matplotlib.pyplot as plt
 import numexpr
 import numpy.ma as ma
 from scipy import ndimage
+import line_profiler
 
 D = 10
 dt = 0.0001
@@ -23,8 +24,10 @@ class Position:
             self.z = np.float(z)
 
 system_size = 5
-substratee = np.zeros((system_size, system_size, system_size, 2), dtype=np.float)
+substratee = np.zeros((system_size, system_size, system_size, 2), dtype=np.float32)
 grid = np.linspace(0, 0.8, num=125).reshape((5, 5, 5))
+
+ind = np.indices((2, 50))
 
 grid = np.zeros((50,50), dtype=np.float64)
 # grid[470:530, 470:530] = 5
@@ -61,6 +64,71 @@ ss = np.s_[3,3]
 tt = x[ss]
 tt=ss[0]
 # ss[0] += 1
+
+X = np.arange(-5, 5, 0.25*1)
+Y = np.arange(-5, 5, 0.25*1)
+X, Y = np.meshgrid(X, Y)
+R = np.sqrt(X**2 + Y**2)
+Z = np.sin(R)
+x, y, z = np.indices((8, 8, 8))
+cube1 = (x < 3) & (y < 3) & (z < 3)
+
+from mpl_toolkits.mplot3d import Axes3D
+
+
+fig = plt.figure()
+ax = fig.add_subplot(111, projection='3d')
+
+# Make data
+u = np.linspace(0, 2 * np.pi, 100)
+v = np.linspace(0, np.pi, 100)
+x = 10 * np.outer(np.cos(u), np.sin(v))
+y = 10 * np.outer(np.sin(u), np.sin(v))
+z = 10 * np.outer(np.ones(np.size(u)), np.cos(v))
+
+
+
+
+# prepare some coordinates
+x, y, z = np.indices((8, 8, 8))
+
+# draw cuboids in the top left and bottom right corners, and a link between
+# them
+cube1 = (x < 3) & (y < 3) & (z < 3)
+cube2 = (x >= 5) & (y >= 5) & (z >= 5)
+link = abs(x - y) + abs(y - z) + abs(z - x) <= 2
+
+# combine the objects into a single boolean array
+voxels = cube1 | cube2 | link
+
+# set the colors of each object
+colors = np.empty(voxels.shape, dtype=object)
+colors[link] = 'red'
+colors[cube1] = 'blue'
+colors[cube2] = 'green'
+
+# and plot everything
+ax = plt.figure().add_subplot(projection='3d')
+ax.voxels(voxels, facecolors=colors, edgecolor='k')
+
+plt.show()
+
+x, y, z = np.random.normal(0, 1, (3, 1000))
+d, f,g = np.random.randint(-50, 50, (3,2500))
+
+# Plot the surface
+ax.plot_surface(x, y, z, color='b')
+
+plt.show()
+
+def profile_each_line(func, *args, **kwargs):
+    profiler = line_profiler.LineProfiler()
+    profiled_func = profiler(func)
+    try:
+        profiled_func(*args, **kwargs)
+    finally:
+        profiler.print_stats()
+
 
 def threads_test(*args):
     for i in range(1, 8, 1):
