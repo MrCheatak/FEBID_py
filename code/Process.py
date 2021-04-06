@@ -198,6 +198,7 @@ stub = np.mgrid[0:ymax, 0:xmax] # for indexing purposes of surface array
 index_y, index_x = mgrid[0:(effective_radius_relative*2+1), 0:(effective_radius_relative*2+1)] # for indexing purposes of flux matrix
 index_yy, index_xx = index_y*cell_dimension, index_x*cell_dimension
 
+
 # A dictionary of expressions for numexpr.evaluate_from_cache
 expressions = dict(pe_flux=cache_expression("f*exp(-r*r/(2*beam_d*beam_d))", [('beam_d', np.int64), ('f', np.float64), ('r', np.float64)]),
                    rk4=cache_expression("(k1+k4)/6 +(k2+k3)/3", [('k1', np.float64), ('k2', np.float64), ('k3', np.float64), ('k4', np.float64)]),
@@ -267,7 +268,7 @@ def deposition(deposit, substrate, flux_matrix, surf, dt):
 
 
 # @jit(nopython=False)
-def update_surface(deposit, substrate, surface, surf, semi_surface, ghosts, init_y=0, init_x=0):
+def update_surface(deposit, substrate, surface, surf, semi_surface, ghosts_bool, init_y=0, init_x=0):
     """
     Evolves surface upon a full deposition of a cell
 
@@ -285,18 +286,17 @@ def update_surface(deposit, substrate, surface, surf, semi_surface, ghosts, init
     new_deposits = np.argwhere(deposit>=1) # looking for new deposits
     if len(new_deposits) != 0:
         for cell in new_deposits:
-            ghosts.add((cell[0], cell[1] + init_y, cell[2] + init_x))  # add fully deposited cell to the ghost shell
+            ghosts_bool[cell[0], cell[1]+2, cell[2]+2] = True
             surface[cell[1], cell[2]] +=1  # rising the surface one cell up (new cell)
-            refresh(deposit, substrate, semi_surface, ghosts, cell[0]+1, cell[1], cell[2], init_y, init_x)
+            refresh(deposit, substrate, semi_surface, ghosts_bool, cell[0]+1, cell[1], cell[2], init_y, init_x)
         else:
-            temp = tuple(zip(*ghosts))  # casting a set of coordinates to a list of index sequences for every dimension
-            # ghosts_ind = (asarray(temp[0]), asarray(temp[1]), asarray(temp[2]))  # constructing a tuple of ndarray sequences
             surf = make_tuple(surface)
-    return surf, True # boolean True serves as a flag, to later regenerate a semi-surface index sequence
+            return surf, True  # boolean True serves as a flag, to later regenerate a semi-surface index sequence
+    return surf, False # boolean True serves as a flag, to later regenerate a semi-surface index sequence
 
 
 # @jit(nopython=True)
-def refresh(deposit, substrate, semi_surface, ghosts, z,y,x, init_y=0, init_x=0):
+def refresh(deposit, substrate, semi_surface, ghosts_bool, z,y,x, init_y=0, init_x=0):
     """
     Updates surface, semi-surface and ghost cells collections according to the provided coordinate of a newly deposited cell
 
@@ -312,37 +312,37 @@ def refresh(deposit, substrate, semi_surface, ghosts, z,y,x, init_y=0, init_x=0)
     """
     semi_surface.discard((0,0,0))
     semi_surface.discard((z, y+init_y, x+init_x))  # removing the new cell from the semi_surface collection
-    ghosts.discard((z, y + init_y, x + init_x)) # removing the new cell from the ghost shell collection
     deposit[z, y, x] += deposit[z - 1, y, x] - 1  # if the cell was filled above unity, transferring that surplus to the cell above
     deposit[z - 1, y, x] = -1  # a fully deposited cell is always a unity
     xx = x + 2 # this is needed, due to the substrate view being 2 cells wider in case of semi-surface or ghost cell falling out of the bounds of the view
     yy = y + 2
+    ghosts_bool[z, yy, xx] = False # removing the new cell from the ghost shell collection
     substrate[z, yy, xx] += substrate[z - 1, yy, xx] # if the deposited cell had precursor in it, transfer that surplus to the cell above
     # this may lead to an overfilling of a cell above unity, but it is not causing any anomalies due to diffusion process
     substrate[z - 1, yy, xx] = np.nan  # precursor density is NaN in the fully deposited cells (it was previously set to zero, but later some of the zero cells were added back to semi-surface)
     if substrate[z+1, yy, xx] == 0: # if the cell that is above the new cell is empty, then add it to the ghost shell collection
-        ghosts.add((z+1, y+init_y, x+init_x))
+        ghosts_bool[z+1, yy, xx] = True
     # Adding neighbors(in x-y plane) of the new cell to the semi_surface collection
     # and updating ghost shell for every neighbor:
     if substrate[z, yy - 1, xx] == 0:
         semi_surface.add((z, y - 1+init_y, x+init_x))  # adding cell to the list
         substrate[z, yy - 1, xx] += 1E-7 # "marks" cell as a surface one, because some of the checks refer to if the cell is empty. This assignment is essential. This corresponds to the smallest value that float32 can hold and should be changed corrspondingly to the type.
-        refresh_ghosts(substrate, ghosts, x + init_x, xx, y-1 + init_y, yy-1, z) # update ghost shell around
+        refresh_ghosts(substrate, ghosts_bool, x + init_x, xx, y-1 + init_y, yy-1, z) # update ghost shell around
     if substrate[z, yy + 1, xx] == 0:
         semi_surface.add((z, y + 1+init_y, x+init_x))
         substrate[z, yy + 1, xx] += 1E-7
-        refresh_ghosts(substrate, ghosts, x + init_x, xx, y+1 + init_y, yy+1, z)
+        refresh_ghosts(substrate, ghosts_bool, x + init_x, xx, y+1 + init_y, yy+1, z)
     if substrate[z, yy, xx - 1] == 0:
         semi_surface.add((z, y+init_y, x - 1+init_x))
         substrate[z, yy, xx - 1] += 1E-7
-        refresh_ghosts(substrate, ghosts, x -1 + init_x, xx-1, y + init_y, yy, z)
+        refresh_ghosts(substrate, ghosts_bool, x - 1 + init_x, xx-1, y + init_y, yy, z)
     if substrate[z, yy, xx + 1] == 0:
         semi_surface.add((z, y+init_y, x + 1+init_x))
         substrate[z, yy, xx + 1] += 1E-7
-        refresh_ghosts(substrate, ghosts, x + 1 + init_x, xx+1, y + init_y, yy, z)
+        refresh_ghosts(substrate, ghosts_bool, x + 1 + init_x, xx+1, y + init_y, yy, z)
 
 # @jit(nopython=True)
-def refresh_ghosts(substrate, ghosts, x, xx, y, yy, z):
+def refresh_ghosts(substrate, ghosts_bool, x, xx, y, yy, z):
     """
     Updates ghost cells collection around the specified cell
 
@@ -357,22 +357,23 @@ def refresh_ghosts(substrate, ghosts, x, xx, y, yy, z):
     """
     # z-coordinates are same for both coordinates, because the view to a substrate is taken only from the x-y plane
     # Firstly, deleting current cell from ghost shell and then adding all neighboring cells(along all axises) if they are zero
-    ghosts.discard((z, y, x))
+    # ghosts.discard((z, y, x))
+    ghosts_bool[z, yy, xx] = False
     if substrate[z - 1, yy, xx] == 0:
-        ghosts.add((z - 1, y, x))
+        ghosts_bool[z-1, yy, xx] = True
     if substrate[z + 1, yy, xx] == 0:
-        ghosts.add((z + 1, y, x))
+        ghosts_bool[z+1, yy, xx] = True
     if substrate[z, yy - 1, xx] == 0:
-        ghosts.add((z, y - 1, x))
+        ghosts_bool[z, yy-1, xx] = True
     if substrate[z, yy + 1, xx] == 0:
-        ghosts.add((z, y + 1, x))
+        ghosts_bool[z, yy+1, xx] = True
     if substrate[z, yy, xx - 1] == 0:
-        ghosts.add((z, y, x - 1))
+        ghosts_bool[z, yy, xx-1] = True
     if substrate[z, yy, xx + 1] == 0:
-        ghosts.add((z, y, x + 1))
+        ghosts_bool[z, yy, xx+1] = True
 
 # @profile
-def precursor_density(flux_matrix, substrate, surface, semi_surface_index, ghosts_index, dt):
+def precursor_density(flux_matrix, substrate, surface, semi_surface_index, ghosts_bool, dt):
     """
     Recalculates precursor density on the whole surface
 
@@ -382,9 +383,8 @@ def precursor_density(flux_matrix, substrate, surface, semi_surface_index, ghost
     :return: changes substrate array
     """
     sub = zeros([ymax, xmax])  # surface cells array that will be processed to calculate a precursor density increment
-    # semi_sub = zeros((len(semi_surface))) # same for semi-surface cells
     sub[stub[0], stub[1]] = substrate[surface, stub[0], stub[1]] # not using np.nditer speeded up the program by 10 times
-    diffusion_matrix = laplace_term_rolling(substrate, ghosts_index, D, dt)  # Diffusion term is calculated seperately and added in the end
+    diffusion_matrix = laplace_term_rolling(substrate, ghosts_bool, D, dt)  # Diffusion term is calculated seperately and added in the end
     rk4(dt, sub, flux_matrix) # An increment is calculated through Runge-Kutta method without the diffusion term
     substrate[surface, stub[0], stub[1]] += sub[stub[0], stub[1]]
     if any(semi_surface_index[0]): # same process for semi-cells
@@ -443,7 +443,7 @@ def rk4_diffusion(grid, ghosts_index, D, dt):
 
 
 # @jit(nopython=True, parallel=True, forceobj=False)
-def laplace_term_rolling(grid, ghosts_index, D, dt , add = 0, div = 0):
+def laplace_term_rolling(grid, ghosts_bool, D, dt , add = 0, div = 0):
     """
     Calculates diffusion term for all surface cells using rolling
 
@@ -452,42 +452,60 @@ def laplace_term_rolling(grid, ghosts_index, D, dt , add = 0, div = 0):
     :param dt: time step
     :return: to grid array
     """
+
+    # Debugging note: it would be more elegant to just use numpy.roll() on the ghosts_bool to assign neighboring values
+    # to ghost cells. But Numpy doesn't retain array structure when using index streaming. It rather extracts all the cells
+    # (that correspond to True in our case) and processes them as a flat array. It caused the shifted values for ghost cells to
+    # be assigned to the previous(first) layer, which was not processed by numpy.roll() when it rolled backwards.
+    # Thus, borders(planes) that are not taking part in rolling are cut off by using views to an array
     grid = grid + add
     grid_out = copy(grid)
     grid_out *= -6
+
     # X axis:
     # No need to have a separate array of values, when whe can conveniently call them from the origin:
-    grid[ghosts_index] = grid[ghosts_index[0], ghosts_index[1], ghosts_index[2]-1] # assinging precursor density values to ghost cells along the rolling axis and direction
-    grid_out[:,:, :-1]+=grid[:,:, 1:] #rolling forward
+    shore = grid[:, :, 1:]
+    wave = grid[:, :, :-1]
+    shore[ghosts_bool[:, :, 1:]] = wave[ghosts_bool[:, :, 1:]] # assigning values to ghost cells forward along X-axis
+    grid_out[:,:, :-1]+=grid[:,:, 1:] #rolling forward (actually backwards)
     grid_out[:,:,-1] += grid[:,:,-1] #taking care of edge values
-    grid[ghosts_index] = 0 # flushing ghost cells
-    # While Numpy allows negative indicies, indicies that are greater than the given dimention cause IndexiError and thus has to be taken care of
-    temp = where(ghosts_index[2] > system_size - 2, ghosts_index[2] - 1, ghosts_index[2]) # decreasing all the edge indices by one to exclude falling out of the array
-    grid[ghosts_index] = grid[ghosts_index[0], ghosts_index[1], temp+1]
+    grid[ghosts_bool] = 0 # flushing ghost cells
+    # Doing the same, but in reverse
+    shore = grid[:, :, :-1]
+    wave = grid[:, :, 1:]
+    shore[ghosts_bool[:, :, :-1]] = wave[ghosts_bool[:, :, :-1]]
     grid_out[:,:,1:] += grid[:,:,:-1] #rolling backwards
     grid_out[:, :, 0] += grid[:, :, 0]
-    grid[ghosts_index] = 0
+    grid[ghosts_bool] = 0
+
     # Y axis:
-    grid[ghosts_index] = grid[ghosts_index[0], ghosts_index[1]-1, ghosts_index[2]]
+    shore = grid[:, 1:, :]
+    wave = grid[:, :-1, :]
+    shore[ghosts_bool[:, 1:, :]] = wave[ghosts_bool[:, 1:, :]]
     grid_out[:, :-1, :] += grid[:, 1:, :]
     grid_out[:, -1, :] += grid[:, -1, :]
-    grid[ghosts_index] = 0
-    temp = where(ghosts_index[1] > system_size - 2, ghosts_index[1] - 1, ghosts_index[1])
-    grid[ghosts_index] = grid[ghosts_index[0], temp+1, ghosts_index[2]]
+    grid[ghosts_bool] = 0
+    shore = grid[:, :-1, :]
+    wave = grid[:, 1:, :]
+    shore[ghosts_bool[:, :-1, :]] = wave[ghosts_bool[:, :-1, :]]
     grid_out[:, 1:, :] += grid[:, :-1, :]
     grid_out[:, 0, :] += grid[:, 0, :]
-    grid[ghosts_index] = 0
+    grid[ghosts_bool] = 0
+
     # Z-axis:
-    grid[ghosts_index] = grid[ghosts_index[0]-1, ghosts_index[1], ghosts_index[2]]
+    shore = grid[1:, :, :]
+    wave = grid[:-1, :, :]
+    shore[ghosts_bool[1:, :, :]] = wave[ghosts_bool[1:, :, :]]
     grid_out[:-1, :, :] += grid[1:, :, :]
     grid_out[-1, :, :] += grid[-1, :, :]
-    grid[ghosts_index] = 0
-    temp = where(ghosts_index[0] > system_size - 2, ghosts_index[0] - 1, ghosts_index[0])
-    grid[ghosts_index] = grid[temp+1, ghosts_index[1], ghosts_index[2]]
+    grid[ghosts_bool] = 0
+    shore = grid[:-1, :, :]
+    wave = grid[1:, :, :]
+    shore[ghosts_bool[:-1, :, :]] = wave[ghosts_bool[:-1, :, :]]
     grid_out[1:, :, :] += grid[:-1, :, :]
     grid_out[0, :, :] += grid[0, :, :]
-    grid[ghosts_index] = 0
-    grid_out[ghosts_index]=0 # result has also to be cleaned as it has redundant values in ghost cells
+    grid[ghosts_bool] = 0
+    grid_out[ghosts_bool]=0 # result also has to be cleaned as it contains redundant values in ghost cells
     # numexpr: 1 core performs better
     numexpr.set_num_threads(nn)
     if div == 0:
@@ -683,13 +701,15 @@ def printing(loops=1):
     ghosts = set(zip(*define_ghosts(substrate, surface)))
     temp = tuple(zip(*ghosts))  # casting a set of coordinates to a list of index sequences for every dimension
     ghosts_index = (asarray(temp[0]), asarray(temp[1]), asarray(temp[2]))  # constructing a tuple of ndarray sequences
+    ghosts_bool = np.full(substrate.shape, False, dtype=bool)
+    ghosts_bool[ghosts_index]=True
 
     t = 2E-6 # absolute time, s
     refresh_dt = dt*2 # dt for precursor density recalculation
 
     dwell_step = 2 # int(beam_d / 2/cell_dimension)
-    x_offset = 20  # offset on the X-axis on both sides
-    y_offset = 20  # offset on the Y-axis on both sides
+    x_offset = 15  # offset on the X-axis on both sides
+    y_offset = 15  # offset on the Y-axis on both sides
     x_limit = xmax - x_offset
     y_limit = ymax - y_offset
 
@@ -714,15 +734,13 @@ def printing(loops=1):
                 semi_surface.add((0, 0, 0))
                 while True:
                     deposition(deposit[irradiated_area_3D], substrate[irradiated_area_3D], beam_matrix[irradiated_area_2D], surf, dt) # depositing on a selected area
-                    surf, refresh_flag = update_surface(deposit[irradiated_area_3D], substrate[:surface.max()+3, y_start-2:y_end+2, x_start-2:x_end+2], surface[irradiated_area_2D], surf, semi_surface, ghosts,y_start, x_start) # updating surface on a selected area
+                    surf, refresh_flag = update_surface(deposit[irradiated_area_3D], substrate[:surface.max()+3, y_start-2:y_end+2, x_start-2:x_end+2], surface[irradiated_area_2D], surf, semi_surface, ghosts_bool[:surface.max()+3, y_start-2:y_end+2, x_start-2:x_end+2], y_start, x_start) # updating surface on a selected area
                     if t % refresh_dt < 1E-6:
                         if refresh_flag == True: # regenerating indexing arrays
                             temp = list(zip(*semi_surface))  # casting a set of coordinates to a list of index sequences
                             semi_surface_index = (asarray(temp[0]), asarray(temp[1]), asarray(temp[2])) # constructing a tuple of ndarray sequences
-                            temp = tuple(zip(*ghosts))
-                            ghosts_index = (asarray(temp[0]), asarray(temp[1]), asarray(temp[2]))
                             refresh_flag = False
-                        precursor_density(beam_matrix, substrate[:surface.max()+3,:,:], surface, semi_surface_index, ghosts_index, refresh_dt)
+                        precursor_density(beam_matrix, substrate[:surface.max()+4,:,:], surface, semi_surface_index, ghosts_bool[:surface.max()+4,:,:], refresh_dt)
                         # if l==3:
                         #     profiler = line_profiler.LineProfiler()
                         #     profiled_func = profiler(precursor_density)

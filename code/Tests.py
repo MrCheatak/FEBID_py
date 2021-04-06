@@ -65,6 +65,13 @@ tt = x[ss]
 tt=ss[0]
 # ss[0] += 1
 
+hh=np.full((5,5), 1)
+hh[[2,2,3,3], [2,3,2,3]] =2,3,4,5
+hg= np.roll(hh, -1, axis=1)
+pp = hh>1
+hh[pp]=hh[np.roll(pp, 1, axis=1)]
+oo=np.nonzero(pp)[0].max()
+
 X = np.arange(-5, 5, 0.25*1)
 Y = np.arange(-5, 5, 0.25*1)
 X, Y = np.meshgrid(X, Y)
