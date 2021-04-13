@@ -1,8 +1,67 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <project version="4">
   <component name="ChangeListManager">
-    <list default="true" id="b5cc656d-5c66-4e2d-aa70-6827b1eac6eb" name="Implementing boolean indexing for surface cells" comment="Deleted old files">
-      <change beforePath="$PROJECT_DIR$/code/Report-v2.ipynb" beforeDir="false" afterPath="$PROJECT_DIR$/code/Report-v2.ipynb" afterDir="false" />
+    <list default="true" id="b5cc656d-5c66-4e2d-aa70-6827b1eac6eb" name="Implementing boolean indexing for surface cells" comment="Updated Report.ipynb">
+      <change afterPath="$PROJECT_DIR$/code/modified_libaries/numexpr/__config__.py" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/code/modified_libaries/numexpr/__init__.py" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/code/modified_libaries/numexpr/cpuinfo.py" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/code/modified_libaries/numexpr/expressions.py" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/code/modified_libaries/numexpr/interpreter.cpython-38-darwin.so" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/code/modified_libaries/numexpr/necompiler.py" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/code/modified_libaries/numexpr/tests/__init__.py" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/code/modified_libaries/numexpr/tests/test_numexpr.py" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/code/modified_libaries/numexpr/utils.py" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/code/modified_libaries/numexpr/version.py" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/docs/Makefile" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/docs/build/doctrees/Process.doctree" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/docs/build/doctrees/environment.pickle" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/docs/build/doctrees/heat3dvkt.doctree" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/docs/build/doctrees/index.doctree" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/docs/build/doctrees/modules.doctree" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/docs/build/html/.buildinfo" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/docs/build/html/Process.html" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/docs/build/html/_sources/Process.rst.txt" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/docs/build/html/_sources/Process_stable.rst.txt" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/docs/build/html/_sources/Tests.rst.txt" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/docs/build/html/_sources/Tests3D.rst.txt" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/docs/build/html/_sources/heat3dvkt.rst.txt" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/docs/build/html/_sources/index.rst.txt" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/docs/build/html/_sources/main.rst.txt" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/docs/build/html/_sources/modules.rst.txt" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/docs/build/html/_sources/test_Process.rst.txt" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/docs/build/html/_static/alabaster.css" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/docs/build/html/_static/basic.css" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/docs/build/html/_static/custom.css" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/docs/build/html/_static/doctools.js" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/docs/build/html/_static/documentation_options.js" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/docs/build/html/_static/file.png" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/docs/build/html/_static/jquery-3.5.1.js" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/docs/build/html/_static/jquery.js" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/docs/build/html/_static/language_data.js" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/docs/build/html/_static/minus.png" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/docs/build/html/_static/plus.png" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/docs/build/html/_static/pygments.css" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/docs/build/html/_static/searchtools.js" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/docs/build/html/_static/underscore-1.12.0.js" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/docs/build/html/_static/underscore-1.3.1.js" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/docs/build/html/_static/underscore.js" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/docs/build/html/genindex.html" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/docs/build/html/index.html" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/docs/build/html/modules.html" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/docs/build/html/objects.inv" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/docs/build/html/py-modindex.html" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/docs/build/html/search.html" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/docs/build/html/searchindex.js" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/docs/make.bat" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/docs/source/Process.rst" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/docs/source/conf.py" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/docs/source/index.rst" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/docs/source/modules.rst" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/.idea/FEBID.iml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/FEBID.iml" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/.idea/misc.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/misc.xml" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/.idea/workspace.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/workspace.xml" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/code/Process.py" beforeDir="false" afterPath="$PROJECT_DIR$/code/Process.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/code/test_Process.py" beforeDir="false" />
     </list>
     <list id="88fcfbbf-9994-46dd-90d0-f4a8304fcbdd" name="Default Changelist" comment="Added JupyterLabs Notebook Report on improvements.ipynb" />
     <option name="SHOW_DIALOG" value="false" />
@@ -33,7 +92,7 @@
     <property name="SHARE_PROJECT_CONFIGURATION_FILES" value="true" />
     <property name="TODO_SCOPE" value="All Places" />
     <property name="last_opened_file_path" value="$PROJECT_DIR$/code" />
-    <property name="settings.editor.selected.configurable" value="preferences.pluginManager" />
+    <property name="settings.editor.selected.configurable" value="com.jetbrains.python.configuration.PythonContentEntriesConfigurable" />
   </component>
   <component name="RecentsManager">
     <key name="CopyFile.RECENT_KEYS">
@@ -169,8 +228,8 @@
     </configuration>
     <recent_temporary>
       <list>
-        <item itemvalue="Python.Tests3D" />
         <item itemvalue="Python.Process" />
+        <item itemvalue="Python.Tests3D" />
         <item itemvalue="Python.heat3dvtk1" />
         <item itemvalue="Python.heat3dvtk" />
         <item itemvalue="Python.heat3dvkt" />
@@ -258,7 +317,14 @@
       <option name="project" value="LOCAL" />
       <updated>1618305147681</updated>
     </task>
-    <option name="localTasksCounter" value="11" />
+    <task id="LOCAL-00011" summary="Updated Report.ipynb">
+      <created>1618310801684</created>
+      <option name="number" value="00011" />
+      <option name="presentableId" value="LOCAL-00011" />
+      <option name="project" value="LOCAL" />
+      <updated>1618310801684</updated>
+    </task>
+    <option name="localTasksCounter" value="12" />
     <option name="createBranch" value="false" />
     <option name="useBranch" value="true" />
     <servers />
@@ -283,7 +349,8 @@
     <MESSAGE value="Switched from set()&lt;—&gt;tuple indexing trickery to boolean indexing for both surface and semi-surface.&#10;Optimized math expressions for 'precursor_density_increment' and 'laplace_term_rolling' functions&#10;It appeared that flushing beam_matrix array in 'printing' was a pretty heavy lifting and even took half of the computing time. Now only currently irradiated view is emptied.&#10;Overall + 30% efficiency" />
     <MESSAGE value="Added Jupyter Notebook Report-v2.ipynb" />
     <MESSAGE value="Deleted old files" />
-    <option name="LAST_COMMIT_MESSAGE" value="Deleted old files" />
+    <MESSAGE value="Updated Report.ipynb" />
+    <option name="LAST_COMMIT_MESSAGE" value="Updated Report.ipynb" />
     <option name="MAKE_NEW_CHANGELIST_ACTIVE" value="true" />
     <option name="PRESELECT_EXISTING_CHANGELIST" value="true" />
   </component>
@@ -393,19 +460,19 @@
         <line-breakpoint suspend="THREAD" type="python-line">
           <condition expression="l == 4" language="Python" />
           <url>file://$PROJECT_DIR$/code/Process.py</url>
-          <line>609</line>
+          <line>612</line>
           <option name="timeStamp" value="296" />
         </line-breakpoint>
         <line-breakpoint suspend="THREAD" type="python-line">
           <condition expression="(l == 3) and (beam.y == 110)" language="Python" />
           <url>file://$PROJECT_DIR$/code/Process.py</url>
-          <line>598</line>
+          <line>601</line>
           <option name="timeStamp" value="314" />
         </line-breakpoint>
         <line-breakpoint suspend="THREAD" type="python-line">
           <condition expression="(l == 3) and (beam.y == 110) and (beam.x == 125)" language="Python" />
           <url>file://$PROJECT_DIR$/code/Process.py</url>
-          <line>608</line>
+          <line>611</line>
           <option name="timeStamp" value="317" />
         </line-breakpoint>
         <line-breakpoint enabled="true" suspend="THREAD" type="python-line">
@@ -415,24 +482,24 @@
         </line-breakpoint>
         <line-breakpoint enabled="true" suspend="THREAD" type="python-line">
           <url>file://$PROJECT_DIR$/code/Process.py</url>
-          <line>713</line>
+          <line>719</line>
           <option name="timeStamp" value="734" />
         </line-breakpoint>
         <line-breakpoint suspend="THREAD" type="python-line">
           <condition expression="l==67" language="Python" />
           <url>file://$PROJECT_DIR$/code/Process.py</url>
-          <line>667</line>
+          <line>673</line>
           <option name="timeStamp" value="742" />
         </line-breakpoint>
         <line-breakpoint enabled="true" suspend="THREAD" type="python-line">
           <url>file://$PROJECT_DIR$/code/Process.py</url>
-          <line>720</line>
+          <line>726</line>
           <option name="timeStamp" value="759" />
         </line-breakpoint>
         <line-breakpoint suspend="THREAD" type="python-line">
           <condition expression="z==3" language="Python" />
           <url>file://$PROJECT_DIR$/code/Process.py</url>
-          <line>302</line>
+          <line>304</line>
           <option name="timeStamp" value="763" />
         </line-breakpoint>
       </breakpoints>
@@ -446,8 +513,15 @@
     </breakpoint-manager>
     <watches-manager>
       <configuration name="PythonConfigurationType">
-        <watch expression="grid" />
-        <watch expression="grid_out" />
+        <watch expression="grid[50][50]" />
+        <watch expression="sub_grid[49][50]" />
+        <watch expression="grid_out.array.049" />
+        <watch expression="b" />
+        <watch expression="it.multi_index" />
+        <watch expression="semi_surface" />
+        <watch expression="t" />
+        <watch expression="section" />
+        <watch expression="ghosts" />
       </configuration>
     </watches-manager>
   </component>
