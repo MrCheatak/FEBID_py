@@ -1,35 +1,8 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <project version="4">
   <component name="ChangeListManager">
-    <list default="true" id="b5cc656d-5c66-4e2d-aa70-6827b1eac6eb" name="Implementing boolean indexing for surface cells" comment="Switched from set()&lt;—&gt;tuple indexing trickery to boolean indexing for both surface and semi-surface.&#10;Optimized math expressions for 'precursor_density_increment' and 'laplace_term_rolling' functions&#10;It appeared that flushing beam_matrix array in 'printing' was a pretty heavy lifting and even took half of the computing time. Now only currently irradiated view is emptied.&#10;Overall + 30% efficiency">
-      <change afterPath="$PROJECT_DIR$/.idea/dictionaries/sandrik1742.xml" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/.idea/sonarlint/issuestore/1/8/180c9cb3052fb65959d6efe0cb1a273577971aa0" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/.idea/sonarlint/issuestore/2/5/25332c3d5e101de135dd877fd235b689833ab0eb" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/.idea/sonarlint/issuestore/2/a/2aa58a363dcb6c78cc62679ffedbb559c57b2edf" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/.idea/sonarlint/issuestore/2/b/2b839cd9c6bd00b72ba7622fbf2f086982ed9058" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/.idea/sonarlint/issuestore/3/6/3667bd842962424501c3ecee228e81ddd011d93f" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/.idea/sonarlint/issuestore/4/d/4dab7d897e77b92d68e1aa66cea36f97a0888203" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/.idea/sonarlint/issuestore/5/b/5b8e73ca6eb3abd4e4f0cecd9b92a37f7463ba04" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/.idea/sonarlint/issuestore/6/2/62df078594b947ca6f787a59ae6ddefabce9fcad" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/.idea/sonarlint/issuestore/7/c/7cfa5be93275155041645b43c15295f3cae97d73" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/.idea/sonarlint/issuestore/7/f/7fb8076dc218712f9af800ee32550b582aff9426" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/.idea/sonarlint/issuestore/9/4/941f1e7a6b9eef755dfad92958d1cb45cc0c1cc2" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/.idea/sonarlint/issuestore/a/2/a2faaf7f0e027815e69e12db3d64986c9f3177d4" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/.idea/sonarlint/issuestore/a/7/a73dfa29e95938ec4c311d85f9a6cc5a98b21302" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/.idea/sonarlint/issuestore/a/d/ad471fb18b5934faecfd7bc24b005f0bc79cf584" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/.idea/sonarlint/issuestore/a/d/aded7756cdea7c289134466a0d54da4f26d43abb" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/.idea/sonarlint/issuestore/b/8/b80fb3e4bce1d060a750fd1461e83b21b38c1d48" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/.idea/sonarlint/issuestore/f/7/f78c06cff4a268db6c3fd199df6b6340c8176756" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/.idea/FEBID.iml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/FEBID.iml" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/code/Process.py" beforeDir="false" afterPath="$PROJECT_DIR$/code/Process.py" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/code/modified_libaries/__init__.py" beforeDir="false" />
-    </list>
-    <list id="88fcfbbf-9994-46dd-90d0-f4a8304fcbdd" name="Default Changelist" comment="Straight ported from C#&#10;A bit of numexpr optimization">
-      <change beforePath="$PROJECT_DIR$/.idea/workspace.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/workspace.xml" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/code/Tests.py" beforeDir="false" afterPath="$PROJECT_DIR$/code/Tests.py" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/code/Tests3D.py" beforeDir="false" afterPath="$PROJECT_DIR$/code/Tests3D.py" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/code/modified_libaries/necompiler.py" beforeDir="false" />
-    </list>
+    <list default="true" id="b5cc656d-5c66-4e2d-aa70-6827b1eac6eb" name="Implementing boolean indexing for surface cells" comment="Added Jupyter Notebook Report-v2.ipynb" />
+    <list id="88fcfbbf-9994-46dd-90d0-f4a8304fcbdd" name="Default Changelist" comment="Added JupyterLabs Notebook Report on improvements.ipynb" />
     <option name="SHOW_DIALOG" value="false" />
     <option name="HIGHLIGHT_CONFLICTS" value="true" />
     <option name="HIGHLIGHT_NON_ACTIVE_CHANGELIST" value="false" />
@@ -42,6 +15,10 @@
       </map>
     </option>
     <option name="RECENT_GIT_ROOT_PATH" value="$PROJECT_DIR$" />
+    <option name="RESET_MODE" value="HARD" />
+  </component>
+  <component name="HighlightingSettingsPerFile">
+    <setting file="file://$PROJECT_DIR$/code/Process.py" root0="FORCE_HIGHLIGHTING" />
   </component>
   <component name="ProjectId" id="1nhbox7duSe9gCs3TWNzP9QMNVg" />
   <component name="ProjectLevelVcsManager" settingsEditedManually="true" />
@@ -190,8 +167,8 @@
     </configuration>
     <recent_temporary>
       <list>
-        <item itemvalue="Python.Process" />
         <item itemvalue="Python.Tests3D" />
+        <item itemvalue="Python.Process" />
         <item itemvalue="Python.heat3dvtk1" />
         <item itemvalue="Python.heat3dvtk" />
         <item itemvalue="Python.heat3dvkt" />
@@ -258,7 +235,14 @@
       <option name="project" value="LOCAL" />
       <updated>1617737146488</updated>
     </task>
-    <option name="localTasksCounter" value="8" />
+    <task id="LOCAL-00008" summary="Added Jupyter Notebook Report-v2.ipynb">
+      <created>1618304896014</created>
+      <option name="number" value="00008" />
+      <option name="presentableId" value="LOCAL-00008" />
+      <option name="project" value="LOCAL" />
+      <updated>1618304896014</updated>
+    </task>
+    <option name="localTasksCounter" value="9" />
     <option name="createBranch" value="false" />
     <option name="useBranch" value="true" />
     <servers />
@@ -281,7 +265,8 @@
     </ignored-roots>
     <MESSAGE value="Implementing boolean indexing for ghost cells:&#10;Instead of having to convert the set to a stream of indices, which still was a heavy lifting after all, it is now implemented with a boolean indexing array. Cells that coreespond to ghost cells have a True value in an array with the same structure as the main one. Value shifting is a bit tricky, but who said efficient code is always elegant? Overall code boost x2." />
     <MESSAGE value="Switched from set()&lt;—&gt;tuple indexing trickery to boolean indexing for both surface and semi-surface.&#10;Optimized math expressions for 'precursor_density_increment' and 'laplace_term_rolling' functions&#10;It appeared that flushing beam_matrix array in 'printing' was a pretty heavy lifting and even took half of the computing time. Now only currently irradiated view is emptied.&#10;Overall + 30% efficiency" />
-    <option name="LAST_COMMIT_MESSAGE" value="Switched from set()&lt;—&gt;tuple indexing trickery to boolean indexing for both surface and semi-surface.&#10;Optimized math expressions for 'precursor_density_increment' and 'laplace_term_rolling' functions&#10;It appeared that flushing beam_matrix array in 'printing' was a pretty heavy lifting and even took half of the computing time. Now only currently irradiated view is emptied.&#10;Overall + 30% efficiency" />
+    <MESSAGE value="Added Jupyter Notebook Report-v2.ipynb" />
+    <option name="LAST_COMMIT_MESSAGE" value="Added Jupyter Notebook Report-v2.ipynb" />
     <option name="MAKE_NEW_CHANGELIST_ACTIVE" value="true" />
     <option name="PRESELECT_EXISTING_CHANGELIST" value="true" />
   </component>
