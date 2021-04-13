@@ -1,7 +1,9 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <project version="4">
   <component name="ChangeListManager">
-    <list default="true" id="b5cc656d-5c66-4e2d-aa70-6827b1eac6eb" name="Implementing boolean indexing for surface cells" comment="Added Jupyter Notebook Report-v2.ipynb" />
+    <list default="true" id="b5cc656d-5c66-4e2d-aa70-6827b1eac6eb" name="Implementing boolean indexing for surface cells" comment="Deleted old files">
+      <change beforePath="$PROJECT_DIR$/code/Report-v2.ipynb" beforeDir="false" afterPath="$PROJECT_DIR$/code/Report-v2.ipynb" afterDir="false" />
+    </list>
     <list id="88fcfbbf-9994-46dd-90d0-f4a8304fcbdd" name="Default Changelist" comment="Added JupyterLabs Notebook Report on improvements.ipynb" />
     <option name="SHOW_DIALOG" value="false" />
     <option name="HIGHLIGHT_CONFLICTS" value="true" />
@@ -242,7 +244,21 @@
       <option name="project" value="LOCAL" />
       <updated>1618304896014</updated>
     </task>
-    <option name="localTasksCounter" value="9" />
+    <task id="LOCAL-00009" summary="Added Jupyter Notebook Report-v2.ipynb">
+      <created>1618304976993</created>
+      <option name="number" value="00009" />
+      <option name="presentableId" value="LOCAL-00009" />
+      <option name="project" value="LOCAL" />
+      <updated>1618304976993</updated>
+    </task>
+    <task id="LOCAL-00010" summary="Deleted old files">
+      <created>1618305147681</created>
+      <option name="number" value="00010" />
+      <option name="presentableId" value="LOCAL-00010" />
+      <option name="project" value="LOCAL" />
+      <updated>1618305147681</updated>
+    </task>
+    <option name="localTasksCounter" value="11" />
     <option name="createBranch" value="false" />
     <option name="useBranch" value="true" />
     <servers />
@@ -266,7 +282,8 @@
     <MESSAGE value="Implementing boolean indexing for ghost cells:&#10;Instead of having to convert the set to a stream of indices, which still was a heavy lifting after all, it is now implemented with a boolean indexing array. Cells that coreespond to ghost cells have a True value in an array with the same structure as the main one. Value shifting is a bit tricky, but who said efficient code is always elegant? Overall code boost x2." />
     <MESSAGE value="Switched from set()&lt;—&gt;tuple indexing trickery to boolean indexing for both surface and semi-surface.&#10;Optimized math expressions for 'precursor_density_increment' and 'laplace_term_rolling' functions&#10;It appeared that flushing beam_matrix array in 'printing' was a pretty heavy lifting and even took half of the computing time. Now only currently irradiated view is emptied.&#10;Overall + 30% efficiency" />
     <MESSAGE value="Added Jupyter Notebook Report-v2.ipynb" />
-    <option name="LAST_COMMIT_MESSAGE" value="Added Jupyter Notebook Report-v2.ipynb" />
+    <MESSAGE value="Deleted old files" />
+    <option name="LAST_COMMIT_MESSAGE" value="Deleted old files" />
     <option name="MAKE_NEW_CHANGELIST_ACTIVE" value="true" />
     <option name="PRESELECT_EXISTING_CHANGELIST" value="true" />
   </component>
