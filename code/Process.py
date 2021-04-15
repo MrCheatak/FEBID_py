@@ -14,9 +14,9 @@ import matplotlib.pyplot as plt
 from matplotlib import cm
 # from mpl_toolkits.mplot3d import Axes3D
 # import ipyvolume as ipv
-from numexpr import evaluate, evaluate_from_cache, cache_expression
+from modified_libraries.numexpr import evaluate, evaluate_from_cache, cache_expression
 import numexpr
-from modified_libaries import numexpr as ne
+from modified_libraries import numexpr as ne
 import cProfile
 # from timebudget import timebudget
 from numba import jit, typeof, generated_jit

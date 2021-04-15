@@ -1,67 +1,10 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <project version="4">
   <component name="ChangeListManager">
-    <list default="true" id="b5cc656d-5c66-4e2d-aa70-6827b1eac6eb" name="Implementing boolean indexing for surface cells" comment="Updated Report.ipynb">
-      <change afterPath="$PROJECT_DIR$/code/modified_libaries/numexpr/__config__.py" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/code/modified_libaries/numexpr/__init__.py" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/code/modified_libaries/numexpr/cpuinfo.py" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/code/modified_libaries/numexpr/expressions.py" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/code/modified_libaries/numexpr/interpreter.cpython-38-darwin.so" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/code/modified_libaries/numexpr/necompiler.py" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/code/modified_libaries/numexpr/tests/__init__.py" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/code/modified_libaries/numexpr/tests/test_numexpr.py" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/code/modified_libaries/numexpr/utils.py" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/code/modified_libaries/numexpr/version.py" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/docs/Makefile" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/docs/build/doctrees/Process.doctree" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/docs/build/doctrees/environment.pickle" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/docs/build/doctrees/heat3dvkt.doctree" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/docs/build/doctrees/index.doctree" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/docs/build/doctrees/modules.doctree" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/docs/build/html/.buildinfo" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/docs/build/html/Process.html" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/docs/build/html/_sources/Process.rst.txt" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/docs/build/html/_sources/Process_stable.rst.txt" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/docs/build/html/_sources/Tests.rst.txt" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/docs/build/html/_sources/Tests3D.rst.txt" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/docs/build/html/_sources/heat3dvkt.rst.txt" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/docs/build/html/_sources/index.rst.txt" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/docs/build/html/_sources/main.rst.txt" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/docs/build/html/_sources/modules.rst.txt" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/docs/build/html/_sources/test_Process.rst.txt" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/docs/build/html/_static/alabaster.css" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/docs/build/html/_static/basic.css" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/docs/build/html/_static/custom.css" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/docs/build/html/_static/doctools.js" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/docs/build/html/_static/documentation_options.js" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/docs/build/html/_static/file.png" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/docs/build/html/_static/jquery-3.5.1.js" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/docs/build/html/_static/jquery.js" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/docs/build/html/_static/language_data.js" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/docs/build/html/_static/minus.png" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/docs/build/html/_static/plus.png" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/docs/build/html/_static/pygments.css" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/docs/build/html/_static/searchtools.js" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/docs/build/html/_static/underscore-1.12.0.js" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/docs/build/html/_static/underscore-1.3.1.js" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/docs/build/html/_static/underscore.js" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/docs/build/html/genindex.html" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/docs/build/html/index.html" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/docs/build/html/modules.html" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/docs/build/html/objects.inv" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/docs/build/html/py-modindex.html" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/docs/build/html/search.html" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/docs/build/html/searchindex.js" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/docs/make.bat" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/docs/source/Process.rst" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/docs/source/conf.py" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/docs/source/index.rst" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/docs/source/modules.rst" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/.idea/FEBID.iml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/FEBID.iml" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/.idea/misc.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/misc.xml" afterDir="false" />
+    <list default="true" id="b5cc656d-5c66-4e2d-aa70-6827b1eac6eb" name="Implementing boolean indexing for surface cells" comment="Added missing 'modified_libraries' directory and updated documentation for Process.py">
       <change beforePath="$PROJECT_DIR$/.idea/workspace.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/workspace.xml" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/code/Process.py" beforeDir="false" afterPath="$PROJECT_DIR$/code/Process.py" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/code/test_Process.py" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/code/Report.ipynb" beforeDir="false" afterPath="$PROJECT_DIR$/code/Report.ipynb" afterDir="false" />
     </list>
     <list id="88fcfbbf-9994-46dd-90d0-f4a8304fcbdd" name="Default Changelist" comment="Added JupyterLabs Notebook Report on improvements.ipynb" />
     <option name="SHOW_DIALOG" value="false" />
@@ -72,7 +15,7 @@
   <component name="Git.Settings">
     <option name="RECENT_BRANCH_BY_REPOSITORY">
       <map>
-        <entry key="$PROJECT_DIR$" value="Implementing-boolean" />
+        <entry key="$PROJECT_DIR$" value="numpy_opyimization" />
       </map>
     </option>
     <option name="RECENT_GIT_ROOT_PATH" value="$PROJECT_DIR$" />
@@ -91,11 +34,12 @@
     <property name="RunOnceActivity.OpenProjectViewOnStart" value="true" />
     <property name="SHARE_PROJECT_CONFIGURATION_FILES" value="true" />
     <property name="TODO_SCOPE" value="All Places" />
-    <property name="last_opened_file_path" value="$PROJECT_DIR$/code" />
+    <property name="last_opened_file_path" value="$PROJECT_DIR$/code/modified_libaries/numexpr" />
     <property name="settings.editor.selected.configurable" value="com.jetbrains.python.configuration.PythonContentEntriesConfigurable" />
   </component>
   <component name="RecentsManager">
     <key name="CopyFile.RECENT_KEYS">
+      <recent name="$PROJECT_DIR$/code/modified_libaries/numexpr" />
       <recent name="$PROJECT_DIR$/code" />
     </key>
   </component>
@@ -247,7 +191,7 @@
       <created>1611845447515</created>
       <option name="number" value="Default" />
       <option name="presentableId" value="Default" />
-      <updated>1617457672631</updated>
+      <updated>1618472909839</updated>
     </task>
     <task id="LOCAL-00001" summary="Implementing boolean indexing for ghost cells">
       <branch name="numpy_opyimization" repository="$PROJECT_DIR$" original="true" />
@@ -266,7 +210,7 @@
       <option name="number" value="00003" />
       <option name="presentableId" value="LOCAL-00003" />
       <option name="project" value="LOCAL" />
-      <updated>1617737184415</updated>
+      <updated>1618472909839</updated>
     </task>
     <task id="LOCAL-00004" summary="Implementing boolean indexing for ghost cells:&#10;Instead of having to convert the set to a stream of indices, which still was a heavy lifting after all, it is now implemented with a boolean indexing array. Cells that coreespond to ghost cells have a True value in an array with the same structure as the main one. Value shifting is a bit tricky, but who said efficient code is always elegant? Overall code boost x2.">
       <created>1617728373727</created>
@@ -324,7 +268,14 @@
       <option name="project" value="LOCAL" />
       <updated>1618310801684</updated>
     </task>
-    <option name="localTasksCounter" value="12" />
+    <task id="LOCAL-00012" summary="Added missing 'modified_libraries' directory and updated documentation for Process.py">
+      <created>1618335967976</created>
+      <option name="number" value="00012" />
+      <option name="presentableId" value="LOCAL-00012" />
+      <option name="project" value="LOCAL" />
+      <updated>1618335967976</updated>
+    </task>
+    <option name="localTasksCounter" value="13" />
     <option name="createBranch" value="false" />
     <option name="useBranch" value="true" />
     <servers />
@@ -350,7 +301,8 @@
     <MESSAGE value="Added Jupyter Notebook Report-v2.ipynb" />
     <MESSAGE value="Deleted old files" />
     <MESSAGE value="Updated Report.ipynb" />
-    <option name="LAST_COMMIT_MESSAGE" value="Updated Report.ipynb" />
+    <MESSAGE value="Added missing 'modified_libraries' directory and updated documentation for Process.py" />
+    <option name="LAST_COMMIT_MESSAGE" value="Added missing 'modified_libraries' directory and updated documentation for Process.py" />
     <option name="MAKE_NEW_CHANGELIST_ACTIVE" value="true" />
     <option name="PRESELECT_EXISTING_CHANGELIST" value="true" />
   </component>
