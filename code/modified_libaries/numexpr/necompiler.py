@@ -14,8 +14,8 @@ import numpy
 import threading
 
 is_cpu_amd_intel = False  # DEPRECATION WARNING: WILL BE REMOVED IN FUTURE RELEASE
-from numexpr import interpreter, expressions, use_vml
-from numexpr.utils import CacheDict
+from ..numexpr import interpreter, expressions, use_vml
+from .utils import CacheDict
 
 # Declare a double type that does not exist in Python space
 double = numpy.double
