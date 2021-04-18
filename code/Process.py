@@ -14,9 +14,9 @@ import matplotlib.pyplot as plt
 from matplotlib import cm
 # from mpl_toolkits.mplot3d import Axes3D
 # import ipyvolume as ipv
-from modified_libraries.numexpr import evaluate, evaluate_from_cache, cache_expression
+from numexpr import evaluate, evaluate_from_cache, cache_expression
 import numexpr
-from modified_libraries import numexpr as ne
+# from modified_libraries import numexpr as ne
 import cProfile
 # from timebudget import timebudget
 from numba import jit, typeof, generated_jit
@@ -24,11 +24,14 @@ from numba.experimental import jitclass
 from numba.core.errors import NumbaDeprecationWarning, NumbaPendingDeprecationWarning
 import warnings
 import sys
-import line_profiler
+# import line_profiler
 # TODO: look into k-d trees
 # TODO: add a benchmark to determine optimal threads number for current machine
-interval_def = sys.getswitchinterval()
-sys.setswitchinterval(1000)
+# # sys.setswitchinterval(1000)
+# numexpr.__BLOCK_SIZE1__=65536
+# numexpr.set_num_threads(1)
+# numexpr.set_vml_num_threads(1)
+# numexpr.use_vml=True
 
 class Laplace_Convolution:
     # @jit(nopython=False, parallel=True)
@@ -209,7 +212,7 @@ def make_tuple(arr):
     return (arr.flatten(),yy.flatten(), xx.flatten())
 
 
-@jit(nopython=True)
+# @jit(nopython=True)
 def flush_structure(substrate: np.ndarray, deposit: np.ndarray, init_density: np.float32 = nr, init_deposit = .0, volume_prefill = .0):
     """
     Resets and prepares initial state of the printing framework
@@ -232,7 +235,7 @@ def flush_structure(substrate: np.ndarray, deposit: np.ndarray, init_density: np
 
 
 # @jit(nopython=True, parallel=True)
-def deposition(deposit, substrate, flux_matrix, surface_bool, dt):
+def deposition(deposit, substrate, flux_matrix, surface_bool, dt, sigma_V_dt=sigma*V*dt):
 
     """
     Calculates deposition on the surface for a given time step dt (outer loop)
@@ -246,10 +249,10 @@ def deposition(deposit, substrate, flux_matrix, surface_bool, dt):
     # Instead of processing cell by cell and on the whole surface, it is implemented to process only (effectively) irradiated area and array-wise(thanks to Numpy)
     # Math here cannot be efficiently simplified, because multiplication of constant variables here produces a value below np.float32 accuracy
     # np.float32 — ~1E-7, produced value — ~1E-10
-    deposit[surface_bool] += substrate[surface_bool] * sigma * flux_matrix[surface_bool] * V * dt
+    deposit[surface_bool] += substrate[surface_bool] * flux_matrix[surface_bool] * sigma_V_dt
 
 
-# @jit(nopython=False)
+# @jit(nopython=True, parallel=True)
 def update_surface(deposit, substrate, surface_bool, semi_surf_bool, ghosts_bool, flux_matrix, z_max):
     """
     Evolves surface upon a full deposition of a cell. This method holds has the vast majority of logic
@@ -281,7 +284,7 @@ def update_surface(deposit, substrate, surface_bool, semi_surf_bool, ghosts_bool
     return z_max
 
 
-# @jit(nopython=True)
+# @jit(nopython=True) # parallel=True)
 def refresh(substrate, semi_s_bool, ghosts_bool, z,y,x):
     """
     Updates surface, semi-surface and ghost cells collections according to the provided coordinate of a newly deposited cell
@@ -321,7 +324,7 @@ def refresh(substrate, semi_s_bool, ghosts_bool, z,y,x):
         substrate[z, y, x + 1] += 1E-7
         refresh_ghosts(substrate, ghosts_bool, x+1, y, z)
 
-# @jit(nopython=True)
+# @jit(nopython=True) # parallel=True)
 def refresh_ghosts(substrate, ghosts_bool, x, y, z):
     """
     Updates ghost cells collection around the specified cell
@@ -387,7 +390,7 @@ def rk4(dt, sub, flux_matrix=0):
     k3 = precursor_density_increment(dt/2, sub, flux_matrix, k2 / 2)
     k4 = precursor_density_increment(dt, sub, flux_matrix, k3)
     # numexpr: 1 core performs better
-    numexpr.set_num_threads(nn)
+    # numexpr.set_num_threads(nn)
     return evaluate_from_cache(expressions["rk4"], casting='same_kind')
 
 
@@ -404,7 +407,7 @@ def precursor_density_increment(dt, sub, flux_matrix, addon=0):
     :return: to sub array
     """
     # numexpr: 1 core performs better
-    numexpr.set_num_threads(nn)
+    # numexpr.set_num_threads(nn)
     return evaluate_from_cache(expressions["precursor_density"], local_dict={'F_dt':F*dt, 'F_dt_n0_1_tau_dt': (F*dt*tau+n0*dt)/(tau*n0), 'addon':addon, 'flux_matrix':flux_matrix, 'sigma_dt':sigma*dt, 'sub':sub}, casting='same_kind')
 
 
@@ -422,7 +425,7 @@ def rk4_diffusion(grid, ghosts_bool, D, dt):
     k2=laplace_term_rolling(grid, ghosts_bool, D, dt, add=k1/2)
     k3=laplace_term_rolling(grid, ghosts_bool, D, dt, add=k2/2)
     k4=laplace_term_rolling(grid, ghosts_bool, D, dt, add=k3)
-    numexpr.set_num_threads(nn)
+    # numexpr.set_num_threads(nn)
     return evaluate_from_cache(expressions["rk4"], casting='same_kind')
 
 
@@ -495,9 +498,8 @@ def laplace_term_rolling(grid, ghosts_bool, D, dt, add = 0, div: int = 0):
     grid[ghosts_bool] = 0
     grid_out[ghosts_bool]=0 # result also has to be cleaned as it contains redundant values in ghost cells
     # numexpr: 1 core performs better
-    numexpr.set_num_threads(nn)
-    if div == 0:
-        return evaluate_from_cache(expressions["laplace1"], local_dict={'dt_D': dt*D, 'grid_out':grid_out}, casting='same_kind')
+    # numexpr.set_num_threads(nn)
+    return evaluate_from_cache(expressions["laplace1"], local_dict={'dt_D': dt*D, 'grid_out':grid_out}, casting='same_kind')
     # else:
     #     return evaluate_from_cache(expressions["laplace2"], local_dict={'dt_D_div': dt*D/div, 'grid_out':grid_out}, casting='same_kind')
 
@@ -582,7 +584,7 @@ def flux_matrix(matrix, surface_irradiated):
     matrix[surface_irradiated] = pe_flux(np.hypot(index_xx, index_yy).reshape(-1))
 
 
-# @jit(nopython=True)
+# @jit(nopython=True) # parallel=True)
 def define_irradiated_area(y, x, effective_radius_relative:int):
     """
     Defines boundaries of the effectively irradiated area
@@ -609,7 +611,7 @@ def define_irradiated_area(y, x, effective_radius_relative:int):
     return  norm_y_start, norm_y_end+1, norm_x_start, norm_x_end+1
 
 
-@jit(nopython=True, parallel=True, cache=True)
+# @jit(nopython=True, parallel=True, cache=True)
 def show_yield(deposit, summ, summ1, res):
     summ1 = np.sum(deposit)
     res = summ1-summ
@@ -626,8 +628,6 @@ def printing(loops=1):
     :param loops: number of repetitions of the route
     :return: changes deposit and substrate arrays
     """
-    warnings.simplefilter('ignore', category=NumbaDeprecationWarning)
-    warnings.simplefilter('ignore', category=NumbaPendingDeprecationWarning)
 
     flush_structure(substrate, deposit, init_deposit = 0.97, volume_prefill=0.7)
 
@@ -658,11 +658,17 @@ def printing(loops=1):
 
     max_z=4 # used to track the highest point
     ext = 2 # a constant for inner update_surface logic
-
+    ch = ' '
     for l in range(loops):  # loop repeats, currently beam travels in a zig-zack manner (array indexing)
         # summ1, summ, result = show_yield(deposit, summ, summ1,result)
         # print(f'Deposit yield:{result}  Loop:{l}')
-        print(f'Loop:{l}')
+        if l % 3 == 0:
+            ch = '\\'
+        if l % 3 == 1:
+            ch = '/'
+        if l % 3 == 2:
+            ch = '-'
+        print(f'Loop:{l}   {ch}', end='\r')
         for y in range(y_offset, y_limit, dwell_step):  # beam travel along Y-axis
             for x in range(x_offset, x_limit, dwell_step):  # beam travel alon X-axis
                 y_start, y_end, x_start, x_end = define_irradiated_area(y, x, effective_radius_relative) # Determining the area around the beam that is effectively irradiated
