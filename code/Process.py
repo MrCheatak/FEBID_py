@@ -8,6 +8,7 @@
 
 import numpy as np
 from numpy import asarray, zeros, copy, where, mgrid, s_
+import yaml
 import scipy.constants as scpc
 import math
 import matplotlib.pyplot as plt
@@ -24,6 +25,8 @@ from numba.experimental import jitclass
 from numba.core.errors import NumbaDeprecationWarning, NumbaPendingDeprecationWarning
 import warnings
 import sys
+import os
+from Laplace import laplace
 # import line_profiler
 # TODO: look into k-d trees
 # TODO: add a benchmark to determine optimal threads number for current machine
@@ -33,85 +36,6 @@ import sys
 # numexpr.set_vml_num_threads(1)
 # numexpr.use_vml=True
 
-class Laplace_Convolution:
-    # @jit(nopython=False, parallel=True)
-    def laplace_term(grid, surfa, semi_surf, D, dt):
-        """
-        Calculates diffusion term for all surface cells using convolution
-
-        :param grid: 3D precursor density array
-        :param surfa: surface cells collection
-        :param semi_surf: semi-surface cells collection
-        :param D: diffusion coefficient
-        :param dt: time step
-        :return: to grid array
-        """
-        p_grid = np.pad(grid, 1, mode='constant', constant_values=0)
-        sub_grid = copy(grid)
-        Laplace_Convolution.convolute(sub_grid, p_grid, surfa, semi_surf)
-        return evaluate("sub_grid*D*dt")
-
-    # @jit(nopython=False, parallel=True)
-    def convolute(grid_out, grid, coords, coords1):
-        """
-        Selectively applies convolution operator to the cells with provided coordinates
-
-        :param grid_out: 3D array with convolution results
-        :param grid: original 3D array
-        :param coords: coordinates of surface cells
-        :param coords1: coordinates of semi-surface cells
-        :return: to grid_out array
-        """
-        grid_out *= -6
-        with np.nditer(coords, flags=['multi_index']) as it:
-            for z in it:
-                kernel = grid[z:z + 3, it.multi_index[0]:it.multi_index[0] + 3,
-                         it.multi_index[1]:it.multi_index[1] + 3]  # taking a 3x3x3 view around current cell
-                # kernel = grid[z - 1:z + 2, it.multi_index[0] - 1:it.multi_index[0] + 2, it.multi_index[1] - 1:it.multi_index[1]+2]
-                grid_out[z, it.multi_index[0], it.multi_index[1]] += Laplace_Convolution.kernel_convolution(kernel)
-        if any(coords1):
-            for pos in coords1:
-                kernel = grid[pos[0]:pos[0] + 3, pos[1]:pos[1] + 3, pos[2]:pos[2] + 3]
-                grid_out[pos] += Laplace_Convolution.kernel_convolution(kernel)
-
-    @jit(nopython=False)
-    def kernel_convolution(grid):
-        """
-        Applies convolution to the central cell in the given 3D grid.
-
-        If one of the neighbors is Zero, it is replaced by the central value.
-
-        :param grid: array to convolute
-        :return: changes grid array
-        """
-        # mesh = [(0, 1, 1), (2, 1, 1), (1, 1, 0), (1, 1, 2), (1, 0, 1), (1, 2, 1)]
-        summ = 0
-        if 1 > grid[0, 1, 1] > 0:
-            summ += grid[0, 1, 1]
-        else:
-            summ += grid[1, 1, 1]
-        if 1 > grid[2, 1, 1] > 0:
-            summ += grid[2, 1, 1]
-        else:
-            summ += grid[1, 1, 1]
-        if 1 > grid[1, 1, 0] > 0:
-            summ += grid[1, 1, 0]
-        else:
-            summ += grid[1, 1, 1]
-        if 1 > grid[1, 1, 2] > 0:
-            summ += grid[1, 1, 2]
-        else:
-            summ += grid[1, 1, 1]
-        if 1 > grid[1, 0, 1] > 0:
-            summ += grid[1, 0, 1]
-        else:
-            summ += grid[1, 1, 1]
-        if 1 > grid[1, 2, 1] > 0:
-            summ += grid[1, 2, 1]
-        else:
-            summ += grid[1, 1, 1]
-
-        return summ
 
 # TODO: implement import of parameters from file
 # <editor-fold desc="Parameters">
@@ -629,6 +553,58 @@ def printing(loops=1):
     :return: changes deposit and substrate arrays
     """
 
+        # Importing parameters
+    prec_params = yaml.load(open(f'{sys.path[0]}{os.sep}Precursor.yml','r'), Loader=yaml.Loader)
+    tech_params = yaml.load(open(f'{sys.path[0]}{os.sep}Parameters.yml','r'), Loader=yaml.Loader)
+    sim_params = yaml.load(open(f'{sys.path[0]}{os.sep}Simulation.yml','r'), Loader=yaml.Loader)
+    # Buffering constants and initializing framework
+
+    td = tech_params["dwell_time"]  # dwell time of a beam, s
+    Ie = tech_params["beam_current"]  # beam current, A
+    beam_d = tech_params["beam_diameter"]  # electron beam diameter, nm
+    F = tech_params["precursor_flux"]  # precursor flux at the surface, 1/(nm^2*s)   here assumed a constant, but may be dependent on time and position
+    tau = 500E-6  # average residence time, s; may be dependent on temperature
+    effective_diameter = beam_d * 3.3  # radius of an area which gets 99% of the electron beam
+    f = Ie / scpc.elementary_charge / (math.pi * beam_d * beam_d / 4)  # electron flux at the surface, 1/(nm^2*s)
+
+    # Precursor properties
+    sigma = prec_params["cross_section"]  # dissociation cross section, nm^2; is averaged from cross sections of all electron types (PE,BSE, SE1, SE2)
+    n0 = prec_params["max_density"]  # inversed molecule size, Me3PtCpMe, 1/nm^2
+    molar = prec_params["molar_mass"]  # molar mass of the precursor Me3Pt(IV)CpMe, g/mole
+    # density = 1.5E-20  # density of the precursor Me3Pt(IV)CpMe, g/nm^3
+    V = prec_params["dissociated_volume"]  # atomic volume of the deposited atom (Pt), nm^3
+    D = prec_params["diffusion_prefactor"]  # diffusion coefficient, nm^2/s
+    tau = 1/prec_params["desorption_frequency"]  # average residence time, s; may be dependent on temperature
+
+    kd = F / n0 + 1 / tau + sigma * f  # depletion rate
+    kr = F / n0 + 1 / tau  # replenishment rate
+    nr = F / kr  # absolute density after long time
+    nd = F / kd  # depleted absolute density
+    t_out = 1 / (1 / tau + F / n0)  # effective residence time
+    p_out = 2 * math.sqrt(D * t_out) / beam_d
+
+    dt = sim_params["time_step"]
+    cell_dimension = sim_params["cell_dimention"]  # side length of a square cell, nm
+    system_size = sim_params["system_size"]
+    zmax = sim_params["system_height"]
+
+    effective_radius_relative = math.floor(effective_diameter / cell_dimension / 2)
+
+    nn = 1  # default number of threads for numexpr
+    # </editor-fold>
+
+    # <editor-fold desc="Timings">
+    t_flux = 1 / (sigma + f)  # dissociation event time
+    diffusion_dt = math.pow(cell_dimension * cell_dimension, 2) / (2 * D * (
+                cell_dimension * cell_dimension + cell_dimension * cell_dimension))  # maximum stability lime of the diffusion solution
+
+    substrate = zeros((system_size * height_multiplyer, system_size, system_size),
+                      dtype=np.float32)  # substrate[z,x,y] holds precursor density
+    deposit = zeros((system_size * height_multiplyer, system_size, system_size),
+                    dtype=np.float32)  # deposit[z,y,x] holds deposit density
+    zmax, ymax, xmax = substrate.shape  # dimensions of the grid
+
+    # Setting initial conditions
     flush_structure(substrate, deposit, init_deposit = 0.97, volume_prefill=0.7)
 
     ghosts = set(zip(*define_ghosts(substrate, zeros((system_size, system_size), dtype=int))))
