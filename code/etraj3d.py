@@ -1,5 +1,8 @@
-import sys
+import copy
+import sys, os
+import time
 import random as rnd
+import timeit
 from math import *
 import numpy as np
 import pyvista as pv
@@ -9,6 +12,7 @@ from tqdm import tqdm
 import pickle
 import line_profiler
 import VTK_Rendering as vr
+from timebudget import timebudget
 
 # TODO: implement a global flag for collecting data(Se trajes) for plotting
 
@@ -51,7 +55,7 @@ def read_cfg(fname):
     return params
 
 
-def plot(m3d:map3d.ETrajMap3d, sim:et.ETrajectory=0): # plot energy loss and all trajectories
+def plot(m3d:map3d.ETrajMap3d, sim:et.ETrajectory=nan): # plot energy loss and all trajectories
     struct = m3d.grid
     trajs = m3d.trajectories
     pe_energies = 0
@@ -62,23 +66,20 @@ def plot(m3d:map3d.ETrajMap3d, sim:et.ETrajectory=0): # plot energy loss and all
     se_trajes = m3d.se_traj
     render = vr.Render()
     # Deposited structure
-    render.add_3Darray(m3d.grid, m3d.cell_dim, -3, 0, button_name="Structure", color='white')
+    render.add_3Darray(m3d.grid, m3d.cell_dim, -3, 0, button_name="Structure", color='white', invert=True)
     # Deposited energies
-    render.add_3Darray(m3d.DE, m3d.cell_dim, 1, scalar_name='Deposited energy, eV', button_name="Deposited energy", cmap='coolwarm')
+    render.add_3Darray(m3d.DE, m3d.cell_dim, 1, scalar_name='Deposited energy, eV', button_name="Deposited energy", cmap='coolwarm', log_scale=True)
     # SE flux at the surface
-    render.add_3Darray(m3d.flux, m3d.cell_dim, 1, scalar_name='Flux, 1/(nm^2*s)', button_name='SE surface flux', cmap='plasma')
+    render.add_3Darray(m3d.flux, m3d.cell_dim, 1, scalar_name='Flux, 1/(nm^2*s)', button_name='SE surface flux', cmap='plasma', log_scale=True)
     # PE trajectories
-    render.add_trajectory(trajs, pe_energies, 0.5, scalar_name='PE Energy, keV', button_name='PEs', cmap='viridis')
+    render.add_trajectory(trajs, pe_energies, 0.5, step=10, scalar_name='PE Energy, keV', button_name='PEs', cmap='viridis')
     # SEs
-    render.add_trajectory(se_trajes, radius=0.2, step=5, button_name='SEs', color='red')
+    render.add_trajectory(se_trajes, radius=0.2, step=25, button_name='SEs', color='red')
+
     render.p.camera_position = [(463.14450307610286, 271.1171723376318, 156.56895424388603),
                                 (225.90027381807235, 164.9577775224395, 71.42188811921902),
                                 (-0.27787912231751677, -0.1411181984824172, 0.950194110399093)]
     camera_pos = render.show()
-
-
-
-
 
 
 def cache_params(fn_cfg, deposit, surface, cell_dim, beam_ef_rad, dt):
@@ -117,8 +118,8 @@ def run_simulation(sim: et.ETrajectory, deposit:np.ndarray, surface: np.ndarray,
     m3d = map3d.ETrajMap3d()
     m3d.get_structure(deposit, surface, sim.cell_dim)
     m3d.map_trajectory(sim.passes) # mapping all cached MC trajectories for every generated point[x0, y0]
-    m3d.flux /= sim.dt/sim.reduction_factor
-    # plot(m3d, sim)
+    m3d.flux /= ((sim.dt*sim.cell_dim*sim.cell_dim)/sim.norm_factor)
+    plot(m3d, sim)
     return sim
 
 
@@ -133,13 +134,44 @@ def rerun_simulation(y0, x0, deposit, surface, sim):
     :param sim:
     :return:
     """
+    # picks = []
+    # for i in range(2, 50):
+    #     start = timeit.default_timer()
+    #     sim.run(y0, x0, i*100)
+    #     t = timeit.default_timer()-start
+    #     print(f'Run {i} with {i*100} iters took {t}')
+    #     picks.append(copy.deepcopy(sim.passes))
+    # file = open(f'{sys.path[0]}{os.sep}Trajes_200-4900.txt', 'wb')
+    # pickle.dump(picks, file)
+    start = timeit.default_timer()
     sim.run(y0, x0)
+    t = timeit.default_timer() - start
+    print(f'Took {t} s')
+    # print(f'Run with {sim.N} iters took {t}')
     sim.ztop = np.nonzero(surface)[0].max()+1
     m3d = map3d.ETrajMap3d()
     m3d.get_structure(deposit, surface, sim.cell_dim)
+    start = timeit.default_timer()
     m3d.map_trajectory(sim.passes)
-    # plot(m3d)
-    return np.int32(m3d.flux/sim.dt*sim.reduction_factor)
+    t = timeit.default_timer() - start
+    print(f'Took {t} s')
+    # print("Loading trajectories file...")
+    # file = open(f'{sys.path[0]}{os.sep}Trajes_200-4900.txt', 'rb')
+    # passes = pickle.load(file)
+    # file.close()
+    # print("Done.")
+    # file = open(f'{sys.path[0]}{os.sep}Test_map_follow{time.ctime()}.txt', 'w')
+    # file.write("Initial version\n")
+    # for pas in passes:
+    #     with timebudget(f'Simulation:{i}'):
+    #     start = timeit.default_timer()
+    #     m3d.map_trajectory(pas)
+    #     t = timeit.default_timer()-start
+    #     file.write(f'{len(pas)}\t{t}\n')
+    #     print(f'Run {len(pas)/100} with {len(pas)} iters took {t}')
+    # file.close()
+    plot(m3d, sim)
+    return np.int32(m3d.flux*sim.norm_factor/(sim.dt*sim.cell_dim*sim.cell_dim))
 
 
 if __name__ == '__main__':

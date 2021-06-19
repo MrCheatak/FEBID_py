@@ -12,6 +12,10 @@ import pyvista as pv
 import os
 from tqdm import tqdm
 import line_profiler
+import multiprocessing
+import concurrent.futures
+import itertools
+from timebudget import timebudget
 
 NA = 6.022141E23 # Avogadro number
 
@@ -33,8 +37,79 @@ class ETrajectory(object):
         self.passes = []
         rnd.seed()
 
+    class Coordinates():
+        def __init__(self, x, y, parent):
+            self.E = parent.E
+            self.x = x
+            self.y = y
+            self.z = (parent.zdim - parent.ztop) * parent.cell_dim / 3
+            self.cx = 0
+            self.cy = 0
+            self.cz = 1
+            self.cell_dim = parent.cell_dim
+            self.zdim, self.ydim, self.xdim = parent.zdim, parent.ydim, parent.xdim
+            self.zdim_abs, self.ydim_abs, self.xdim_abs = self.zdim * self.cell_dim, self.ydim * self.cell_dim, self.xdim * self.cell_dim
 
-    def setParameters(self, params, deposit, surface, cell_dim, beam_ef_rad, dt):
+        def get_indices(self, z=0, y=0, x=0, cell_dim=1):
+            """
+            Gets indices of a cell in an array according to its position in the space
+
+            :param x:
+            :param y:
+            :param z:
+            :param cell_dim:
+            :return: i(z), j(y), k(x)
+            """
+            if z == 0: z = self.z
+            if y == 0: y = self.y
+            if x == 0: x = self.x
+            if cell_dim == 1: cell_dim = self.cell_dim
+            return int(z / cell_dim), int(y / cell_dim), int(x / cell_dim)
+
+        def get_direction(self, ctheta, stheta, psi):
+            """
+            Calculate cosines of the new direction according
+            Special procedure from D.Joy 1995 on Monte Carlo modelling
+            :param ctheta:
+            :param stheta:
+            :param psi:
+            :return:
+            """
+            if self.cz == 0.0: self.cz = 0.00001
+            # Coefficients for calculating direction cosines
+            AM = -self.cx / self.cz
+            AN = 1.0 / sqrt(1.0 + AM ** 2)
+            V1 = AN * stheta
+            V2 = AN * AM * stheta
+            V3 = cos(psi)
+            V4 = sin(psi)
+            # New direction cosines
+            # On every step a sum of squares of the direction cosines is always a unity
+            ca = self.cx * ctheta + V1 * V3 + self.cy * V2 * V4
+            cb = self.cy * ctheta + V4 * (self.cz * V1 - self.cx * V2)
+            cc = self.cz * ctheta + V2 * V3 - self.cy * V1 * V4
+            return ca, cb, cc
+
+        def check_boundaries(self, z=0, y=0, x=0):
+            """
+            Checks is the given (z,y,x) position is inside the simulation chamber
+
+            :param z:
+            :param y:
+            :param x:
+            :return:
+            """
+            if x == 0: x = self.x
+            if y == 0: y = self.y
+            if z == 0: z = self.z
+            if 0 <= x < self.xdim_abs:
+                if 0 <= y < self.ydim_abs:
+                    if 0 <= z < self.zdim_abs:
+                        return True
+            return False
+
+
+    def setParameters(self, params, deposit, surface, cell_dim, beam_ef_rad, dt, stat=2500):
         self.E0 = params['E0']
         self.Z = params['Z']
         self.A = params['A']
@@ -50,8 +125,8 @@ class ETrajectory(object):
         self.ztop = np.nonzero(self.surface)[0].max()+1 # highest point of the structure
         self.J = self._getJ()
         self.sigma = params['sigma']
-        self.N = params['N']
-        self.reduction_factor = params['N']/self.N
+        self.N =  stat
+        self.norm_factor = params['N'] / self.N
         self.beam_ef_rad = beam_ef_rad
         self.PEL = 0
         self.SE_passes = []
@@ -59,21 +134,27 @@ class ETrajectory(object):
         self.substrate = Element(params["sub"], params["Z_s"], params["A_s"], params["rho_s"])
         self.material = nan
         self.dt = dt
+        self.Emin = 0.1 # cut-off energy for PE, keV
 
 
-    def rnd_gauss_xy(self, x0, y0):
+    def rnd_gauss_xy(self, x0, y0, N):
         '''Gauss-distributed (x, y) positions.
            sigma: standard deviation
            n: number of positions
            Returns lists of n x and y coordinates which are gauss-distributed.
         '''
-        x, y = [], []
+        # x, y = [], []
+        if N==0: N=self.N
+        r = np.random.normal(0, self.sigma, N)
+        phi = np.random.uniform(0, 2 * pi - np.finfo(float).tiny, N)
         rnd.seed()
-        for i in range(self.N):
-            r = rnd.gauss(0.0, self.sigma)
-            phi = rnd.uniform(0, 2 * pi - np.finfo(float).tiny)
-            x.append(r * cos(phi)+x0)
-            y.append(r * sin(phi)+y0)
+        # for i in range(self.N):
+        #     ra = rnd.gauss(0.0, self.sigma)
+        #     phis = rnd.uniform(0, 2 * pi - np.finfo(float).tiny)
+        #     x.append(ra * cos(phis)+x0)
+        #     y.append(ra * sin(phis)+y0)
+        x = r*np.cos(phi) + x0
+        y = r*np.sin(phi) + y0
         return (x, y)
 
 
@@ -93,14 +174,14 @@ class ETrajectory(object):
         if cell_dim == 1: cell_dim = self.cell_dim
         return int(z/cell_dim), int(y/cell_dim), int(x/cell_dim)
 
-    def __generate_angles(self, material=nan):
+    def __generate_angles(self, coords, material=nan):
         """
         Generates cos and sin of lateral angle and azimuthal angle
 
         :param material:
         :return:
         """
-        a = self._getAlpha()
+        a = self._getAlpha(coords)
         rnd2 = rnd.random()
         ctheta = 1.0 - 2.0 * a * rnd2 / (1.0 + a - rnd2)  # scattering angle cosines , 0 <= angle <= 180˚, it produces an angular distribution that is obtained experimentally (more chance for low angles)
         stheta = sqrt(1.0 - ctheta ** 2)  # scattering angle sinus
@@ -135,7 +216,8 @@ class ETrajectory(object):
             profiler.print_stats()
         a=0
 
-    def run(self, i0, j0, Emin=0.1):
+
+    def run(self, i0, j0, N=0):
         """
         Runs Monte-Carlo electron scattering simulation for the given structure
 
@@ -156,75 +238,107 @@ class ETrajectory(object):
 
         """
 
-        y0, x0 = self.rnd_gauss_xy(i0*self.cell_dim, j0*self.cell_dim)  # generate gauss-distributed beam positions
+        y0, x0 = self.rnd_gauss_xy(i0*self.cell_dim, j0*self.cell_dim, N)  # generate gauss-distributed beam positions
         self.passes[:] = [] # prepare a list for energies and trajectories
-        for x,y in zip(x0,y0):
+        print("\nGenerating trajectories")
+        # for x,y in tqdm(zip(x0,y0)):
+        #     self.map_trajectory(x, y)
         # for i in tqdm(range(passes)):
-            flag = False
-            trajectories = [] # trajectory will be a sequence of points
-            energies = []
-            trajectories.append(((self.zdim-self.ztop)*self.cell_dim/3, y, x))  # every time starting from the beam origin (a bit above the highest point of the structure)
-            energies.append(self.E0)  # and with the beam energy
-            self.E = self.E0  # getting initial beam energy
-            self.x, self.y, self.z = x, y, (self.zdim-self.ztop)*self.cell_dim/3
-            self.cx, self.cy, self.cz = 0, 0, 1  # direction cosines
-            ctheta, stheta = 0, 0
-            i,j,k = self.__get_indices()
-            if self.grid[i,j,k] > -1: # if current cell is not deponat or substrate, electron flies straight to the surface
-                for i in range(self.ztop, 0, -1):
-                    if self.grid[i, j, k] <= -1:
-                        self.z = i*self.cell_dim
-                        trajectories.append((self.z, self.y, self.x))  # saving current point
-                        energies.append(self.E)
-                        break
-            while (self.E > Emin):  # and (self.z >= 0.0):  # going on with every electron until energy is depleeted or reaching bottom
-                i,j,k = self.__get_indices()
-                if self.grid[i,j,k] > -1: # checking if the cell is void
-                    # If yes continuing previous trajectory until impact
-                    x1, y1, z1 = self.x, self.y, self.z
-                    while True:
-                        x1 += self.cell_dim * self.cx
-                        y1 += self.cell_dim * self.cy
-                        z1 -= self.cell_dim * self.cz
-                        if self.__check_boundaries(z1, y1, x1):
-                            if self.grid[self.__get_indices(z1, y1, x1)] <= -1:
-                                trajectories.append((z1, y1, x1))  # saving current point
-                                energies.append(self.E)  # saving electron energy at this point
-                                self.x, self.y, self.z = x1, y1, z1
-                                break
-                        else:
-                            trajectories.append((z1, y1, x1))  # saving current point
-                            energies.append(self.E)  # saving electron energy at this point
-                            self.x, self.y, self.z = x1, y1, z1
-                            flag = True
-                            break
-                    i,j,k = self.__get_indices()
-                    if flag: # finishing trajectory mapping if electron is beyond chamber walls
-                        flag = False
-                        break
-
-                # Determining material of the current voxel
-                if self.grid[i,j,k] == -2: # curent cell is substrate
-                    self.material = self.substrate
-                if self.grid[i,j,k] == -1: # current cell is deponat
-                    self.material = self.deponat
-                ctheta , stheta, psi, a = self.__generate_angles()
-                step = -self._getLambda_el(a) * log(rnd.uniform(0.00001,1))  # actual distance an electron travels
-                ca, cb, cc = self.__get_direction(ctheta, stheta, psi) # direction cosines
-                # Next step coordinates:
-                x1 = self.x + step*ca
-                y1 = self.y + step*cb
-                z1 = self.z - step*cc
-                self.E += self._getELoss()*step
-                trajectories.append((z1, y1, x1))  # saving current point
-                energies.append(self.E)  # saving electron energy at this point
-                # Making the new point the current point for the next iteration
-                self.x, self.y, self.z = x1, y1, z1
-                self.cx, self.cy, self.cz = ca, cb, cc
-                if not self.__check_boundaries():
-                    break
-            self.passes.append((trajectories,energies)) # collecting mapped trajectories and energies
+        # Splitting collections to correspond to the number of processes:
+        x = list(np.array_split(x0, 8))
+        y = list(np.array_split(y0, 8))
+        # Launching a processes manager:
+        with multiprocessing.Pool(8) as pool:
+            results = pool.starmap(self.map_wrapper, zip(x, y))
+        # COllectings results:
+        for p in results:
+            self.passes += p
+        # print(f'Done')
+        # points = [(x, y) for (x,y) in zip(x0, y0)]
+        # with concurrent.futures.ProcessPoolExecutor() as ex:
+        #     results = [ex.submit(self.map_trajectory, point) for point in points]
+        # for f in concurrent.futures.as_completed(results):
+        #     self.passes.append(f.result())
         # self.prep_plot_traj() # view trajectories
+
+
+    def map_wrapper(self, x0, y0):
+        passes = []
+        for x,y in zip(x0,y0):
+            passes.append(self.map_trajectory(x,y))
+        return passes
+
+    def map_trajectory(self, x, y):
+        flag = False
+        trajectories = []  # trajectory will be a sequence of points
+        energies = []
+        # x, y = points
+        trajectories.append(((self.zdim - self.ztop) * self.cell_dim / 3, y,
+                             x))  # every time starting from the beam origin (a bit above the highest point of the structure)
+        energies.append(self.E0)  # and with the beam energy
+        self.E = self.E0  # getting initial beam energy
+        # Due to memory race problem, all the variables that are changing(coordinates, energy) have been moved to a separate class,
+        # that gets instanced for every trajectory and thus for every process
+        coords = self.Coordinates(x, y, self)#(self.E, (self.zdim - self.ztop) * self.cell_dim / 3, y, x, self.cell_dim)
+        # self.x, self.y, self.z = x, y, (self.zdim - self.ztop) * self.cell_dim / 3
+        # self.cx, self.cy, self.cz = 0, 0, 1  # direction cosines
+        ctheta, stheta = 0, 0
+        i, j, k = coords.get_indices()
+        if self.grid[i, j, k] > -1:  # if current cell is not deponat or substrate, electron flies straight to the surface
+            for i in range(self.ztop, 0, -1):
+                if self.grid[i, j, k] <= -1:
+                    coords.z = i * self.cell_dim
+                    trajectories.append((coords.z, coords.y, coords.x))  # saving current point
+                    energies.append(coords.E)
+                    break
+        while (coords.E > self.Emin):  # and (self.z >= 0.0):  # going on with every electron until energy is depleeted or reaching bottom
+            i, j, k = coords.get_indices()
+            if self.grid[i, j, k] > -1:  # checking if the cell is void
+                # If yes continuing previous trajectory until impact
+                x1, y1, z1 = coords.x, coords.y, coords.z
+                while True:
+                    x1 += self.cell_dim * coords.cx
+                    y1 += self.cell_dim * coords.cy
+                    z1 -= self.cell_dim * coords.cz
+                    if coords.check_boundaries(z1, y1, x1):
+                        if self.grid[coords.get_indices(z1, y1, x1)] <= -1:
+                            trajectories.append((z1, y1, x1))  # saving current point
+                            energies.append(coords.E)  # saving electron energy at this point
+                            coords.x, coords.y, coords.z = x1, y1, z1
+                            break
+                    else:
+                        trajectories.append((z1, y1, x1))  # saving current point
+                        energies.append(coords.E)  # saving electron energy at this point
+                        coords.x, coords.y, coords.z = x1, y1, z1
+                        flag = True
+                        break
+                i, j, k = coords.get_indices()
+                if flag:  # finishing trajectory mapping if electron is beyond chamber walls
+                    flag = False
+                    break
+
+            # Determining material of the current voxel
+            if self.grid[i, j, k] == -2:  # curent cell is substrate
+                self.material = self.substrate
+            if self.grid[i, j, k] == -1:  # current cell is deponat
+                self.material = self.deponat
+            ctheta, stheta, psi, a = self.__generate_angles(coords)
+            step = -self._getLambda_el(coords, a) * log(rnd.uniform(0.00001, 1))  # actual distance an electron travels
+            ca, cb, cc = coords.get_direction(ctheta, stheta, psi)  # direction cosines
+            # Next step coordinates:
+            x1 = coords.x + step * ca
+            y1 = coords.y + step * cb
+            z1 = coords.z - step * cc
+            coords.E += self._getELoss(coords) * step
+            trajectories.append((z1, y1, x1))  # saving current point
+            energies.append(coords.E)  # saving electron energy at this point
+            # Making the new point the current point for the next iteration
+            coords.x, coords.y, coords.z = x1, y1, z1
+            coords.cx, coords.cy, coords.cz = ca, cb, cc
+            if not coords.check_boundaries():
+                break
+        self.passes.append((trajectories, energies))  # collecting mapped trajectories and energies
+        return (trajectories, energies)
 
     def __get_direction(self, ctheta, stheta, psi):
         """
@@ -343,7 +457,7 @@ class ETrajectory(object):
         if Z==0: Z=self.Z
         return (9.76*Z + 58.5/Z**0.19)*1.0E-3 # +
 
-    def _getAlpha(self, material=nan, E=0):
+    def _getAlpha(self, coords, material=nan, E=0):
         """
         Screening factor, that accounts for the fact that the incident electron
         does not see all of the charge on the nucleus because of the cloud of orbiting electrons
@@ -352,10 +466,10 @@ class ETrajectory(object):
         :return:
         """
         if E == 0:
-            E = self.E
+            E = coords.E
         return 3.4E-3*self.material.Z**0.67/E
 
-    def _getSigma(self, a, material=nan): # in nm^2/atom
+    def _getSigma(self, coords, a, material=nan): # in nm^2/atom
         """
         Calculates Elastic cross section (by Rutherford)
         E – electron energy, keV
@@ -364,9 +478,9 @@ class ETrajectory(object):
         :return:
         """
         # a = self._getAlpha()
-        return 5.21E-7*self.material.Z**2/self.E**2*4.0*pi/(a*(1.0+a))*((self.E+511.0)/(self.E+1022.0))**2
+        return 5.21E-7*self.material.Z**2/coords.E**2*4.0*pi/(a*(1.0+a))*((coords.E+511.0)/(coords.E+1022.0))**2
 
-    def _getLambda_el(self, a, material=nan): # in nm
+    def _getLambda_el(self, coords,  a, material=nan): # in nm
         """
         Mean free path of an electron
         A – atomic weight, g/mole
@@ -376,7 +490,7 @@ class ETrajectory(object):
         :return:
         """
         # sigma = self._getSigma()
-        return self.A/(NA*self.material.rho*1.0E-21*self._getSigma(a))
+        return self.A/(NA*self.material.rho*1.0E-21*self._getSigma(coords, a))
 
 
     def _getLambda_in(self, material=nan, Emin=0.1):
@@ -400,7 +514,7 @@ class ETrajectory(object):
         r = sqrt(self.x**2 + self.y**2 + self.z**2)
         return (self.x/r,self.y/r,self.z/r)
 
-    def _getELoss(self, material=nan, E=0): # in keV/nm
+    def _getELoss(self, coords, material=nan, E=0): # in keV/nm
         """
         Energy loss rate per distance traveled due to inelastic events dE/dS (stopping power)
         Applicable down to PE energies of 100 eV
@@ -412,7 +526,7 @@ class ETrajectory(object):
         :return:
         """
         if E == 0:
-            E = self.E
+            E = coords.E
         return -7.85E-3*self.material.rho*self.material.Z/(self.material.A*E)*log(1.166*(E/self.material.J + 0.85))
 
     def show(self, dir_name):
@@ -474,7 +588,7 @@ class ETrajectory(object):
         cam = self.p.show() #(screenshot='PE_trajes.png')
 
 
-def render_3Darray(arr, cell_dim, lower_t=0, upper_t=1, name='scalars_s' ):
+def render_3Darray(arr, cell_dim, lower_t=0, upper_t=1, name='scalars_s', invert=False ):
     """
     Renders a 3D numpy array and trimms values
     Array is plotted as a solid block without value trimming
@@ -491,7 +605,7 @@ def render_3Darray(arr, cell_dim, lower_t=0, upper_t=1, name='scalars_s' ):
     grid.dimensions = np.asarray([arr.shape[2], arr.shape[1], arr.shape[0]]) + 1 # creating grid with the size of the array
     grid.spacing = (cell_dim, cell_dim, cell_dim) # assigning dimensions of a cell
     grid.cell_arrays[name] = arr.flatten() # writing values
-    grid = grid.threshold([lower_t,upper_t]) # trimming
+    grid = grid.threshold([lower_t,upper_t], invert=invert) # trimming
     return grid
 
 

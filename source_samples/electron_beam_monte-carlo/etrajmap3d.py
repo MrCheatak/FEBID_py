@@ -7,7 +7,7 @@ class ETrajMap3d(object):
 
     def __init__(self):
         self.trajectories = [] # holds all trajectories mapped to 3d structure
-        self.DE = None # will hold accumulated deposited energy for each voxel
+        self.DE = None # will hold accumulated deposited energy for each voxel (structured)
         self.state = None # wild hold states of voxels after read_vtk()
         self.grid = None # will hold uniform grid after read_vtk()
         self.dx, self.dy, self.dz = 0.0, 0.0, 0.0 # distance between grid points; will be set after read_vtk()
@@ -29,10 +29,10 @@ class ETrajMap3d(object):
 
     def __find_zshift(self, x, y):
         '''Finds and returns z-position where beam at (x, y) hits 3d structure.'''
-        i, j = int((x - self.x0)/self.dx), int((y - self.y0)/self.dy)
-        for k in range(self.nz - 1, 0, -1):
+        i, j = int((x - self.x0)/self.dx), int((y - self.y0)/self.dy) # converting absolute coordinates to array-coordinates
+        for k in range(self.nz - 1, 0, -1): # proceeding from up to down
             if self.state[i,j,k] == 2 or self.state[i,j,k] == 1:
-                return self.z0 + k*self.dz
+                return self.z0 + k*self.dz # finishing on the first incident
 
     def __triple(self, p): # need always 'left-most' indices
         return int(floor((p[0] - self.x0)/self.dx)), int(floor((p[1] - self.y0)/self.dy)), int(floor((p[2] - self.z0)/self.dz))
@@ -69,20 +69,29 @@ class ETrajMap3d(object):
         else:
             return 0
 
-    def __follow_segment(self, traj, p1, p2, dE): # set traj points inside geometry for given p1, p2
-        vd = p2 - p1
+    def __follow_segment(self, traj, p1, p2, dE):
+        """
+        Set trajectory points inside geometry for given p1, p2
+
+        :param traj: resulting trajectory
+        :param p1: first point
+        :param p2: next point
+        :param dE:
+        :return:
+        """
+        vd = p2 - p1 # vector between two points
         L0 = sqrt(vd.dot(vd))
         L = L0
         istp, jstp, kstp = self.__sign(vd[0]), self.__sign(vd[1]), self.__sign(vd[2])
         p0 = p1
-        pr = np.copy(p2) # will be changed in program and returned
-        i, j, k = self.__triple(p0)
+        pr = np.copy(p2) # will be changed and returned
+        i, j, k = self.__triple(p0) # getting points' array coordinates
         t0, t1, t2 = self.__crossings(i, j, k, istp, jstp, kstp, p0, vd)
         t = 0.0
         cont = True
         while True:
             di = dj = dk = 0
-            traj.append(p0)
+            traj.append(p0) # appending the first point
             if t0 < t1:
                 if t0 < t2:
                     t += t0
@@ -104,7 +113,7 @@ class ETrajMap3d(object):
             ps = p1 + t*vd
             dp = ps - p0
             dL = sqrt(dp.dot(dp))
-            if i < 0 or i >= self.nx or j < 0 or j >= self.ny or k < 0 or k >= self.nz:
+            if i < 0 or i >= self.nx or j < 0 or j >= self.ny or k < 0 or k >= self.nz:  # checking if we are out of the array
                 cont = False # segment runs out of simulation box
                 traj.append(ps)
                 break
@@ -116,7 +125,7 @@ class ETrajMap3d(object):
                     if k - dk >= 0:
                         dp = pr - traj[-1]
                         de = sqrt(dp.dot(dp))/L0*dE
-                        self.DE[i-di,j-dj,k-dk] += de
+                        self.DE[i-di,j-dj,k-dk] += de # depositing energy in the corresponding cell
                     traj.append(pr)
                     break
                 traj.append(ps)
@@ -142,9 +151,11 @@ class ETrajMap3d(object):
         # move x and y to be at position xb, yb
         x = x - x[0] + xb
         y = y - y[0] + yb
-        zshift = self.__find_zshift(x[0], y[0])
+        # Z-correction is needed because beam scatters only in the material and travels freely until the impact
+        # Finding that distance from the beam source and adding it to all the trajectory points (shifting trajectory down)
+        zshift = self.__find_zshift(x[0], y[0]) # As if shooting a beam straight down and looking where it hits the surface
         z = z - z[0] + zshift
-        pts, dEs = [], []
+        pts, dEs = [], [] # new lists for shifted trajectories and energy(loss)
         for i in range(len(x) - 1):
             pts.append(np.array([x[i], y[i], z[i]]))
             dEs.append((energies[i] - energies[i+1])*1000) # convert energies to eV
@@ -160,11 +171,11 @@ class ETrajMap3d(object):
            Adds calculated trajectory in 3d structure to self.trajectories and updates
            entries in self.DE regarding accumulated deposited energy in each voxel.
         '''
-        pts, dEs = self.__setup_trajectory(points, energies, xb, yb)
+        pts, dEs = self.__setup_trajectory(points, energies, xb, yb) # Adding distance from the beam origin to surface to all the points (shifting trajectories down) and getting energy losses
         p1 = pts[0]
         traj = []
         for i in range(len(pts) - 1):
-            p2 = p1 + (pts[i+1] - pts[i])
+            p2 = p1 + (pts[i+1] - pts[i]) # first point plus delta
             p1, cont = self.__follow_segment(traj, p1, p2, dEs[i])
             if not cont:
                 break
