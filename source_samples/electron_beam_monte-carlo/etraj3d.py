@@ -56,9 +56,9 @@ def plot(grid, trajs): # plot energy loss and all trajectories
         fmt='%.0f',
         font_family='arial',
     )
-    grid.set_active_scalar('state')
+    # grid.set_active_scalar('state')
     grid_vol = grid.threshold([1, 2])
-    grid.set_active_scalar('energy')
+    # grid.set_active_scalar('energy')
     grid_eloss = grid.threshold([0.01, np.max(grid.cell_arrays['energy'])])
     p = pv.Plotter()
     #_ = p.add_mesh(grid_vol, color='white', style='wireframe')
@@ -82,28 +82,32 @@ def run_simulation(fn_vti, fn_cfg, show, pickle_traj):
        show: either 'y' ('Y') or 'n' ('N'); if 'y', result will be shown
        pickle_traj: either 'y' ('Y') or 'n' ('N'); if 'y', trajectors will be pickled for later use
     '''
-    params = read_cfg(fn_cfg)
+    params = read_cfg(fn_cfg) # reading parameters for initial Monte-Carlo simulation
     sim_params = {}
-    sim_params['E0'] = params['E0']
-    sim_params['Z'] = params['Z']
-    sim_params['A'] = params['A']
-    sim_params['rho'] = params['rho']
-    sim_params['x0'] = 0.0
+    sim_params['E0'] = params['E0'] # beam energy in keV
+    sim_params['Z'] = params['Z'] # average atomic number of the material
+    sim_params['A'] = params['A'] # average mole mass of the material
+    sim_params['rho'] = params['rho'] # average material density
+    sim_params['x0'] = 0.0 # beam center
     sim_params['y0'] = 0.0
     sim_params['z0'] = 0.0
     sim = et.ETrajectory(name=params['name'])
-    sim.setParameters(sim_params)
-    sim.run(passes=params['N'])
+    sim.setParameters(sim_params) # collecting parameters: E0, Z, A, rho, x0, y0, z0, J
+    sim.run(passes=params['N']) # running Monte-Carlo simulation (mapping electron trajectories and energies)
+
+    # At this point trajectories are just a collection of points with corresponding energies:
+    # [[E1, E2, ... En], [(x1, y1, z1), (x2, y2, z2), ... (xn, yn, zn)], [], [] ]
 
     m3d = map3d.ETrajMap3d()
     m3d.read_vtk(fn_vti)
     x, y = rnd_gauss_xy(params['sigma'], params['N']) # generate gauss-distributed beam positions
-    x0 = [xx + params['xb'] for xx in x]
+    x0 = [xx + params['xb'] for xx in x] # mapping beam points from the beam origin
     y0 = [yy + params['yb'] for yy in y]
     for i in tqdm(range(params['N'])):
         points, energies = sim.passes[i][0], sim.passes[i][1]
-        m3d.map_trajectory(points, energies, x0[i], y0[i])
+        m3d.map_trajectory(points, energies, x0[i], y0[i]) # mapping all cached MC trajectories for every generated point[x0, y0]
     m3d.grid.cell_arrays['energy'] = m3d.DE.flatten(order='F')
+    # sim.prep_plot_traj(m3d.trajectories)
 
     index = fn_vti.find('.vti')
     m3d.grid.save(fn_vti[:index] + '_E' + '.vti')
@@ -116,9 +120,12 @@ def run_simulation(fn_vti, fn_cfg, show, pickle_traj):
         plot(m3d.grid, m3d.trajectories)
 
 if __name__ == '__main__':
-    if len(sys.argv) != 5:
-        print('Usage: python3 etraj3d.py <vti file> <cfg file> <show plot (y/n)> <pickle trajectories (y/n)>')
-        print('Exit.')
-        exit(0)
+    # sys.argv=input("Input: ").split(' ')
+    sys.argv=("hockeystick.vti hockeystick.cfg y y").split(' ')
+    # if len(sys.argv) != 5:
+    #     print('Usage: python3 etraj3d.py <vti file> <cfg file> <show plot (y/n)> <pickle trajectories (y/n)>')
+    #     hockeystick.vti hockeystick.cfg y y
+    #     print('Exit.')
+    #     exit(0)
 
-    run_simulation(sys.argv[1], sys.argv[2], sys.argv[3], sys.argv[4])
+    run_simulation(sys.argv[0], sys.argv[1], sys.argv[2], sys.argv[3]) # running whole simulation

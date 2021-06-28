@@ -62,7 +62,7 @@ nn=1 # default number of threads for numexpr
 
 # <editor-fold desc="Timings">
 dt = np.float32(1E-6)  # time step, s
-t_flux = 1/(sigma+f)  # dissociation event time
+t_flux = 1/(sigma*f)  # dissociation event time
 diffusion_dt = math.pow(cell_dimension * cell_dimension, 2) / (2 * D * (cell_dimension * cell_dimension + cell_dimension * cell_dimension))   # maximum stability lime of the diffusion solution
 tau = 500E-6  # average residence time, s; may be dependent on temperature
 # </editor-fold>
@@ -131,6 +131,7 @@ class Structure():
         self.define_surface()
         self.substrate[self.surface_bool] = nr
         self.define_ghosts()
+        self.t = 0
 
     def flush_structure(self, init_density = nr, init_deposit=.0):
         """
@@ -391,8 +392,8 @@ def update_surface(deposit, substrate, surface_bool, semi_surf_bool, ghosts_bool
             ghosts_bool[cell[0], cell[1], cell[2]] = True # deposited cell belongs to ghost shell
             surface_bool[cell[0], cell[1], cell[2]] = False  # rising the surface one cell up (new cell)
             surface_bool[cell[0] + 1, cell[1], cell[2]] = True
-            flux_matrix[cell[0]+1, cell[1], cell[2]] = flux_matrix[cell[0], cell[1], cell[2]] # flux_matrix shape must follow surface shape
-            flux_matrix[cell[0], cell[1], cell[2]] = 0
+            # flux_matrix[cell[0]+1, cell[1], cell[2]] = flux_matrix[cell[0], cell[1], cell[2]] # flux_matrix shape must follow surface shape
+            # flux_matrix[cell[0], cell[1], cell[2]] = 0
             deposit[cell[0]+1, cell[1], cell[2]] += deposit[cell[0], cell[1], cell[2]] - 1  # if the cell was filled above unity, transferring that surplus to the cell above
             deposit[cell[0], cell[1], cell[2]] = -1  # a fully deposited cell is always a minus unity
             refresh(substrate, semi_surf_bool, ghosts_bool, cell[0] + 1, cell[1], cell[2])
@@ -418,7 +419,7 @@ def refresh(substrate, semi_s_bool, ghosts_bool, z,y,x):
     :return: changes surface array, semi-surface and ghosts collections
     """
     # this is needed, due to the substrate view being 2 cells wider in case of semi-surface or ghost cell falling out of the bounds of the view
-    semi_s_bool[z, y, x] = False # removing the new cell from the semi_surface collection
+    semi_s_bool[z, y, x] = False # removing the new cell from the semi_surface collection, because it belongs to surface now
     ghosts_bool[z, y, x] = False # removing the new cell from the ghost shell collection
     substrate[z, y, x] += substrate[z - 1, y, x] # if the deposited cell had precursor in it, transfer that surplus to the cell above
     # this may lead to an overfilling of a cell above unity, but it is not causing any anomalies due to diffusion process
@@ -699,7 +700,8 @@ def flux_matrix(matrix, surface_irradiated):
     :param surface_irradiated: irradiated area
     :return: to matrix array
     """
-    # TODO: with the same beam size, electron flux distribution is actually always the same, it just travels on the surface, thus no need to calculate it every time
+    # TODO: with the same beam size, electron flux distribution is actually always the same,
+    #  it just travels on the surface, thus no need to calculate it every time
     # TODO: distances from the center will always be the same, so the matrix of distances can be pre-calculated
     matrix[surface_irradiated] = pe_flux(np.hypot(index_xx, index_yy).reshape(-1))
 
@@ -737,6 +739,8 @@ def define_irr_area_2(beam_matrix):
     indices = np.nonzero(beam_matrix)
     return indices[1].min(), indices[1].max(), indices[2].min(), indices[2].max()
 
+# def path_generator(type, height=1, width=5, length=5)
+
 # @jit(nopython=True, parallel=True, cache=True)
 def show_yield(deposit, summ, summ1, res):
     summ1 = np.sum(deposit)
@@ -758,7 +762,8 @@ def printing(loops=1, p_cfg='', t_cfg='', s_cfg=''):
     structure = 0
     try:
         # file = fd.askopenfilename()
-        vtk_obj = pv.read('/Users/sandrik1742/Documents/PycharmProjects/FEBID/code/Deposit_18k_it_12h.vtk') # (fd.askopenfilename())
+        vtk_obj = pv.read(fd.askopenfilename())
+        vtk_obj.
         structure = Structure(vtk_obj=vtk_obj)
     except:
         pass
@@ -821,9 +826,9 @@ def printing(loops=1, p_cfg='', t_cfg='', s_cfg=''):
     deposit = zeros((system_size * height_multiplyer+5, system_size, system_size),
                     dtype=np.float32)  # deposit[z,y,x] holds deposit density
     zmax, ymax, xmax = substrate.shape  # dimensions of the grid
-    frame = pv.UniformGrid()
-    frame.dimensions = np.array(substrate.shape) + 1
-    frame.spacing = (cell_dimension, cell_dimension, cell_dimension)
+    # frame = pv.UniformGrid()
+    # frame.dimensions = np.array(substrate.shape) + 1
+    # frame.spacing = (cell_dimension, cell_dimension, cell_dimension)
 
     # Setting initial conditions
     flush_structure(substrate, deposit, init_deposit = 0., volume_prefill=0.)
@@ -833,14 +838,15 @@ def printing(loops=1, p_cfg='', t_cfg='', s_cfg=''):
     # surface_bool[0, :, :] = True # assumed that we have a flat substrate with no deposit
     define_surface(surface_bool, deposit)
 
-    ghosts = set(zip(*define_ghosts(substrate, np.ones((system_size, system_size), dtype=int))))
-    temp = tuple(zip(*ghosts))  # casting a set of coordinates to a list of index sequences for every dimension
-    ghosts_index = (asarray(temp[0]), asarray(temp[1]), asarray(temp[2]))  # constructing a tuple of ndarray sequences
-    ghosts_bool = np.full(substrate.shape, False, dtype=bool)
-    ghosts_bool[ghosts_index]=True
+    # ghosts = set(zip(*define_ghosts(substrate, np.ones((system_size, system_size), dtype=int))))
+    # temp = tuple(zip(*ghosts))  # casting a set of coordinates to a list of index sequences for every dimension
+    # ghosts_index = (asarray(temp[0]), asarray(temp[1]), asarray(temp[2]))  # constructing a tuple of ndarray sequences
+    # ghosts_bool = np.full(substrate.shape, False, dtype=bool)
+    # ghosts_bool[ghosts_index]=True
     ghosts_bool = define_ghosts_2(surface_bool)
 
-
+    # TODO: semi-surface concept is now different, because wall surface can now generate deposit.
+    #  Semi-surface now should refer only to the top edge cells, that have no actual neighbors
     semi_surface_bool = np.full((zmax, ymax, xmax), False, dtype=bool)
 
     t = 2E-6 # absolute time, s
@@ -877,6 +883,7 @@ def printing(loops=1, p_cfg='', t_cfg='', s_cfg=''):
     ch = ' '
     flag = True
     for l in tqdm(range(loops)):  # loop repeats, currently beam travels in a zig-zack manner (array indexing)
+    # for l in range(loops):
         # summ1, summ, result = show_yield(deposit, summ, summ1,result)
         # print(f'Deposit yield:{result}  Loop:{l}')
         # if l % 3 == 0:
@@ -915,6 +922,7 @@ def printing(loops=1, p_cfg='', t_cfg='', s_cfg=''):
                                    beam_matrix[irradiated_area_3D],
                                    max_z)  # updating surface on a selected area
             if t % refresh_dt < 1E-6:
+                # TODO: look into DASK for processing arrays by chunks in parallel
                 precursor_density(beam_matrix[:max_z, :, :],
                                   substrate[:max_z, :, :],
                                   surface_bool[:max_z, :, :],
@@ -943,7 +951,7 @@ def printing(loops=1, p_cfg='', t_cfg='', s_cfg=''):
         #     print("<p>Error: %s</p>" % e)
     p = pv.Plotter()
     b = etrajectory.render_3Darray(deposit, 5, 0.00001, 1)
-    p.add_mesh(b, opacity=0.5, clim=[0.97+0.000001, 1], below_color='white', above_color='red')
+    p.add_mesh(b, opacity=0.5, clim=[0.97 + 0.000001, 1], below_color='white', above_color='red')
     p.show()
     a=0
     b=0
@@ -961,7 +969,7 @@ def open_params():
 
 if __name__ == '__main__':
     # precursor_cfg, tech_cfg, sim_cfg = open_params()
-    printing(10000)
+    printing(3000)
     # cProfile.runctx('printing(100)',globals(),locals())
     # <editor-fold desc="Plot">
     q=0

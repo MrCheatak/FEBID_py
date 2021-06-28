@@ -7,7 +7,7 @@ import pylab as p
 from matplotlib import cm
 import pyvista as pv
 from tqdm import tqdm
-import os
+import os, sys, time
 
 class Render:
     def __init__(self, font=12, button_size=25):
@@ -45,7 +45,7 @@ class Render:
         self.prepare_obj(obj, button_name, cmap, color)
 
 
-    def add_3Darray(self, arr, cell_dim, lower_t=0, upper_t=1, scalar_name='scalars_s', button_name='1', color='', cmap='viridis'):
+    def add_3Darray(self, arr, cell_dim, lower_t=0, upper_t=1, scalar_name='scalars_s', button_name='1', color='', cmap='viridis', log_scale=False, invert=False):
         """
         Adds 3D structure from a Numpy array to the Pyvista plot
         :param arr: numpy array
@@ -58,16 +58,16 @@ class Render:
         :param cmap: colormap for the trajectories
         :return: adds PolyData() to Plotter()
         """
-        obj = self.render_3Darray(arr=arr, cell_dim=cell_dim, lower_t=lower_t, upper_t=upper_t, name=scalar_name)
-        self.prepare_obj(obj, button_name, cmap, color)
+        obj = self.render_3Darray(arr=arr, cell_dim=cell_dim, lower_t=lower_t, upper_t=upper_t, name=scalar_name, invert=invert)
+        self.prepare_obj(obj, button_name, cmap, color, log_scale=log_scale)
 
-    def prepare_obj(self, obj, name, cmap, color):
+    def prepare_obj(self, obj, name, cmap, color, log_scale=False):
         while True:
             if color:
-                obj_a = self.p.add_mesh(obj, style='surface', opacity=0.5, label='Structure', color=color) # adding data to the plot
+                obj_a = self.p.add_mesh(obj, style='surface', opacity=0.5, label='Structure', log_scale=log_scale, color=color) # adding data to the plot
                 break
             if cmap:
-                obj_a = self.p.add_mesh(obj, style='surface', opacity=0.5, label='Structure', cmap=cmap)
+                obj_a = self.p.add_mesh(obj, style='surface', opacity=0.5, label='Structure', log_scale=log_scale, cmap=cmap)
                 break
         self.p.add_text(name, font_size=self.font, position=(self.x_pos + 5, self.y_pos)) # captioning button
         obj_aa = self.SetVisibilityCallback(obj_a)
@@ -75,7 +75,7 @@ class Render:
         self.y_pos += self.size
 
 
-    def render_3Darray(self, arr, cell_dim, lower_t=0, upper_t=1, name='scalars_s' ):
+    def render_3Darray(self, arr, cell_dim, lower_t=0, upper_t=1, name='scalars_s', invert=False ):
         """
         Renders a 3D numpy array and trimms values
         Array is plotted as a solid block without value trimming
@@ -92,7 +92,7 @@ class Render:
         grid.dimensions = np.asarray([arr.shape[2], arr.shape[1], arr.shape[0]]) + 1 # creating grid with the size of the array
         grid.spacing = (cell_dim, cell_dim, cell_dim) # assigning dimensions of a cell
         grid.cell_arrays[name] = arr.flatten() # writing values
-        grid = grid.threshold([lower_t,upper_t]) # trimming
+        grid = grid.threshold([lower_t,upper_t], invert=invert) # trimming
         return grid
 
 
@@ -108,6 +108,7 @@ class Render:
 
         mesh = pv.PolyData()
         # If energies are provided, they are gonna be used as scalars to color trajectories
+        print("Rendering trajectories:")
         if any(energies):
             for i in tqdm(range(0, len(traj), step)): #
                 mesh = mesh + self.render_trajectory(traj[i], energies[i], radius, name)
@@ -136,6 +137,14 @@ class Render:
         if energies:
             mesh[name] = np.asarray(energies) # assigning energies for every point
         return mesh #.tube(radius=radius) # making line thicker
+
+    def save_3Darray(self, filename, arr, cell_dim, data_name='scalar'):
+        grid = pv.UniformGrid()
+        grid.dimensions = np.asarray([arr.shape[2], arr.shape[1], arr.shape[0]]) + 1  # creating a grid with the size of the array
+        grid.spacing = (cell_dim, cell_dim, cell_dim)  # assigning dimensions of a cell
+        grid.cell_arrays[data_name] = arr.flatten()  # writing values
+        print("File is saved in the same directory with current python script. Current time is appended")
+        grid.save(f'{sys.path[0]}{os.sep}{filename}{time.strftime("%H:%M:%S", time.localtime())}.vtk')
 
 
     def show(self, screenshot=False, show_grid=True, keep_plot=False):

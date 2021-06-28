@@ -4,6 +4,9 @@ from math import *
 import random as rnd
 import sys
 from tqdm import tqdm
+import multiprocessing
+import logging
+
 
 import os
 
@@ -36,8 +39,9 @@ class ETrajMap3d(object):
         self.grid = structure
         self.state = structure
         self.surface = surface
-        self.nz, self.ny, self.nx = np.asarray(self.grid.shape)- 1 # simulation chamber dimensions
         self.cell_dim = cell_dim # absolute dimension of a cell, nm
+        self.nz, self.ny, self.nx = np.asarray(self.grid.shape)- 1 # simulation chamber dimensions
+        self.zdim_abs, self.ydim_abs, self.xdim_abs = [x*self.cell_dim for x in [self.nz, self.ny, self.nx]]
         self.DE = np.zeros((self.nz+1, self.ny+1, self.nx+1)) # array for storing of deposited energies
         self.flux = np.zeros((self.nz+1, self.ny+1, self.nx+1)) # array for storing SE fluxes
         self.dn = floor(self.lambda_escape * 3 / self.cell_dim) # number of cells an SE can intersect
@@ -104,6 +108,23 @@ class ETrajMap3d(object):
         return int(z/cell_dim), int(y/cell_dim), int(x/cell_dim)
 
 
+    def __check_boundaries(self, z=0, y=0, x=0):
+        """
+        Checks is the given (z,y,x) position is inside the simulation chamber
+
+        :param z:
+        :param y:
+        :param x:
+        :return:
+        """
+        if 0 <= x < self.xdim_abs:
+            if 0 <= y < self.ydim_abs:
+                if 0 <= z < self.zdim_abs:
+                    return True
+        return False
+
+
+    # TODO: maybe __follow_segment can be written in cpython?
     def __follow_segment(self, traj, p1, p2, dE):
         """
            Map line segment between points p1 and p2 onto real 3D structure and calculate energy deposited
@@ -184,6 +205,9 @@ class ETrajMap3d(object):
                         de = sqrt(dp.dot(dp))/L0*dE
                         self.DE[i-di,j-dj,k-dk] += de # depositing energy in the corresponding cell
                         if de != 0:
+                            # TODO: when cell size is reduced, deposited energy per cell may go lower than activation energy
+                            #  eliminating any SE emission
+                            #  SE emission has to be evaluated per step of a trajectory segment
                             self.generate_se(de, i-di,j-dj,k-dk, pr)
 
                     traj.append(pr)
@@ -220,21 +244,22 @@ class ETrajMap3d(object):
             length = self.lambda_escape * 2
             # s1, s2, s3 = int((pr[0]+length*cos(gamma))/self.cell_dim), int((pr[1]+length*sin(alpha))/self.cell_dim), int((pr[2]+length*cos(alpha))/self.cell_dim)
             s1, s2, s3 = (pr[0] + length * cos(gamma)), (pr[1] + length * sin(alpha)), (pr[2] + length * cos(alpha))
-            # self.se_traj.append([pr, np.array([s1, s2, s3])]) # save SE trajectory for plotting
-            # try:
-            if self.grid[self.__get_indices(s1, s2, s3)] < 1:  # if electron escapes solid
-                dz, dy, dx = (pr - (s1, s2, s3))/3
-                for n in range(3):  # # track which surface cell catches it
-                    i,j,k = self.__get_indices(s1, s2, s3)
-                    if self.surface[i,j,k] == True:
-                        self.flux[i,j,k] += n_se
-                        break
-                    else:
-                        s1 += dz
-                        s2 += dy
-                        s3 += dx
-            # except:  # just skip, if SE is out of the simulation box
-            #     pass
+            self.se_traj.append([pr, np.array([s1, s2, s3])]) # save SE trajectory for plotting
+            try: # using try-except clause instead of checking boundaries, because in case of escape electron is just abandoned
+                if self.grid[self.__get_indices(s1, s2, s3)] < 1:  # if electron escapes solid
+                    dz, dy, dx = (pr - (s1, s2, s3))/3
+                    for n in range(3):  # # track which surface cell catches it
+                        i,j,k = self.__get_indices(s1, s2, s3)
+                        if self.surface[i,j,k] == True:
+                            self.flux[i,j,k] += n_se
+                            break
+                        else:
+                            s1 += dz
+                            s2 += dy
+                            s3 += dx
+            except Exception as e: # printing out the actual exception just in case
+                logging.exception('Caught an Error:')
+                print("Skipping an electron")
 
     def __setup_trajectory(self, points, energies):
         '''Setup trajectory from MC simulation data for further computation.
@@ -255,7 +280,7 @@ class ETrajMap3d(object):
         return pnp, dE
 
 
-    def map_trajectory(self, passes):
+    def map_trajectory(self, passes, n=8):
         '''Do actual mapping of trajectory and energy loss onto 3d structure.
            points: list of (x, y, z) points of trajectory from MC simulation
            energies: list of deposited energies at the (x, y, z) points from MC simulation
@@ -263,19 +288,31 @@ class ETrajMap3d(object):
            Adds calculated trajectory in 3d structure to self.trajectories and updates
            entries in self.DE regarding accumulated deposited energy in each voxel.
         '''
+        print("\nDepositing energy and generating SEs")
+        pas = list(np.array_split(np.asarray(passes), n))
+        with multiprocessing.Pool(n) as pool:
+            results = pool.map(self.map_follow, pas)
+        for p in results:
+            self.flux += p[0]
+            self.DE += p[1]
+            self.se_traj += p[2]
+        # print("Done")
+        a=0
+
+    def map_follow(self, passes):
+        # for one_pass in tqdm(passes):
         for one_pass in passes:
-            pts, dEs = self.__setup_trajectory(one_pass[0][1:], one_pass[1][1:]) # Adding distance from the beam origin to surface to all the points (shifting trajectories down) and getting energy losses
+            pts, dEs = self.__setup_trajectory(one_pass[0][1:], one_pass[1][1:])  # Adding distance from the beam origin to surface to all the points (shifting trajectories down) and getting energy losses
             # self.__mesh_traj(pts)
             p1 = pts[0]
             traj = []
             for i in range(len(pts) - 1):
-                p2 = p1 + (pts[i+1] - pts[i]) # set p1 and p2 as endpoints of current segment
+                p2 = p1 + (pts[i + 1] - pts[i])  # set p1 and p2 as endpoints of current segment
                 p1, cont = self.__follow_segment(traj, p1, p2, dEs[i])
-                if not cont: # if endpoint leaves simulation volume break
+                if not cont:  # if endpoint leaves simulation volume break
                     break
-            self.trajectories.append(traj)
-        a=0
-
+            # self.trajectories.append(traj)
+        return self.flux, self.DE, self.se_traj # has to be returned, as every process has its own copy of the whole class and thus does not write to the original
 
     def __mesh_traj(self, traj):
         lines = np.asarray(traj)
