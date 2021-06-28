@@ -13,6 +13,7 @@ import math
 # import matplotlib.pyplot as plt
 # from matplotlib import cm
 import pyvista as pv
+import VTK_Rendering as vr
 # import ipyvolume as ipv
 from numexpr_mod import evaluate, evaluate_from_cache, cache_expression
 import numexpr
@@ -106,31 +107,80 @@ expressions = dict(pe_flux=cache_expression("f*exp(-r*r/(2*beam_d*beam_d))", [('
 
 
 class Structure():
-    def __init__(self, cell_dim=5, width=50, length=50, height=100, substrate_height=5, volume_prefill=0.9, vtk_obj=0):
+    def __init__(self, cell_dim=5, width=50, length=50, height=100, substrate_height=5, volume_prefill=0.9, vtk_obj: pv.UniformGrid = None):
+        """
+        Frame initializer. Either a vtk object should be specified or initial conditions given.
+
+        vtk object can either represent only a solid structure or a result of a deposition process with several parameters and arrays.
+        If parameters are specified despite being present in vtk file (i.e. cell dimension), newly specified values are taken.
+
+        :param cell_dim: size of a cell in nm
+        :param width: width of the simulation chamber (along X-axis)
+        :param length: length of the simulation chamber (along Y-axis)
+        :param height: height of the simulation chamber (along Z-axis)
+        :param substrate_height: thickness of the substrate in a number of cells along Z-axis
+        :param volume_prefill: level of initial filling for every cell. This is used to artificially speed up the depositing process
+        :param vtk_obj: an vtk object from file
+        """
         if vtk_obj:
-            self.cell_dimension = vtk_obj.spacing[0]
+            self.cell_dimension = 1
+            if vtk_obj.spacing[0] != vtk_obj.spacing[1] != vtk_obj.spacing[2]:
+                choice = input(f'Cell\'s dimensions must be equal and represent a cube. \nType x, y or z to specify dimension value that will be used for all three. \nThis may lead to a change of structure\'s shape. Press any other key to exit.')
+                if choice == 'x':
+                    self.cell_dimension = vtk_obj.spacing[0]
+                if choice == 'y':
+                    self.cell_dimension = vtk_obj.spacing[1]
+                if choice == 'z':
+                    self.cell_dimension = vtk_obj.spacing[2]
+                else:
+                    sys.exit("Exiting.")
+            else:
+                self.cell_dimension = vtk_obj.spacing[0]
             self.zdim, self.ydim, self.xdim = vtk_obj.dimensions[2] - 1, vtk_obj.dimensions[1] - 1, vtk_obj.dimensions[0] - 1
-            self.deposit = np.asarray(vtk_obj.cell_arrays.active_scalars.reshape((vtk_obj.dimensions[2]-1, vtk_obj.dimensions[1]-1, vtk_obj.dimensions[0]-1)))
-            self.substrate = np.zeros((self.zdim, self.ydim, self.xdim), dtype=np.float32)
-            self.substarte_val = -2
-            self.deposit_val = -1
-            self.vol_prefill = self.deposit[-1, -1, -1] # checking if there is a prefill by probing top corner cell
-            self.surface_bool = np.zeros((self.zdim, self.ydim, self.xdim), dtype=bool)
-            self.ghosts_bool = np.zeros((self.zdim, self.ydim, self.xdim), dtype=bool)
+            if 'surface_bool' in vtk_obj.array_names: # checking if it is a complete result of a deposition process
+                self.deposit = np.asarray(vtk_obj.cell_arrays['deposit'].reshape((vtk_obj.dimensions[2]-1, vtk_obj.dimensions[1]-1, vtk_obj.dimensions[0]-1)))
+                self.substrate = np.asarray(vtk_obj.cell_arrays['precursor_density'].reshape((vtk_obj.dimensions[2]-1, vtk_obj.dimensions[1]-1, vtk_obj.dimensions[0]-1)))
+                self.surface_bool = np.asarray(vtk_obj.cell_arrays['surface_bool'].reshape((vtk_obj.dimensions[2] - 1, vtk_obj.dimensions[1] - 1, vtk_obj.dimensions[0] - 1)))
+                self.semi_surface_bool= np.asarray(vtk_obj.cell_arrays['semi_surface_bool'].reshape((vtk_obj.dimensions[2] - 1, vtk_obj.dimensions[1] - 1, vtk_obj.dimensions[0] - 1)))
+                self.ghosts_bool = np.asarray(vtk_obj.cell_arrays['ghosts_bool'].reshape((vtk_obj.dimensions[2] - 1, vtk_obj.dimensions[1] - 1, vtk_obj.dimensions[0] - 1)))
+                # An attempt to attach new attributes to vtk object failed:
+                # self.substrate_height = vtk_obj['substrate_height']
+                # self.substrate_val = vtk_obj['substrate_val']
+                # self.deposit_val = vtk_obj['deposit_val']
+                # self.vol_prefill = vtk_obj['volume_prefill']
+                self.substrate_val = -2
+                self.deposit_val = -1
+                self.substrate_height = np.nonzero(self.deposit==self.substrate_val)[0].max()+1
+                self.vol_prefill = self.deposit[-1,-1,-1]
+            else:
+                # TODO: if a sample structure would be provided, it will be necessary to create a substrate under it
+                self.deposit = np.asarray(vtk_obj.cell_arrays.active_scalars.reshape((vtk_obj.dimensions[2]-1, vtk_obj.dimensions[1]-1, vtk_obj.dimensions[0]-1)))
+                self.substrate = np.zeros((self.zdim, self.ydim, self.xdim), dtype=np.float32)
+                self.substrate_height = substrate_height
+                self.substrate_val = -2
+                self.deposit_val = -1
+                self.vol_prefill = self.deposit[-1, -1, -1] # checking if there is a prefill by probing top corner cell
+                self.surface_bool = np.zeros((self.zdim, self.ydim, self.xdim), dtype=bool)
+                self.semi_surface_bool = np.zeros((self.zdim, self.ydim, self.xdim), dtype=bool)
+                self.ghosts_bool = np.zeros((self.zdim, self.ydim, self.xdim), dtype=bool)
+                self.define_surface()
+                self.define_ghosts()
         else:
             self.cell_dimension = cell_dim
             self.zdim, self.ydim, self.xdim = height, width, length
             self.deposit = np.zeros((self.zdim+substrate_height, self.ydim, self.xdim), dtype=np.float32)
             self.substrate = np.zeros((self.zdim+substrate_height, self.ydim, self.xdim), dtype=np.float32)
-            self.substarte_val = -2
+            self.substrate_val = -2
             self.deposit_val = -1
+            self.substrate_height = substrate_height
             self.vol_prefill = volume_prefill
             self.flush_structure(nr, 0)
             self.surface_bool = np.zeros((self.zdim+substrate_height, self.ydim, self.xdim),dtype=bool)
-            self.ghosts_bool = np.zeros((self.zdim, self.ydim, self.xdim), dtype=bool)
-        self.define_surface()
-        self.substrate[self.surface_bool] = nr
-        self.define_ghosts()
+            self.semi_surface_bool = np.zeros((self.zdim+substrate_height, self.ydim, self.xdim),dtype=bool)
+            self.ghosts_bool = np.zeros((self.zdim+substrate_height, self.ydim, self.xdim),dtype=bool)
+            self.define_surface()
+            self.define_ghosts()
+        self.substrate[self.surface_bool] = nr  # nr is still a global variable!!!
         self.t = 0
 
     def flush_structure(self, init_density = nr, init_deposit=.0):
@@ -189,7 +239,7 @@ class Structure():
         grid /= 7  # six neighbors + cell itself
         # Trimming unchanged cells:     using tolerance in case of inaccuracy
         grid[abs(grid - self.deposit_val) < 0.0000001] = 0  # fully deposited cells
-        grid[abs(grid - self.substarte_val) < 0.0000001] = 0  # substrate
+        grid[abs(grid - self.substrate_val) < 0.0000001] = 0  # substrate
         grid[abs(grid - self.vol_prefill) < 0.000001] = 0  # prefilled cells
         # Now making a boolean array of changed cells
         combined = np.full((self.deposit.shape), False, dtype=bool)
@@ -234,6 +284,15 @@ class Structure():
         grid.cell_arrays["deposit"] = deposit.flatten()
         grid.save('Deposit_'+time.strftime("%H:%M:%S", time.localtime()))
 
+class Material:
+    """
+    Represents a material
+    """
+    def __init__(self, name='noname', Z=1, A=1, rho=1):
+        self.name = name
+        self.rho = rho
+        self.Z = Z
+        self.A = A
 
 # @jit(nopython=True)
 def pe_flux(r):
@@ -763,10 +822,9 @@ def printing(loops=1, p_cfg='', t_cfg='', s_cfg=''):
     try:
         # file = fd.askopenfilename()
         vtk_obj = pv.read(fd.askopenfilename())
-        vtk_obj.
         structure = Structure(vtk_obj=vtk_obj)
-    except:
-        pass
+    except Exception as e:
+        logging.exception('Caught an Error:')
     # Importing parameters
     # sys.path[0] is the folder where current Python file is
     if not p_cfg:
@@ -949,10 +1007,7 @@ def printing(loops=1, p_cfg='', t_cfg='', s_cfg=''):
         # except Exception as e:
         #     e = sys.exc_info()[0]
         #     print("<p>Error: %s</p>" % e)
-    p = pv.Plotter()
-    b = etrajectory.render_3Darray(deposit, 5, 0.00001, 1)
-    p.add_mesh(b, opacity=0.5, clim=[0.97 + 0.000001, 1], below_color='white', above_color='red')
-    p.show()
+    vr.save_deposited_structure(structure, 'Test_struct')
     a=0
     b=0
 

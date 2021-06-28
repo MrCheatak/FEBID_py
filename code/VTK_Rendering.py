@@ -8,6 +8,7 @@ from matplotlib import cm
 import pyvista as pv
 from tqdm import tqdm
 import os, sys, time
+import pickle
 
 class Render:
     def __init__(self, font=12, button_size=25):
@@ -88,10 +89,7 @@ class Render:
         """
         if upper_t == 1: upper_t = arr.max()
         if lower_t == 0: lower_t = arr.min()
-        grid = pv.UniformGrid()
-        grid.dimensions = np.asarray([arr.shape[2], arr.shape[1], arr.shape[0]]) + 1 # creating grid with the size of the array
-        grid.spacing = (cell_dim, cell_dim, cell_dim) # assigning dimensions of a cell
-        grid.cell_arrays[name] = arr.flatten() # writing values
+        grid = numpy_to_vtk(arr, cell_dim, data_name=name)
         grid = grid.threshold([lower_t,upper_t], invert=invert) # trimming
         return grid
 
@@ -139,12 +137,10 @@ class Render:
         return mesh #.tube(radius=radius) # making line thicker
 
     def save_3Darray(self, filename, arr, cell_dim, data_name='scalar'):
-        grid = pv.UniformGrid()
-        grid.dimensions = np.asarray([arr.shape[2], arr.shape[1], arr.shape[0]]) + 1  # creating a grid with the size of the array
-        grid.spacing = (cell_dim, cell_dim, cell_dim)  # assigning dimensions of a cell
-        grid.cell_arrays[data_name] = arr.flatten()  # writing values
+        grid = numpy_to_vtk(arr, cell_dim, data_name)
         print("File is saved in the same directory with current python script. Current time is appended")
         grid.save(f'{sys.path[0]}{os.sep}{filename}{time.strftime("%H:%M:%S", time.localtime())}.vtk')
+
 
 
     def show(self, screenshot=False, show_grid=True, keep_plot=False):
@@ -157,3 +153,38 @@ class Render:
             self.p = copy.deepcopy(p1)
         self.y_pos = 5
         return camera_pos
+
+
+def numpy_to_vtk(arr, cell_dim=1, data_name='scalar', grid=None):
+        if not grid:
+            grid = pv.UniformGrid()
+            grid.dimensions = np.asarray([arr.shape[2], arr.shape[1], arr.shape[0]]) + 1  # creating a grid with the size of the array
+            grid.spacing = (cell_dim, cell_dim, cell_dim)  # assigning dimensions of a cell
+        grid.cell_arrays[data_name] = arr.flatten()  # writing values
+        return grid
+
+
+def save_deposited_structure( structure: Process.Structure, filename):
+    """
+
+    :param structure:
+    :return:
+    """
+
+    vtk_obj = numpy_to_vtk(structure.deposit, structure.cell_dimension, 'deposit')
+    vtk_obj = numpy_to_vtk(structure.substrate, data_name='precursor_density', grid=vtk_obj)
+    vtk_obj = numpy_to_vtk(structure.surface_bool, data_name='surface_bool', grid=vtk_obj)
+    vtk_obj = numpy_to_vtk(structure.semi_surface_bool, data_name='semi_surface_bool', grid=vtk_obj)
+    vtk_obj = numpy_to_vtk(structure.ghosts_bool, data_name='ghosts_bool', grid=vtk_obj)
+    vtk_obj.__setattr__('features', True) # Availability of this parameter will show if vtk file is either just a structure or a simulation result
+    vtk_obj.__setattr__('substrate_val', structure.substrate_val)
+    vtk_obj.__setattr__('substrate_height', structure.substrate_height)
+    vtk_obj.__setattr__('deposit_val', structure.deposit_val)
+    vtk_obj.__setattr__('volume_prefill', structure.vol_prefill)
+    a = vtk_obj.features
+    b = vtk_obj.cell_arrays['surface_bool']
+    c = vtk_obj.cell_arrays['deposit']
+    # file = open(f'{sys.path[0]}{os.sep}{filename}{time.strftime("%H:%M:%S", time.localtime())}.vtk', 'wb')
+    # pickle.dump(vtk_obj, file,protocol=4)
+    # Eventually, vtk does not save those new attributes
+    vtk_obj.save((f'{sys.path[0]}{os.sep}{filename}{time.strftime("%H:%M:%S", time.localtime())}.vtk'))
