@@ -46,7 +46,7 @@ class Render:
         self.prepare_obj(obj, button_name, cmap, color)
 
 
-    def add_3Darray(self, arr, cell_dim, lower_t=0, upper_t=1, scalar_name='scalars_s', button_name='1', color='', cmap='viridis', log_scale=False, invert=False):
+    def add_3Darray(self, arr, cell_dim, lower_t=0, upper_t=1, opacity=0.5, scalar_name='scalars_s', button_name='1', color='', cmap='viridis', log_scale=False, invert=False):
         """
         Adds 3D structure from a Numpy array to the Pyvista plot
         :param arr: numpy array
@@ -60,15 +60,15 @@ class Render:
         :return: adds PolyData() to Plotter()
         """
         obj = self.render_3Darray(arr=arr, cell_dim=cell_dim, lower_t=lower_t, upper_t=upper_t, name=scalar_name, invert=invert)
-        self.prepare_obj(obj, button_name, cmap, color, log_scale=log_scale)
+        self.prepare_obj(obj, button_name, cmap, color, log_scale=log_scale, opacity=opacity)
 
-    def prepare_obj(self, obj, name, cmap, color, log_scale=False):
+    def prepare_obj(self, obj, name, cmap, color, log_scale=False, opacity=0.5,):
         while True:
             if color:
-                obj_a = self.p.add_mesh(obj, style='surface', opacity=0.5, label='Structure', log_scale=log_scale, color=color) # adding data to the plot
+                obj_a = self.p.add_mesh(obj, style='surface', opacity=opacity, label='Structure', log_scale=log_scale, color=color) # adding data to the plot
                 break
             if cmap:
-                obj_a = self.p.add_mesh(obj, style='surface', opacity=0.5, label='Structure', log_scale=log_scale, cmap=cmap)
+                obj_a = self.p.add_mesh(obj, style='surface', opacity=opacity, label='Structure', log_scale=log_scale, cmap=cmap)
                 break
         self.p.add_text(name, font_size=self.font, position=(self.x_pos + 5, self.y_pos)) # captioning button
         obj_aa = self.SetVisibilityCallback(obj_a)

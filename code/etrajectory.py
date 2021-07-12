@@ -3,6 +3,7 @@
 #       Primary electron trajectory simulator         #
 #                                                     #
 #######################################################
+import math
 from math import *
 import numpy as np
 import random as rnd
@@ -66,7 +67,20 @@ class ETrajectory(object):
             if cell_dim == 1: cell_dim = self.cell_dim
             return int(z / cell_dim), int(y / cell_dim), int(x / cell_dim)
 
-        def get_direction(self, ctheta, stheta, psi):
+        def __generate_angles(self, a):
+            """
+            Generates cos and sin of lateral angle and the azimuthal angle
+
+            :param a: alpha at the current step
+            :return:
+            """
+            rnd2 = rnd.random()
+            self.ctheta = 1.0 - 2.0 * a * rnd2 / (
+                        1.0 + a - rnd2)  # scattering angle cosines , 0 <= angle <= 180˚, it produces an angular distribution that is obtained experimentally (more chance for low angles)
+            self.stheta = sqrt(1.0 - self.ctheta ** 2)  # scattering angle sinus
+            self. psi = 2.0 * pi * rnd.random()  # azimuthal scattering angle
+
+        def __get_direction(self, ctheta = None, stheta = None, psi = None):
             """
             Calculate cosines of the new direction according
             Special procedure from D.Joy 1995 on Monte Carlo modelling
@@ -75,20 +89,40 @@ class ETrajectory(object):
             :param psi:
             :return:
             """
+            if ctheta != None:
+                self.ctheta, self.stheta, self.psi = ctheta, stheta, psi
             if self.cz == 0.0: self.cz = 0.00001
             # Coefficients for calculating direction cosines
             AM = -self.cx / self.cz
             AN = 1.0 / sqrt(1.0 + AM ** 2)
-            V1 = AN * stheta
-            V2 = AN * AM * stheta
-            V3 = cos(psi)
-            V4 = sin(psi)
+            V1 = AN * self.stheta
+            V2 = AN * AM * self.stheta
+            V3 = cos(self.psi)
+            V4 = sin(self.psi)
             # New direction cosines
             # On every step a sum of squares of the direction cosines is always a unity
-            ca = self.cx * ctheta + V1 * V3 + self.cy * V2 * V4
-            cb = self.cy * ctheta + V4 * (self.cz * V1 - self.cx * V2)
-            cc = self.cz * ctheta + V2 * V3 - self.cy * V1 * V4
-            return ca, cb, cc
+            ca = self.cx * self.ctheta + V1 * V3 + self.cy * V2 * V4
+            cb = self.cy * self.ctheta + V4 * (self.cz * V1 - self.cx * V2)
+            cc = self.cz * self.ctheta + V2 * V3 - self.cy * V1 * V4
+            self.cz, self.cy, self.cx = cc, cb, ca
+            return  self.cz, self.cy, self.cx
+
+        def __get_next_point(self, step):
+            """
+            Calculate next point coordinates
+            :param step:
+            :return:
+            """
+            self.x += step * self.cx
+            self.y += step * self.cy
+            self.z -= step * self.cz
+
+        def get_next_point(self, a, step):
+            self.__generate_angles(a)
+            self.__get_direction()
+            self.__get_next_point(step)
+
+
 
         def check_boundaries(self, z=0, y=0, x=0):
             """
@@ -108,8 +142,10 @@ class ETrajectory(object):
                         return True
             return False
 
+        def get_direction(self, ctheta=None, stheta=None, psi=None):
+            return self.__get_direction(ctheta, stheta, psi)
 
-    def setParameters(self, params, deposit, surface, cell_dim, beam_ef_rad, dt, stat=2500):
+    def setParameters(self, params, deposit, surface, cell_dim, beam_ef_rad, dt, stat=3000):
         self.E0 = params['E0']
         self.Z = params['Z']
         self.A = params['A']
@@ -168,9 +204,9 @@ class ETrajectory(object):
         :param cell_dim:
         :return: i(z), j(y), k(x)
         """
-        if z == 0: z = self.z
-        if y == 0: y = self.y
-        if x == 0: x = self.x
+        # if z == 0: z = self.z
+        # if y == 0: y = self.y
+        # if x == 0: x = self.x
         if cell_dim == 1: cell_dim = self.cell_dim
         return int(z/cell_dim), int(y/cell_dim), int(x/cell_dim)
 
@@ -262,19 +298,26 @@ class ETrajectory(object):
         # self.prep_plot_traj() # view trajectories
 
 
-    def map_wrapper(self, x0, y0):
+    def map_wrapper(self, x0, y0, N=0):
         passes = []
+        if N == 0:
+            N = self.N
+        if type(x0) == float:
+            y0, x0 = self.rnd_gauss_xy(x0 * self.cell_dim, y0 * self.cell_dim, N)  # generate gauss-distributed beam positions
         for x,y in zip(x0,y0):
             passes.append(self.map_trajectory(x,y))
         return passes
 
     def map_trajectory(self, x, y):
+
+        # TODO: Vectorize !
+        # TODO: if electron escapes
         flag = False
         trajectories = []  # trajectory will be a sequence of points
         energies = []
+        mask = []
         # x, y = points
-        trajectories.append(((self.zdim - self.ztop) * self.cell_dim / 3, y,
-                             x))  # every time starting from the beam origin (a bit above the highest point of the structure)
+        trajectories.append(((self.zdim - self.ztop) * self.cell_dim / 3, y, x))  # every time starting from the beam origin (a bit above the highest point of the structure)
         energies.append(self.E0)  # and with the beam energy
         self.E = self.E0  # getting initial beam energy
         # Due to memory race problem, all the variables that are changing(coordinates, energy) have been moved to a separate class,
@@ -284,15 +327,22 @@ class ETrajectory(object):
         # self.cx, self.cy, self.cz = 0, 0, 1  # direction cosines
         ctheta, stheta = 0, 0
         i, j, k = coords.get_indices()
-        if self.grid[i, j, k] > -1:  # if current cell is not deponat or substrate, electron flies straight to the surface
-            for i in range(self.ztop, 0, -1):
-                if self.grid[i, j, k] <= -1:
-                    coords.z = i * self.cell_dim
-                    trajectories.append((coords.z, coords.y, coords.x))  # saving current point
-                    energies.append(coords.E)
-                    break
-        while (coords.E > self.Emin):  # and (self.z >= 0.0):  # going on with every electron until energy is depleeted or reaching bottom
+        if self.grid[i, j, k] > -1:  # if current cell is not deposit or substrate, electron flies straight to the surface
+            coords.z = ((self.grid[:, j, k]<0).nonzero()[0].max()+1) * self.cell_dim
+            trajectories.append((coords.z, coords.y, coords.x))  # saving current point
+            energies.append(coords.E)
+            mask.append(0)
+        while (coords.E > self.Emin):  # and (self.z >= 0.0):  # going on with every electron until energy is depleted or escaping chamber
             i, j, k = coords.get_indices()
+            if coords.cz > 0:
+                if i > 0:
+                    i -= 1
+            if coords.cy < 0:
+                if j > 0:
+                    j -= 1
+            if coords.cx < 0:
+                if k > 0:
+                    k -= 1
             if self.grid[i, j, k] > -1:  # checking if the cell is void
                 # If yes continuing previous trajectory until impact
                 x1, y1, z1 = coords.x, coords.y, coords.z
@@ -304,11 +354,31 @@ class ETrajectory(object):
                         if self.grid[coords.get_indices(z1, y1, x1)] <= -1:
                             trajectories.append((z1, y1, x1))  # saving current point
                             energies.append(coords.E)  # saving electron energy at this point
+                            mask.append(0)
                             coords.x, coords.y, coords.z = x1, y1, z1
                             break
                     else:
+                        if z1>=self.zdim_abs:
+                            z1 = self.zdim_abs-0.000001
+                        if z1 <= 0:
+                            z1 = 0.000001
+                        if y1>=self.ydim_abs:
+                            y1 = self.ydim_abs-0.000001
+                        if y1 <= 0:
+                            y1 = 0.000001
+                        if x1>=self.xdim_abs:
+                            x1 = self.xdim_abs-0.000001
+                        if x1 <= 0:
+                            x1 = 0.000001
                         trajectories.append((z1, y1, x1))  # saving current point
+                        m=0
+                        if self.grid[coords.get_indices(z1, y1, x1)] <= -1:
+                            step = np.asarray([z1-coords.z, y1-coords.y, x1-coords.x])
+                            step = math.sqrt(step.dot(step))
+                            coords.E += self._getELoss(coords) * step
+                            m = 1
                         energies.append(coords.E)  # saving electron energy at this point
+                        mask.append(m)
                         coords.x, coords.y, coords.z = x1, y1, z1
                         flag = True
                         break
@@ -322,47 +392,51 @@ class ETrajectory(object):
                 self.material = self.substrate
             if self.grid[i, j, k] == -1:  # current cell is deponat
                 self.material = self.deponat
-            ctheta, stheta, psi, a = self.__generate_angles(coords)
+            # ctheta, stheta, psi, a = self.__generate_angles(coords)
+            a = self._getAlpha(coords)
             step = -self._getLambda_el(coords, a) * log(rnd.uniform(0.00001, 1))  # actual distance an electron travels
-            ca, cb, cc = coords.get_direction(ctheta, stheta, psi)  # direction cosines
+            # cc, cb, ca = coords.get_direction(ctheta, stheta, psi)  # direction cosines
             # Next step coordinates:
-            x1 = coords.x + step * ca
-            y1 = coords.y + step * cb
-            z1 = coords.z - step * cc
-            coords.E += self._getELoss(coords) * step
-            trajectories.append((z1, y1, x1))  # saving current point
-            energies.append(coords.E)  # saving electron energy at this point
-            # Making the new point the current point for the next iteration
-            coords.x, coords.y, coords.z = x1, y1, z1
-            coords.cx, coords.cy, coords.cz = ca, cb, cc
+            # x1 = coords.x + step * ca
+            # y1 = coords.y + step * cb
+            # z1 = coords.z - step * cc
+            coords.get_next_point(a, step)
             if not coords.check_boundaries():
                 break
-        self.passes.append((trajectories, energies))  # collecting mapped trajectories and energies
-        return (trajectories, energies)
+            coords.E += self._getELoss(coords) * step
+            # trajectories.append((z1, y1, x1))  # saving current point
+            trajectories.append((coords.z, coords.y, coords.x))  # saving current point
+            energies.append(coords.E)  # saving electron energy at this point
+            mask.append(1)
+            # Making the new point the current point for the next iteration
+            # coords.x, coords.y, coords.z = x1, y1, z1
+            # coords.cx, coords.cy, coords.cz = ca, cb, cc
+        self.passes.append((trajectories, energies, mask))  # collecting mapped trajectories and energies
+        return (trajectories, energies, mask)
 
-    def __get_direction(self, ctheta, stheta, psi):
-        """
-        Calculate cosines of the new direction according
-        Special procedure from D.Joy 1995 on Monte Carlo modelling
-        :param ctheta:
-        :param stheta:
-        :param psi:
-        :return:
-        """
-        if self.cz == 0.0: self.cz = 0.00001
-        # Coefficients for calculating direction cosines
-        AM = -self.cx / self.cz
-        AN = 1.0 / sqrt(1.0 + AM ** 2)
-        V1 = AN * stheta
-        V2 = AN * AM * stheta
-        V3 = cos(psi)
-        V4 = sin(psi)
-        # New direction cosines
-        # On every step a sum of squares of the direction cosines is always a unity
-        ca = self.cx * ctheta + V1 * V3 + self.cy * V2 * V4
-        cb = self.cy * ctheta + V4 * (self.cz * V1 - self.cx * V2)
-        cc = self.cz * ctheta + V2 * V3 - self.cy * V1 * V4
-        return ca, cb, cc
+    # def __get_direction(self, ctheta, stheta, psi):
+    #     """
+    #     Calculate cosines of the new direction according
+    #     Special procedure from D.Joy 1995 on Monte Carlo modelling
+    #     :param ctheta:
+    #     :param stheta:
+    #     :param psi:
+    #     :return:
+    #     """
+    #     if self.cz == 0.0: self.cz = 0.00001
+    #     # Coefficients for calculating direction cosines
+    #     AM = -self.cx / self.cz
+    #     AN = 1.0 / sqrt(1.0 + AM ** 2)
+    #     V1 = AN * stheta
+    #     V2 = AN * AM * stheta
+    #     V3 = cos(psi)
+    #     V4 = sin(psi)
+    #     # New direction cosines
+    #     # On every step a sum of squares of the direction cosines is always a unity
+    #     ca = self.cx * ctheta + V1 * V3 + self.cy * V2 * V4
+    #     cb = self.cy * ctheta + V4 * (self.cz * V1 - self.cx * V2)
+    #     cc = self.cz * ctheta + V2 * V3 - self.cy * V1 * V4
+    #     return ca, cb, cc
 
     def _FSEmfp(self, E): # in
         """
