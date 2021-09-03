@@ -13,13 +13,14 @@ import math
 # import matplotlib.pyplot as plt
 # from matplotlib import cm
 import pyvista as pv
-import VTK_Rendering as vr
+# import VTK_Rendering as vr
 # import ipyvolume as ipv
-from numexpr_mod import evaluate, evaluate_from_cache, cache_expression
+from numexpr_mod import evaluate, evaluate_cached, cache_expression
 import numexpr
 import cProfile
 import sys
 import os
+from contextlib import suppress
 import etraj3d, etrajectory, etrajmap3d
 from tqdm import tqdm
 from tkinter import filedialog as fd
@@ -93,7 +94,7 @@ center = effective_radius_relative * cell_dimension  # beam center in array-coor
 index_y, index_x = mgrid[0:(effective_radius_relative*2+1), 0:(effective_radius_relative*2+1)] # for indexing purposes of flux matrix
 index_yy, index_xx = index_y*cell_dimension-center, index_x*cell_dimension-center
 
-# A dictionary of expressions for numexpr.evaluate_from_cache
+# A dictionary of expressions for numexpr.evaluate_cached
 # Debug note: before introducing a new cached expression, that expression should be run with the default 'evaluate' function for fetching the signature list.
 # This is required, because variables in it must be in the same order as Numexpr fetches them, otherwise Numexpr compiler will throw an error
 expressions = dict(pe_flux=cache_expression("f*exp(-r*r/(2*beam_d*beam_d))", [('beam_d', np.int32), ('f', np.float64), ('r', np.float64)]),
@@ -155,7 +156,7 @@ class Structure():
             else:
                 # TODO: if a sample structure would be provided, it will be necessary to create a substrate under it
                 self.deposit = np.asarray(vtk_obj.cell_arrays.active_scalars.reshape((vtk_obj.dimensions[2]-1, vtk_obj.dimensions[1]-1, vtk_obj.dimensions[0]-1)))
-                self.substrate = np.zeros((self.zdim, self.ydim, self.xdim), dtype=np.float32)
+                self.substrate = np.zeros((self.zdim, self.ydim, self.xdim), dtype=np.float64)
                 self.substrate_height = substrate_height
                 self.substrate_val = -2
                 self.deposit_val = -1
@@ -168,8 +169,8 @@ class Structure():
         else:
             self.cell_dimension = cell_dim
             self.zdim, self.ydim, self.xdim = height, width, length
-            self.deposit = np.zeros((self.zdim+substrate_height, self.ydim, self.xdim), dtype=np.float32)
-            self.substrate = np.zeros((self.zdim+substrate_height, self.ydim, self.xdim), dtype=np.float32)
+            self.deposit = np.zeros((self.zdim+substrate_height, self.ydim, self.xdim), dtype=np.float64)
+            self.substrate = np.zeros((self.zdim+substrate_height, self.ydim, self.xdim), dtype=np.float64)
             self.substrate_val = -2
             self.deposit_val = -1
             self.substrate_height = substrate_height
@@ -301,7 +302,7 @@ def pe_flux(r):
     :param r: radius from the center of the beam.
     """
     # numexpr: no impact from number of cores or vml
-    return evaluate_from_cache(expressions["pe_flux"])
+    return evaluate_cached(expressions["pe_flux"])
 
 
 # @jit(nopython=True)
@@ -445,6 +446,8 @@ def update_surface(deposit, substrate, surface_bool, semi_surf_bool, ghosts_bool
     :return: changes surface, semi-surface and ghosts arrays
     """
     # Because all arrays are sent to the function as views of the currently irradiated area (relative coordinate system), offsets are required to update semi-surface and ghost cells collection, because they are stored in absolute coordinates
+    # TODO: So far the code is designed only for straight up growth,
+    #  whereas with the MC module growth can also proceed on the walls
     new_deposits = np.argwhere(deposit>=1) # looking for new deposits
     if new_deposits.any():
         for cell in new_deposits:
@@ -487,22 +490,23 @@ def refresh(substrate, semi_s_bool, ghosts_bool, z,y,x):
         ghosts_bool[z+1, y, x] = True
     # Adding neighbors(in x-y plane) of the new cell to the semi_surface collection
     # and updating ghost shell for every neighbor:
-    if substrate[z, y - 1, x] == 0:
-        semi_s_bool[z, y - 1, x] = True
-        substrate[z, y - 1, x] += 1E-7 # this "marks" cell as a surface one, because some of the checks refer to if the cell is empty. This assignment is essential. It corresponds to the smallest value that float32 can hold and should be changed corrspondingly to the variable type.
-        refresh_ghosts(substrate, ghosts_bool, x, y-1, z) # update ghost shell around
-    if substrate[z, y + 1, x] == 0:
-        semi_s_bool[z, y + 1, x] = True
-        substrate[z, y + 1, x] += 1E-7
-        refresh_ghosts(substrate, ghosts_bool,  x, y+1, z)
-    if substrate[z, y, x - 1] == 0:
-        semi_s_bool[z, y, x - 1] = True
-        substrate[z, y, x - 1] += 1E-7
-        refresh_ghosts(substrate, ghosts_bool, x-1, y, z)
-    if substrate[z, y, x + 1] == 0:
-        semi_s_bool[z, y, x + 1] = True
-        substrate[z, y, x + 1] += 1E-7
-        refresh_ghosts(substrate, ghosts_bool, x+1, y, z)
+    with suppress(IndexError): # It basically skips operations that occur out of the array
+        if substrate[z, y - 1, x] == 0:
+            semi_s_bool[z, y - 1, x] = True
+            substrate[z, y - 1, x] += 1E-7 # this "marks" cell as a surface one, because some of the checks refer to if the cell is empty. This assignment is essential. It corresponds to the smallest value that float32 can hold and should be changed corrspondingly to the variable type.
+            refresh_ghosts(substrate, ghosts_bool, x, y-1, z) # update ghost shell around
+        if substrate[z, y + 1, x] == 0:
+            semi_s_bool[z, y + 1, x] = True
+            substrate[z, y + 1, x] += 1E-7
+            refresh_ghosts(substrate, ghosts_bool,  x, y+1, z)
+        if substrate[z, y, x - 1] == 0:
+            semi_s_bool[z, y, x - 1] = True
+            substrate[z, y, x - 1] += 1E-7
+            refresh_ghosts(substrate, ghosts_bool, x-1, y, z)
+        if substrate[z, y, x + 1] == 0:
+            semi_s_bool[z, y, x + 1] = True
+            substrate[z, y, x + 1] += 1E-7
+            refresh_ghosts(substrate, ghosts_bool, x+1, y, z)
 
 # @jit(nopython=True) # parallel=True)
 def refresh_ghosts(substrate, ghosts_bool, x, y, z):
@@ -571,7 +575,7 @@ def rk4(dt, sub, flux_matrix=0):
     k4 = precursor_density_increment(dt, sub, flux_matrix, k3)
     # numexpr: 1 core performs better
     # numexpr.set_num_threads(nn)
-    return evaluate_from_cache(expressions["rk4"], casting='same_kind')
+    return evaluate_cached(expressions["rk4"], casting='same_kind')
 
 
 # @jit(nopython=False, parallel=True)
@@ -588,7 +592,7 @@ def precursor_density_increment(dt, sub, flux_matrix, addon=0):
     """
     # numexpr: 1 core performs better
     # numexpr.set_num_threads(nn)
-    return evaluate_from_cache(expressions["precursor_density"], local_dict={'F_dt':F*dt, 'F_dt_n0_1_tau_dt': (F*dt*tau+n0*dt)/(tau*n0), 'addon':addon, 'flux_matrix':flux_matrix, 'sigma_dt':sigma*dt, 'sub':sub}, casting='same_kind')
+    return evaluate_cached(expressions["precursor_density"], local_dict={'F_dt':F*dt, 'F_dt_n0_1_tau_dt': (F*dt*tau+n0*dt)/(tau*n0), 'addon':addon, 'flux_matrix':flux_matrix, 'sigma_dt':sigma*dt, 'sub':sub}, casting='same_kind')
 
 
 def rk4_diffusion(grid, ghosts_bool, D, dt):
@@ -606,7 +610,7 @@ def rk4_diffusion(grid, ghosts_bool, D, dt):
     k3=laplace_term_rolling(grid, ghosts_bool, D, dt, add=k2/2)
     k4=laplace_term_rolling(grid, ghosts_bool, D, dt, add=k3)
     # numexpr.set_num_threads(nn)
-    return evaluate_from_cache(expressions["rk4"], casting='same_kind')
+    return evaluate_cached(expressions["rk4"], casting='same_kind')
 
 
 # @jit(nopython=True, parallel=True, forceobj=False)
@@ -679,9 +683,9 @@ def laplace_term_rolling(grid, ghosts_bool, D, dt, add = 0, div: int = 0):
     grid_out[ghosts_bool]=0 # result also has to be cleaned as it contains redundant values in ghost cells
     # numexpr: 1 core performs better
     # numexpr.set_num_threads(nn)
-    return evaluate_from_cache(expressions["laplace1"], local_dict={'dt_D': dt*D, 'grid_out':grid_out}, casting='same_kind')
+    return evaluate_cached(expressions["laplace1"], local_dict={'dt_D': dt*D, 'grid_out':grid_out}, casting='same_kind')
     # else:
-    #     return evaluate_from_cache(expressions["laplace2"], local_dict={'dt_D_div': dt*D/div, 'grid_out':grid_out}, casting='same_kind')
+    #     return evaluate_cached(expressions["laplace2"], local_dict={'dt_D_div': dt*D/div, 'grid_out':grid_out}, casting='same_kind')
 
 
 def define_ghosts(substrate, surface):
@@ -821,10 +825,11 @@ def printing(loops=1, p_cfg='', t_cfg='', s_cfg=''):
     structure = 0
     try:
         # file = fd.askopenfilename()
-        vtk_obj = pv.read(fd.askopenfilename())
-        structure = Structure(vtk_obj=vtk_obj)
+        # vtk_obj = pv.read(fd.askopenfilename())
+        structure = Structure(width=70, length=70, height=150, vtk_obj=vtk_obj, volume_prefill=0)
     except Exception as e:
         logging.exception('Caught an Error:')
+        structure = Structure(width=70, length=70, height=150)
     # Importing parameters
     # sys.path[0] is the folder where current Python file is
     if not p_cfg:
@@ -865,8 +870,8 @@ def printing(loops=1, p_cfg='', t_cfg='', s_cfg=''):
     system_size = sim_params["system_size"]
     zmax = sim_params["system_height"]
     config = {'name': prec_params["name"], 'E0': tech_params["beam_energy"], 'Emin': tech_params["minimum_energy"], 'Z': prec_params["average_element_number"],
-                   'A': prec_params["average_element_mol_mass"], 'rho': prec_params["average_density"], 'I0': tech_params["beam_current"]*1E12, 'sigma': beam_d,
-                   'xb': effective_diameter, 'yb': effective_diameter, 'N': int(Ie*dt/scpc.elementary_charge), 'sub': prec_params["substrate_element"],
+                   'A': prec_params["average_element_mol_mass"], 'rho': prec_params["average_density"], 'I0': tech_params["beam_current"], 'sigma': beam_d,
+                   'xb': effective_diameter, 'yb': effective_diameter, 'N': Ie*dt/scpc.elementary_charge, 'sub': prec_params["substrate_element"],
                    'Z_s': prec_params["substrate_average_element_number"], 'A_s': prec_params["substarte_average_mol_mass"], 'rho_s': prec_params["substrate_average_density"]}
 
     effective_radius_relative = math.floor(effective_diameter / cell_dimension / 2)
@@ -921,11 +926,11 @@ def printing(loops=1, p_cfg='', t_cfg='', s_cfg=''):
 
     summ1,summ, result=0,0,0
 
-    if vtk_obj != 0:
-        surface_bool = structure.surface_bool
-        ghosts_bool = structure.ghosts_bool
-        deposit = structure.deposit
-        substrate = structure.substrate
+    # if vtk_obj != 0:
+    surface_bool = structure.surface_bool
+    ghosts_bool = structure.ghosts_bool
+    deposit = structure.deposit
+    substrate = structure.substrate
 
     ###############
     # 1. Simulate PE and resulting SE trajectories
@@ -1007,7 +1012,7 @@ def printing(loops=1, p_cfg='', t_cfg='', s_cfg=''):
         # except Exception as e:
         #     e = sys.exc_info()[0]
         #     print("<p>Error: %s</p>" % e)
-    vr.save_deposited_structure(structure, 'Test_struct')
+    # vr.save_deposited_structure(structure, 'Test_struct')
     a=0
     b=0
 
@@ -1024,7 +1029,7 @@ def open_params():
 
 if __name__ == '__main__':
     # precursor_cfg, tech_cfg, sim_cfg = open_params()
-    printing(3000)
+    printing(100000)
     # cProfile.runctx('printing(100)',globals(),locals())
     # <editor-fold desc="Plot">
     q=0
