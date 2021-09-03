@@ -1,29 +1,369 @@
+import timeit
+
 import pyvista as pv
 import numpy as np
 from math import *
 import random as rnd
+from numpy.random import default_rng
 import os, sys
 from tqdm import tqdm
 import multiprocessing
 import logging
 import line_profiler
-import sandbox.HelloWorld as hw
+# import sandbox.HelloWorld as hw
+from functools import total_ordering
+import numba as nb
+from modified_libraries.ray_traversal import traversal
 
 
 
+@total_ordering # realises all comparison operations without having to define them explicitly
 class ETrajMap3d(object):
 
-    def __init__(self):
+    def __init__(self, e = 72, lambda_ascape = 3.5, segment_min_length = 2):
         self.DE = None # will hold accumulated deposited energy for each voxel
         self.state = None # wild hold states of voxels after read_vtk()
         self.grid = None # will hold uniform grid after read_vtk()
         self.nx, self.ny, self.nz = 0, 0, 0 # number of cells; will be set after read_vtk()
-        self.e = 72 # fitting parameter related to energy required to initiate a SE cascade, material specific, eV
-        self.e = 72/100 # actual values per emission are often below float64 accuracy, thus they are artificially increased
-        self.lambda_escape = 3.5 # mean free escape path, material specific, nm
+        self.e = e # fitting parameter related to energy required to initiate a SE cascade, material specific, eV
+        self.lambda_escape = lambda_ascape # mean free escape path, material specific, nm
         self.x0, self.y0, self.z0 = 0, 0, 0  # origin of 3d grid
+        self.segment_min_length = segment_min_length # sets the discretization of SE emission
         rnd.seed()
 
+    def get_structure(self, structure, surface, cell_dim, x=0, y=0):
+        self.grid = structure
+        self.state = structure
+        self.surface = surface
+        self.cell_dim = cell_dim # absolute dimension of a cell, nm
+        self.nz, self.ny, self.nx = np.asarray(self.grid.shape)- 1 # simulation chamber dimensions
+        self.zdim_abs, self.ydim_abs, self.xdim_abs = [x*self.cell_dim for x in [self.nz, self.ny, self.nx]]
+        self.DE = np.zeros((self.nz+1, self.ny+1, self.nx+1)) # array for storing of deposited energies
+        self.flux = np.zeros((self.nz+1, self.ny+1, self.nx+1)) # array for storing SE fluxes
+        self.amplifying_factor = 1000 # artificially increases SE yield to preserve accuracy
+        self.dn = floor(self.lambda_escape * 2 / self.cell_dim) # number of cells an SE can intersect
+        self.x = x
+        self.y = y
+        self.trajectories = [] # holds all trajectories mapped to 3d structure
+        self.se_traj = []
+
+    def __lt__(self, x):
+        return x < self.xdim_abs
+
+    def __eq__(self, x):
+        return x == self.xdim_abs
+
+    # @nb.jit(nopython=True)
+    def __arr_min(self, x):
+        if x[0] >= x[1]:
+            if x[1] >= x[2]:
+                return x[2], 2
+            else:
+                return x[1], 1
+        else:
+            if x[0] >= x[2]:
+                return x[2], 2
+            else:
+                return x[0], 0
+
+    # @nb.jit(nopython=True)
+    def traverse_cells(self, p0, pn, direction, t, step_t):
+        """
+            AABB Ray-Voxel traversal algorithm.
+            Gets coordinates, where ray crosses voxel walls
+
+        :param p0: ray origin
+        :param pn: ray endpoint
+        :param direction: direction of the ray
+        :param t: first t-value
+        :param step_t: step of the t-value
+        :return:
+        """
+
+        crossings = [p0]  # first point is always ray origin
+        while True:  # iterating until the end of the ray
+            next_t, ind = self.__arr_min(t)  # minimal t-value corresponds to the box wall crossed; 2x faster than t.min() !!
+            if next_t > 1:  # finish if trajectory ends inside a cell (t>1)
+                crossings.append(pn)
+                break
+            crossing_point = p0 + next_t * direction  # actual crossing point
+            # if crossing_point[0] >= self.zdim_abs or crossing_point[1] >= self.ydim_abs or crossing_point[2] >= self.xdim_abs:  # 5x faster than ().any() !!!!!
+            #     break
+            t[ind] += step_t[ind]  # going to the next wall; 7x faster than with (t==next_t)
+            crossings.append(crossing_point)  # saving crossing point
+        return crossings
+
+    def follow_segment(self, passes):  #(self, points: np.ndarray, dEs):
+        """
+        Calculates distances traversed by a trajectory segment inside cells
+        and gets energy losses corresponding to the distances.
+
+        :param points: array of (z, y, x) points representing a trajectory from MC simulation
+        :param dEs:  list of energies losses between consecutive points. dEs[0] corresponds to a loss between p[0] and p[1]
+        :return:
+        """
+
+        # Cell traversal algorithm taken from https://www.shadertoy.com/view/XddcWn#
+        # Electron trajectory segments are treated as rays
+
+        # Algorithm is vectorized, thus following calculations are done for all segments in a trajectory
+        # cells = []
+        # profiler = line_profiler.LineProfiler()
+        # profiled_func = profiler(self.generate_se)
+        for one_pass in passes:
+            points, dEs = self.__setup_trajectory(one_pass[0][1:], one_pass[1][1:], one_pass[2][1:])  # Adding distance from the beam origin to surface to all the points (shifting trajectories down) and getting energy losses
+            if not dEs.any():
+                continue
+            direction = points[:, 1, :] - points[:, 0, :] # vector of a ray
+            L = np.linalg.norm(direction, axis=1) # length of a rays
+            des = dEs/L
+            step = np.sign(direction) * self.cell_dim # distance traveled by a ray along each axis in the ray direction, when crossing a cell
+            step_t = step / direction # iteration step of the t-values
+            delta = -(points[:, 0] % self.cell_dim) # positions of the ray origin relative to its enclosing cell position
+            t = np.abs((delta + (step == self.cell_dim) * self.cell_dim + (delta == 0) * step) / direction) # initial t-value
+            p0, pn = points[:, 0], points[:, 1]  # ray origin and end
+            max_traversed_cells = int(L.max()/self.cell_dim*2)+10 # maximum number of cells traversed by a segment in the a trajectory
+            max_traversed_cells = ceil(np.sum(1/step_t, axis=1).max())+5
+            traversal.traverse_segment(self.DE, self.grid, self.cell_dim, p0, pn, direction, t, step_t, des, max_traversed_cells)
+            # for q in range(0, len(points) - 1):  # go through rays
+            #     i, j, k = self.__triple(p0[q])
+            #     self.generate_se(dEs[q], i, j, k ,p0[q])
+            #     # profiled_func(dEs[q], i, j, k ,p0[q])
+            #     # if points[q,0] >= self.zdim_abs or points[q,1] >= self.ydim_abs or points[q,2] >= self.xdim_abs:
+            #     #     continue
+            #
+            #     crossings = np.asarray(self.traverse_cells(p0[q], pn[q], direction[q], t[q], step_t[q])) # only this part was not vectorized
+            #
+            #     #TODO: this could probably be vectorized by either padding or masking
+            #     deltas = crossings[1:] - crossings[:-1]  # distances traveled inside each box
+            #     coords = np.intp(crossings[1:] / self.cell_dim) # coordinates of traversed cells
+            #     # [cells.append(coord) for coord in coords]
+            #     coords = coords.transpose()  # coordinates of traversed cells, for indexing
+            #     for r in range(len(deltas)):
+            #         #TODO: this check may be avoided, if the input segments are filtered off the void.
+            #          # It takes 15% of the call time
+            #         if self.grid[coords[0, r], coords[1, r], coords[2, r]] <= -1:
+            #             self.DE[coords[0, r], coords[1, r], coords[2, r]] += sqrt(deltas[r].dot(deltas[r])) / L[q] * dEs[q] # energies deposited
+        # profiler.print_stats()
+        # return cells
+
+    def prep_se_emission(self, passes):
+        """
+        The idea behind this method is to divide trajectory segments into pieces
+        and emit SEs from every piece based on the energy lost on it.
+
+        :param passes:
+        :return:
+        """
+        dEs_all = []
+        coords_all = []
+        for i in range(len(passes)):  # go through trajectories
+            points, dEs = self.__setup_trajectory(passes[i][0][1:], passes[i][1][1:], passes[i][2][1:])  # Adding distance from the beam origin to surface to all the points (shifting trajectories down) and getting energy losses
+            direction = points[:, 1, :] - points[:, 0, :] # vector of a ray
+            L = np.linalg.norm(direction, axis=1)
+            # Segments are divided into even parts, that become SE emission centers.
+            # It has been observed, that segments are often smaller than the cell (~0.5nm average)
+            # Thus there is no point in dividing all segments and going through every piece in a loop.
+            # Instead of that, short segments are separated from longer ones
+            # and considered as emitting pieces.
+            # Emission proceeds from the segment starting point!
+            # All SE segments or vectors are collected in a single array
+
+            # Collecting short segments that have energy loss
+            short = np.logical_and(L <= self.segment_min_length, dEs != 0).nonzero() # If the energy loss is 0, it means that electron escaped solid should be discarded
+            # short = np.nonzero(L <= 1.5 and dEs>0)
+            # coords_all.append(np.asarray((points[short], points[np.asarray(short[0])+1])))
+            coords_all.append(points[short,0].reshape(short[0].shape[0], 3))
+            dEs_all.append(dEs[short])
+
+            # Collecting long segments
+            long = np.logical_and(L > self.segment_min_length, dEs != 0).nonzero()
+            if long[0].any():
+                coords = []
+                [coords.append([points[index,0], points[index,1]]) for index in long[0]]
+                coords_long = np.asarray(coords)
+                # coords_long = np.asarray([points[long], points[np.asarray(long[0]) + 1]]) # creating coordinates pairs for all long segments
+                shorts = []
+                energies_l = []
+                for i in range(len(long)):
+                    # delta = np.fabs(coords_long[i, 1] - coords_long[i,0])
+                    # num = int(delta.max()/1.5)
+                    num = ceil(L[long[0][i]] / 2) # number of pieces
+                    # Evenly dividing segment into pieces
+                    shorts.append(np.asarray((np.linspace(coords_long[i, 0, 0], coords_long[i, 1, 0], num, False),
+                                              np.linspace(coords_long[i, 0, 1], coords_long[i, 1, 1], num, False),
+                                              np.linspace(coords_long[i, 0, 2], coords_long[i, 1, 2], num, False))).T)
+                    energies_l.append(np.repeat(dEs[long[0][i]] / (num), num))
+                longs = np.concatenate((shorts), axis=0)
+                # coords_all.append(np.asarray((longs[:-1], longs[1:])))
+                coords_all.append(longs)
+                e_l = np.concatenate((energies_l), axis=0)
+                dEs_all.append(e_l)
+        # Combining all the collected segments into one array
+        coords_all = np.concatenate((coords_all), axis=0)
+        dEs_all = np.concatenate((dEs_all), axis=0)
+        self.dES_all = dEs_all
+        self.coords_all = coords_all
+        # for l in long[0]:
+        #     a = int(L[l])+1
+        #     step = direction[l]/a
+        #     de = dEs[l]/L[l]
+        #     for i in range(a):
+        #         coords_l.append(points[l]+step*i)
+        #         E_l.append(de)
+        # profile_func(generate_se, dEs_all, coords_all, surface)
+        # return self.generate_se_cy(dEs_all, coords_all)
+
+    def generate_se(self):
+        rng = default_rng()
+        n_se = self.dES_all / self.e * self.amplifying_factor # number of generated SEs, usually ~0.1
+        alpha = rng.uniform(0, 1, self.dES_all.shape) * 2 * pi
+        # gamma = rng.uniform(-1, 1.000001, self.dES_all.shape) * pi
+        length = self.lambda_escape * 2
+        max_traversed_cells = int(length/self.cell_dim*2)
+        # cos = np.cos(alpha)
+        # sin = np.sin(alpha)
+        # cos_g = np.cos(gamma)
+        z = rng.uniform(0, 1, self.dES_all.shape)
+        y = np.sin(alpha) * np.sqrt(1-z*z)
+        x = np.cos(alpha) * np.sqrt(1-z*z)
+        direction = np.column_stack((z, y, x)) * length
+        pn = direction + self.coords_all
+        step = np.sign(direction) * self.cell_dim
+        step_t = step / direction
+        delta = -(self.coords_all % self.cell_dim)
+        t = np.abs((delta + np.maximum(step, 0) + (delta == 0) * step) / direction)
+        traversal.generate_flux(self.flux, self.surface.view(dtype=np.uint8), self.cell_dim, self.coords_all, pn, direction, t, step_t, n_se)
+        # for i in range(E.shape[0]):
+        #     crossings = np.intp(np.asarray(traverse_cells(p0[i], pn[i], direction[i], t[i], step_t[i])) / cell_dim).T
+            # crossings = np.intp(np.asarray(tc.traverse_cells(p0[i], pn[i], direction[i], t[i], step_t[i]))/cell_dim).T
+            # crossings = profiled_func(p0[i], pn[i], direction[i], t[i], step_t[i])/cell_dim
+            # if surface[(crossings[0], crossings[1], crossings[2])].any():
+            #     for crossing in crossings.T:
+            #         if surface[crossing[0], crossing[1], crossing[2]]:
+            #             flux[crossing[0], crossing[1], crossing[2]] += n_se[i]
+            #             break
+
+        # s1, s2, s3 = (p[0] + length * cos(gamma)), (p[1] + length * sin(alpha)), (p[2] + length * cos(alpha))
+        # Ray-box intersection routine:
+        # For a collection of (energy, position):
+        # 0. Check for which positions the surface is unreachable with the given escape length
+        # 1. Calculate angles and resulting vector
+        # 2. Get vector's endpoint index
+        # 3. Check which vectors cross surface (Ray-Box)
+        # 4. Discard not crossing / select crossing vectors
+        # 5. Calculate n_se for the vectors that crossed surface
+        # 6. Add those n_se to the crossed surface cells
+
+    def __setup_trajectory(self, points, energies, mask):
+        '''Setup trajectory from MC simulation data for further computation.
+           points: list of (x, y, z) points of trajectory from MC simulation
+           energies: list of residual energies of electron at points of trajectory in keV
+           Returns arrays of points and energy losses (in eV)
+        '''
+        """
+        Gauss distribution is now handled before PE trajectories simulation, where they are mapped according to the real structure
+        Z-positions are also taken into account in that step
+        """
+        # Trajectories are divided into segments represented by a pair of points
+        # Then mask is applied, selecting only segments that traverse solid
+        # This reduces the unnecessary analysis of trajectory segments that lie in void(geometry features or backscattered electrons)
+        mask = np.asarray(mask)
+        pnp = np.array(points[0:len(points)]) # to get easy access to x, y, z coordinates of points
+        p0, pn = pnp[:-1], pnp[1:]
+        pairs = np.stack((p0,pn))
+        pairs = np.transpose(pairs, axes=(1,0,2))[mask.nonzero()]
+        # np.delete(pairs, (mask==0), axis=0)
+        # result = pairs[mask.nonzero()]
+        dE = np.asarray(energies)
+        dE -= np.roll(dE, -1)
+        # dE.resize(len(dE)-1, refcheck=False)
+        dE = dE[:-1] # last element is discarded
+        dE = dE[mask.nonzero()]*1000
+        # dE *=1000
+        return pairs, dE
+
+    def map_trajectory_multiprocessing(self, passes, n=8):
+        '''
+        Wrapper, that enables multicore processing. Check called function for the description.
+        '''
+        print("\nDepositing energy and generating SEs")
+        pas = list(np.array_split(np.asarray(passes), n))
+        with multiprocessing.Pool(n) as pool:
+            results = pool.map(self.map_follow, pas)
+        for p in results:
+            self.flux += p[0]
+            self.DE += p[1]
+            self.se_traj += p[2]
+        # print("Done")
+        a=0
+
+    def map_follow(self, passes, switch=1):
+        """
+        Get energy losses in the structure per cell
+
+        :param passes: a collection of trajectories
+        :param switch:
+        :return:
+        """
+        if switch:
+            # for one_pass in tqdm(passes):
+            # for one_pass in passes:
+            #     pts, dEs = self.__setup_trajectory(one_pass[0][1:], one_pass[1][1:])  # Adding distance from the beam origin to surface to all the points (shifting trajectories down) and getting energy losses
+            #     self.follow_segment(pts, dEs)
+            # profiler = line_profiler.LineProfiler()
+            # profiled_func = profiler(self.follow_segment)
+            # try:
+            #     profiled_func(passes)
+            # finally:
+            #     profiler.print_stats()
+            #
+            # profiled_func = profiler(hw.follow_trajectory_vec)
+            # try:
+            #     profiled_func(passes, self.grid, self.cell_dim)
+            # finally:
+            #     profiler.print_stats()
+            print(f'Energy deposition took: \t SE preparation took: \t Flux counting took:')
+            start = timeit.default_timer()
+            self.follow_segment(passes)
+            print(f'{timeit.default_timer()-start}', end='\t')
+            # cell = self.DE.nonzero()
+            # for i in range(len(cell[0])):
+            #     self.generate_se(self.DE[cell[0][i], cell[1][i], cell[2][i]], cell[0][i], cell[1][i], cell[2][i], np.asarray([cell[0][i]*self.cell_dim+self.cell_dim/2, cell[1][i]*self.cell_dim, cell[2][i]*self.cell_dim]))
+            start = timeit.default_timer()
+            self.prep_se_emission(passes)
+            print(f'{timeit.default_timer()-start}', end='\t')
+            start = timeit.default_timer()
+            self.generate_se()
+            print(f'{timeit.default_timer()-start}')
+
+
+        else:
+            for one_pass in passes:
+                pts, dEs = self.__setup_trajectory(one_pass[0][1:], one_pass[1][1:])  # Adding distance from the beam origin to surface to all the points (shifting trajectories down) and getting energy losses
+                p1 = pts[0]
+                traj = []
+                for i in range(len(pts) - 1):
+                    p2 = p1 + (pts[i + 1] - pts[i])  # set p1 and p2 as endpoints of current segment
+                    p1, cont = self.__follow_segment(traj, p1, p2, dEs[i])
+                    if not cont:  # if endpoint leaves simulation volume break
+                        break
+                # self.trajectories.append(traj)
+        return self.flux, self.DE, self.se_traj # has to be returned, as every process (when using multiprocessing) gets its own copy of the whole class and thus does not write to the original
+
+    def __mesh_traj(self, traj):
+        lines = np.asarray(traj)
+        m = pv.PolyData()
+        m.points = lines
+        cells = np.full((len(lines) - 1, 3), 2, dtype=np.int_)
+        cells[:, 1] = np.arange(0, len(lines) - 1, dtype=np.int_)
+        cells[:, 2] = np.arange(1, len(lines), dtype=np.int_)
+        m.lines = cells
+        line = m.tube(radius=2)
+        self.tr_plot.add_mesh(line, color='red')
+
+
+############ Old code ##############
     def read_vtk(self, fname):
         '''Read vtk file with 3d voxel data.
            fname: name of vtk file.
@@ -36,22 +376,6 @@ class ETrajMap3d(object):
         self.DE = np.zeros((self.nx, self.ny, self.nz))
         self.state = np.reshape(self.grid.cell_arrays['state'], (self.nx, self.ny, self.nz), order='F')
         self.x0, self.y0, self.z0 = self.grid.origin
-
-    def get_structure(self, structure, surface, cell_dim, x=0, y=0):
-        self.grid = structure
-        self.state = structure
-        self.surface = surface
-        self.cell_dim = cell_dim # absolute dimension of a cell, nm
-        self.nz, self.ny, self.nx = np.asarray(self.grid.shape)- 1 # simulation chamber dimensions
-        self.zdim_abs, self.ydim_abs, self.xdim_abs = [x*self.cell_dim for x in [self.nz, self.ny, self.nx]]
-        self.DE = np.zeros((self.nz+1, self.ny+1, self.nx+1)) # array for storing of deposited energies
-        self.flux = np.zeros((self.nz+1, self.ny+1, self.nx+1)) # array for storing SE fluxes
-        self.dn = floor(self.lambda_escape * 3 / self.cell_dim) # number of cells an SE can intersect
-        self.x = x
-        self.y = y
-        self.trajectories = [] # holds all trajectories mapped to 3d structure
-        self.se_traj = []
-
 
     def __find_zshift(self, x, y):
         '''Finds and returns z-position where beam at (x, y) hits 3d structure.'''
@@ -95,17 +419,67 @@ class ETrajMap3d(object):
         else:
             return 0
 
-    def __arr_min(self, x):
-        if x[0] >= x[1]:
-            if x[1] >= x[2]:
-                return x[2], 2
-            else:
-                return x[1], 1
+    def det(self, x):
+        return sqrt(x.dot(x))
+
+    def generate_se_old(self, de, i, j, k, pr):
+        """
+        Generates SEs depending on the deposited energy
+
+        :param de: deposited energy
+        :param i: z array position
+        :param j: y array position
+        :param k: x array position
+        :param pr: initial scattering point
+        :return:
+        """
+        # Current SE generation algorithm works per trajectory segment.
+        # This works for small average segment lengths, i.e. as it is now(~0.5 nm).
+        # Though with lower material density and Z, segments will get longer and
+        # SE yield on the surface will be reduced
+        # TODO: SE generation has to be implemented per segment piece eventually
+
+        if self.surface[i,j,k]:
+            self.flux[i, j, k] += de / self.e  # number of generated SEs
         else:
-            if x[0] >= x[2]:
-                return x[2], 2
-            else:
-                return x[0], 0
+            if self.surface[self.__make_box(i,j,k)].any(): # check if SE can reach surface
+                p0, p1 = pr - self.lambda_escape, pr + self.lambda_escape
+                p0[p0<0] = 0
+                p1[p1<0] = 0
+                box = np.intp((np.array([p0, p1]) / self.cell_dim))
+                slice = np.s_[box[0, 0]:box[1, 0]+1, box[0, 1]:box[1, 1]+1, box[0, 2]:box[1, 2]+1]
+                view = self.surface[slice]
+                pick = (rnd.randint(0, view.shape[0]-1), rnd.randint(0, view.shape[1]-1), rnd.randint(0, view.shape[2]-1))
+                if view[pick]:
+                    view  = self.flux[slice]
+                    view[pick] += de / self.e  # number of generated SEs
+                    return
+                else:
+                    return
+                # for g in range(int(n_se)):
+                alpha = rnd.uniform(-1, 1) * 2 * pi
+                gamma = rnd.uniform(-1, 1) * 2 * pi
+                length = self.lambda_escape * 2
+                # s1, s2, s3 = int((pr[0]+length*cos(gamma))/self.cell_dim), int((pr[1]+length*sin(alpha))/self.cell_dim), int((pr[2]+length*cos(alpha))/self.cell_dim)
+                s1, s2, s3 = (pr[0] + length * cos(gamma)), (pr[1] + length * sin(alpha)), (pr[2] + length * cos(alpha))
+                # self.se_traj.append([pr, np.array([s1, s2, s3])]) # save SE trajectory for plotting
+                try: # using try-except clause instead of checking boundaries, because in case of escape electron is just abandoned
+                    if self.grid[self.__get_indices(s1, s2, s3)] > -1:  # if electron escapes solid
+                        dz, dy, dx = (pr - (s1, s2, s3))/3
+                        for n in range(3):  # # track which surface cell catches it
+                            i,j,k = self.__get_indices(pr[0] - dz*n, pr[1] - dy*n, pr[2] - dx*n)
+                            if self.surface[i,j,k] == True:
+                                self.flux[i,j,k] += de / self.e  # number of generated SEs
+
+                                break
+                            # else:
+                            #     s1 += dz
+                            #     s2 += dy
+                            #     s3 += dx
+                except Exception as e: # printing out the actual exception just in case
+                    logging.exception('Caught an Error:')
+                    print("Skipping an electron")
+
 
     def __get_indices(self, z=0, y=0, x=0, cell_dim=0.0001):
         """
@@ -135,6 +509,7 @@ class ETrajMap3d(object):
                 if 0 <= z < self.zdim_abs:
                     return True
         return False
+
 
     def __make_box(self, i, j, k):
         i_0 = i - self.dn
@@ -261,211 +636,3 @@ class ETrajMap3d(object):
             # calculate new auxillary numbers for next crossing point calculation
             t0, t1, t2 = self.__crossings(i, j, k, istp, jstp, kstp, p0, vd)
         return pr, cont
-
-    def traverse_cells(self, p0, pn, direction, t, step_t):
-        """
-            AABB Ray-Voxel traversal algorithm.
-            Gets coordinates, where ray crosses voxel walls
-
-        :param p0: ray origin
-        :param pn: ray endpoint
-        :param direction: direction of the ray
-        :param t: first t-value
-        :param step_t: step of the t-value
-        :return:
-        """
-
-        crossings = [p0]  # first point is always ray origin
-        while True:  # iterating until the end of the ray
-            next_t, ind = self.__arr_min(t)  # minimal t-value corresponds to the box wall crossed; 2x faster than t.min() !!
-            if next_t > 1:  # finish if trajectory ends inside a cell (t>1)
-                crossings.append(pn)
-                break
-            crossing_point = p0 + next_t * direction  # actual crossing point
-            # if crossing_point[0] >= self.zdim_abs or crossing_point[1] >= self.ydim_abs or crossing_point[2] >= self.xdim_abs:  # 5x faster than ().any() !!!!!
-            #     break
-            t[ind] += step_t[ind]  # going to the next wall; 7x faster than with (t==next_t)
-            crossings.append(crossing_point)  # saving crossing point
-        return crossings
-
-    def follow_segment(self, passes):  #(self, points: np.ndarray, dEs):
-        """
-        Calculates distances traversed by a trajectory segment inside cells
-        and gets energy losses corresponding to the distances.
-
-        :param points: array of (z, y, x) points representing a trajectory from MC simulation
-        :param dEs:  list of energies losses between consecutive points. dEs[0] corresponds to a loss between p[0] and p[1]
-        :return:
-        """
-
-        # Cell traversal algorithm taken from https://www.shadertoy.com/view/XddcWn#
-        # Electron trajectory segments are treated as rays
-
-        # Algorithm is vectorized, thus following calculations are done for all segments in a trajectory
-        # cells = []
-        for one_pass in passes:
-            points, dEs = self.__setup_trajectory(one_pass[0][1:], one_pass[1][1:], one_pass[2][1:])  # Adding distance from the beam origin to surface to all the points (shifting trajectories down) and getting energy losses
-            direction = points[:, 1, :] - points[:, 0, :] # vector of a ray
-            L = np.linalg.norm(direction, axis=1) # length of a rays
-            step = np.sign(direction) * self.cell_dim # distance traveled by a ray along each axis in the ray direction, when crossing a cell
-            step_t = step / direction # iteration step of the t-values
-            delta = -(points[:, 0] % self.cell_dim) # positions of the ray origin relative to its enclosing cell position
-            t = np.abs((delta + (step == self.cell_dim) * self.cell_dim + (delta == 0) * step) / direction) # initial t-value
-            p0, pn = points[:, 0], points[:, 1]  # ray origin and end
-            for q in range(0, len(points) - 1):  # go through rays
-                # i, j, k = self.__triple(p0)
-                # self.generate_se(dEs[q], i, j, k ,p0)
-                # if points[q,0] >= self.zdim_abs or points[q,1] >= self.ydim_abs or points[q,2] >= self.xdim_abs:
-                #     continue
-
-                crossings = np.asarray(self.traverse_cells(p0[q], pn[q], direction[q], t[q], step_t[q])) # only this part was not vectorized
-
-                #TODO: this could probably be vectorized by either padding or masking
-                deltas = crossings[1:] - crossings[:-1]  # distances traveled inside each box
-                coords = np.intp(crossings[1:] / self.cell_dim) # coordinates of traversed cells
-                # [cells.append(coord) for coord in coords]
-                coords = coords.transpose()  # coordinates of traversed cells, for indexing
-                for r in range(len(deltas)):
-                    #TODO: this check may be avoided, if the input segments are filtered off the void.
-                     # It takes 15% of the call time
-                    if self.grid[coords[0, r], coords[1, r], coords[2, r]] <= -1:
-                        self.DE[coords[0, r], coords[1, r], coords[2, r]] += sqrt(deltas[r].dot(deltas[r])) / L[q] * dEs[q] # energies deposited
-        # return cells
-
-
-
-    def generate_se(self, de, i, j, k, pr):
-        """
-        Generates SEs depending on the deposited energy
-
-        :param de: deposited energy
-        :param i: z array position
-        :param j: y array position
-        :param k: x array position
-        :param pr: initial scattering point
-        :return:
-        """
-        if self.surface[self.__make_box(i,j,k)].any(): # check if SE can reach surface
-            # for g in range(int(n_se)):
-            alpha = rnd.uniform(-1, 1) * 2 * pi
-            gamma = rnd.uniform(-1, 1) * 2 * pi
-            length = self.lambda_escape * 2
-            # s1, s2, s3 = int((pr[0]+length*cos(gamma))/self.cell_dim), int((pr[1]+length*sin(alpha))/self.cell_dim), int((pr[2]+length*cos(alpha))/self.cell_dim)
-            s1, s2, s3 = (pr[0] + length * cos(gamma)), (pr[1] + length * sin(alpha)), (pr[2] + length * cos(alpha))
-            self.se_traj.append([pr, np.array([s1, s2, s3])]) # save SE trajectory for plotting
-            try: # using try-except clause instead of checking boundaries, because in case of escape electron is just abandoned
-                if self.grid[self.__get_indices(s1, s2, s3)] > -1:  # if electron escapes solid
-                    dz, dy, dx = (pr - (s1, s2, s3))/3
-                    for n in range(3):  # # track which surface cell catches it
-                        i,j,k = self.__get_indices(pr[0] - dz*n, pr[1] - dy*n, pr[2] - dx*n)
-                        if self.surface[i,j,k] == True:
-                            self.flux[i,j,k] += de / self.e  # number of generated SEs
-
-                            break
-                        # else:
-                        #     s1 += dz
-                        #     s2 += dy
-                        #     s3 += dx
-            except Exception as e: # printing out the actual exception just in case
-                logging.exception('Caught an Error:')
-                print("Skipping an electron")
-
-    def __setup_trajectory(self, points, energies, mask):
-        '''Setup trajectory from MC simulation data for further computation.
-           points: list of (x, y, z) points of trajectory from MC simulation
-           energies: list of residual energies of electron at points of trajectory in keV
-           Returns arrays of points and energy losses (in eV)
-        '''
-        """
-        Gauss distribution is now handled before PE trajectories simulation, where they are mapped according to the real structure
-        Z-positions are also taken into account in that step
-        """
-        # Trajectories are divided into segments represented by a pair of points
-        # Then mask is applied, selecting only segments that traverse solid
-        # This reduces the unnecessary analysis of trajectory segments that lie in void(geometry features or backscattered electrons)
-        # Overhead of rearranging points into pairs and applying mask
-        # is significantly (due to geometry features or backscattered electrons)
-        mask = np.asarray(mask)
-        pnp = np.array(points[0:len(points)]) # to get easy access to x, y, z coordinates of points
-        p0, pn = pnp[:-1], pnp[1:]
-        pairs = np.stack((p0,pn))
-        pairs = np.transpose(pairs, axes=(1,0,2))[mask.nonzero()]
-        # np.delete(pairs, (mask==0), axis=0)
-        # result = pairs[mask.nonzero()]
-        dE = np.asarray(energies)
-        dE -= np.roll(dE, -1)
-        # dE.resize(len(dE)-1, refcheck=False)
-        dE = dE[:-1] # last element is discarded
-        dE = dE[mask.nonzero()]*1000
-        # dE *=1000
-        return pairs, dE
-
-
-    def map_trajectory(self, passes, n=8):
-        '''
-        Wrapper, that enables multicore processing. Check called function for the description.
-        '''
-        print("\nDepositing energy and generating SEs")
-        pas = list(np.array_split(np.asarray(passes), n))
-        with multiprocessing.Pool(n) as pool:
-            results = pool.map(self.map_follow, pas)
-        for p in results:
-            self.flux += p[0]
-            self.DE += p[1]
-            self.se_traj += p[2]
-        # print("Done")
-        a=0
-
-    def map_follow(self, passes, switch=1):
-        """
-        Get energy losses in the structure per cell
-
-        :param passes: a collection of trajectories
-        :param switch:
-        :return:
-        """
-        if switch:
-            # for one_pass in tqdm(passes):
-            # for one_pass in passes:
-            #     pts, dEs = self.__setup_trajectory(one_pass[0][1:], one_pass[1][1:])  # Adding distance from the beam origin to surface to all the points (shifting trajectories down) and getting energy losses
-            #     self.follow_segment(pts, dEs)
-            profiler = line_profiler.LineProfiler()
-            profiled_func = profiler(self.follow_segment)
-            try:
-                profiled_func(passes)
-            finally:
-                profiler.print_stats()
-
-            profiled_func = profiler(hw.follow_trajectory_vec)
-            try:
-                profiled_func(passes, self.grid, self.cell_dim)
-            finally:
-                profiler.print_stats()
-            # self.follow_segment(passes)
-            # cell = self.DE.nonzero()
-            # for i in range(len(cell[0])):
-            #     self.generate_se(self.DE[cell[0][i], cell[1][i], cell[2][i]], cell[0][i], cell[1][i], cell[2][i], np.asarray([cell[0][i]*self.cell_dim+self.cell_dim/2, cell[1][i]*self.cell_dim, cell[2][i]*self.cell_dim]))
-
-        else:
-            for one_pass in passes:
-                pts, dEs = self.__setup_trajectory(one_pass[0][1:], one_pass[1][1:])  # Adding distance from the beam origin to surface to all the points (shifting trajectories down) and getting energy losses
-                p1 = pts[0]
-                traj = []
-                for i in range(len(pts) - 1):
-                    p2 = p1 + (pts[i + 1] - pts[i])  # set p1 and p2 as endpoints of current segment
-                    p1, cont = self.__follow_segment(traj, p1, p2, dEs[i])
-                    if not cont:  # if endpoint leaves simulation volume break
-                        break
-                # self.trajectories.append(traj)
-        return self.flux, self.DE, self.se_traj # has to be returned, as every process (when using multiprocessing) gets its own copy of the whole class and thus does not write to the original
-
-    def __mesh_traj(self, traj):
-        lines = np.asarray(traj)
-        m = pv.PolyData()
-        m.points = lines
-        cells = np.full((len(lines) - 1, 3), 2, dtype=np.int_)
-        cells[:, 1] = np.arange(0, len(lines) - 1, dtype=np.int_)
-        cells[:, 2] = np.arange(1, len(lines), dtype=np.int_)
-        m.lines = cells
-        line = m.tube(radius=2)
-        self.tr_plot.add_mesh(line, color='red')
