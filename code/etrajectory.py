@@ -40,6 +40,14 @@ class ETrajectory(object):
 
     class Coordinates():
         def __init__(self, x, y, parent):
+            # Python uses dictionaries to represent class attributes, which causes significant memory usage
+            # __slots__ attribute forces Python to use a small array for attribute storage, which reduces amount
+            # of memory required for every copy of the class.
+            # As a result, it reduces multiprocessing overhead as every process obtains a full copy of all objects it works with.
+            # However, if __slots__ attribute is declared, declaration of new attributes is only possible by adding a new entry
+            # to the __slots__.
+            __slots__ = ["E", "x", "y", "z", "cx", "cy", "cz", "ctheta", "stheta", "psi",
+                         "cell_dim", "zdim", "ydim", "zdim_abs", "ydim_abs", "xdim_abs"]
             self.E = parent.E
             self.x = x
             self.y = y
@@ -47,6 +55,9 @@ class ETrajectory(object):
             self.cx = 0
             self.cy = 0
             self.cz = 1
+            self.ctheta = 0
+            self.stheta = 0
+            self.psi = 0
             self.cell_dim = parent.cell_dim
             self.zdim, self.ydim, self.xdim = parent.zdim, parent.ydim, parent.xdim
             self.zdim_abs, self.ydim_abs, self.xdim_abs = self.zdim * self.cell_dim, self.ydim * self.cell_dim, self.xdim * self.cell_dim
@@ -78,7 +89,7 @@ class ETrajectory(object):
             self.ctheta = 1.0 - 2.0 * a * rnd2 / (
                         1.0 + a - rnd2)  # scattering angle cosines , 0 <= angle <= 180˚, it produces an angular distribution that is obtained experimentally (more chance for low angles)
             self.stheta = sqrt(1.0 - self.ctheta ** 2)  # scattering angle sinus
-            self. psi = 2.0 * pi * rnd.random()  # azimuthal scattering angle
+            self.psi = 2.0 * pi * rnd.random()  # azimuthal scattering angle
 
         def __get_direction(self, ctheta = None, stheta = None, psi = None):
             """
@@ -145,7 +156,7 @@ class ETrajectory(object):
         def get_direction(self, ctheta=None, stheta=None, psi=None):
             return self.__get_direction(ctheta, stheta, psi)
 
-    def setParameters(self, params, deposit, surface, cell_dim, beam_ef_rad, dt, stat=3000):
+    def setParameters(self, params, deposit, surface, cell_dim, beam_ef_rad, dt, stat=1000):
         self.E0 = params['E0']
         self.Z = params['Z']
         self.A = params['A']
@@ -161,7 +172,7 @@ class ETrajectory(object):
         self.ztop = np.nonzero(self.surface)[0].max()+1 # highest point of the structure
         self.J = self._getJ()
         self.sigma = params['sigma']
-        self.N =  stat
+        self.N = stat
         self.norm_factor = params['N'] / self.N
         self.beam_ef_rad = beam_ef_rad
         self.PEL = 0
@@ -171,6 +182,7 @@ class ETrajectory(object):
         self.material = nan
         self.dt = dt
         self.Emin = 0.1 # cut-off energy for PE, keV
+
 
 
     def rnd_gauss_xy(self, x0, y0, N):
@@ -304,115 +316,125 @@ class ETrajectory(object):
             N = self.N
         if type(x0) == float:
             y0, x0 = self.rnd_gauss_xy(x0 * self.cell_dim, y0 * self.cell_dim, N)  # generate gauss-distributed beam positions
-        for x,y in zip(x0,y0):
-            passes.append(self.map_trajectory(x,y))
+        # profiler = line_profiler.LineProfiler()
+        # profiled_func = profiler(self.map_trajectory)
+        # try:
+        #     profiled_func(x0, y0)
+        # finally:
+        #     profiler.print_stats()
+        passes = self.map_trajectory(x0, y0)
+        # for x,y in zip(x0,y0):
+        #     passes.append(self.map_trajectory(x,y))
         return passes
 
-    def map_trajectory(self, x, y):
+    def map_trajectory(self, x0, y0):
 
         # TODO: Vectorize !
         # TODO: if electron escapes
-        flag = False
-        trajectories = []  # trajectory will be a sequence of points
-        energies = []
-        mask = []
-        # x, y = points
-        trajectories.append(((self.zdim - self.ztop) * self.cell_dim / 3, y, x))  # every time starting from the beam origin (a bit above the highest point of the structure)
-        energies.append(self.E0)  # and with the beam energy
-        self.E = self.E0  # getting initial beam energy
-        # Due to memory race problem, all the variables that are changing(coordinates, energy) have been moved to a separate class,
-        # that gets instanced for every trajectory and thus for every process
-        coords = self.Coordinates(x, y, self)#(self.E, (self.zdim - self.ztop) * self.cell_dim / 3, y, x, self.cell_dim)
-        # self.x, self.y, self.z = x, y, (self.zdim - self.ztop) * self.cell_dim / 3
-        # self.cx, self.cy, self.cz = 0, 0, 1  # direction cosines
-        ctheta, stheta = 0, 0
-        i, j, k = coords.get_indices()
-        if self.grid[i, j, k] > -1:  # if current cell is not deposit or substrate, electron flies straight to the surface
-            coords.z = ((self.grid[:, j, k]<0).nonzero()[0].max()+1) * self.cell_dim
-            trajectories.append((coords.z, coords.y, coords.x))  # saving current point
-            energies.append(coords.E)
-            mask.append(0)
-        while (coords.E > self.Emin):  # and (self.z >= 0.0):  # going on with every electron until energy is depleted or escaping chamber
+        self.passes = []
+        for x,y in zip(x0,y0):
+            flag = False
+            trajectories = []  # trajectory will be a sequence of points
+            energies = []
+            mask = []
+            # x, y = points
+            trajectories.append(((self.zdim - self.ztop) * self.cell_dim / 3, y, x))  # every time starting from the beam origin (a bit above the highest point of the structure)
+            energies.append(self.E0)  # and with the beam energy
+            self.E = self.E0  # getting initial beam energy
+            # Due to memory race problem, all the variables that are changing(coordinates, energy) have been moved to a separate class,
+            # that gets instanced for every trajectory and thus for every process
+            coords = self.Coordinates(x, y, self)#(self.E, (self.zdim - self.ztop) * self.cell_dim / 3, y, x, self.cell_dim)
+            # self.x, self.y, self.z = x, y, (self.zdim - self.ztop) * self.cell_dim / 3
+            # self.cx, self.cy, self.cz = 0, 0, 1  # direction cosines
+            ctheta, stheta = 0, 0
             i, j, k = coords.get_indices()
-            if coords.cz > 0:
-                if i > 0:
-                    i -= 1
-            if coords.cy < 0:
-                if j > 0:
-                    j -= 1
-            if coords.cx < 0:
-                if k > 0:
-                    k -= 1
-            if self.grid[i, j, k] > -1:  # checking if the cell is void
-                # If yes continuing previous trajectory until impact
-                x1, y1, z1 = coords.x, coords.y, coords.z
-                while True:
-                    x1 += self.cell_dim * coords.cx
-                    y1 += self.cell_dim * coords.cy
-                    z1 -= self.cell_dim * coords.cz
-                    if coords.check_boundaries(z1, y1, x1):
-                        if self.grid[coords.get_indices(z1, y1, x1)] <= -1:
-                            trajectories.append((z1, y1, x1))  # saving current point
-                            energies.append(coords.E)  # saving electron energy at this point
-                            mask.append(0)
-                            coords.x, coords.y, coords.z = x1, y1, z1
-                            break
-                    else:
-                        if z1>=self.zdim_abs:
-                            z1 = self.zdim_abs-0.000001
-                        if z1 <= 0:
-                            z1 = 0.000001
-                        if y1>=self.ydim_abs:
-                            y1 = self.ydim_abs-0.000001
-                        if y1 <= 0:
-                            y1 = 0.000001
-                        if x1>=self.xdim_abs:
-                            x1 = self.xdim_abs-0.000001
-                        if x1 <= 0:
-                            x1 = 0.000001
-                        trajectories.append((z1, y1, x1))  # saving current point
-                        m=0
-                        if self.grid[coords.get_indices(z1, y1, x1)] <= -1:
-                            step = np.asarray([z1-coords.z, y1-coords.y, x1-coords.x])
-                            step = math.sqrt(step.dot(step))
-                            coords.E += self._getELoss(coords) * step
-                            m = 1
-                        energies.append(coords.E)  # saving electron energy at this point
-                        mask.append(m)
-                        coords.x, coords.y, coords.z = x1, y1, z1
-                        flag = True
-                        break
+            if self.grid[i, j, k] > -1:  # if current cell is not deposit or substrate, electron flies straight to the surface
+                coords.z = ((self.grid[:, j, k]<0).nonzero()[0].max()+1) * self.cell_dim
+                trajectories.append((coords.z, coords.y, coords.x))  # saving current point
+                energies.append(coords.E)
+                mask.append(0)
+            while (coords.E > self.Emin):  # and (self.z >= 0.0):  # going on with every electron until energy is depleted or escaping chamber
                 i, j, k = coords.get_indices()
-                if flag:  # finishing trajectory mapping if electron is beyond chamber walls
-                    flag = False
-                    break
+                if coords.cz > 0:
+                    if i > 0:
+                        i -= 1
+                if coords.cy < 0:
+                    if j > 0:
+                        j -= 1
+                if coords.cx < 0:
+                    if k > 0:
+                        k -= 1
+                if self.grid[i, j, k] > -1:  # checking if the cell is void
+                    # If yes continuing previous trajectory until impact
+                    x1, y1, z1 = coords.x, coords.y, coords.z
+                    while True:
+                        x1 += self.cell_dim * coords.cx
+                        y1 += self.cell_dim * coords.cy
+                        z1 -= self.cell_dim * coords.cz
+                        if coords.check_boundaries(z1, y1, x1):
+                            if self.grid[coords.get_indices(z1, y1, x1)] <= -1:
+                                trajectories.append((z1, y1, x1))  # saving current point
+                                energies.append(coords.E)  # saving electron energy at this point
+                                mask.append(0)
+                                coords.x, coords.y, coords.z = x1, y1, z1
+                                break
+                        else:
+                            if z1>=self.zdim_abs:
+                                z1 = self.zdim_abs-0.000001
+                            if z1 <= 0:
+                                z1 = 0.000001
+                            if y1>=self.ydim_abs:
+                                y1 = self.ydim_abs-0.000001
+                            if y1 <= 0:
+                                y1 = 0.000001
+                            if x1>=self.xdim_abs:
+                                x1 = self.xdim_abs-0.000001
+                            if x1 <= 0:
+                                x1 = 0.000001
+                            trajectories.append((z1, y1, x1))  # saving current point
+                            m=0
+                            if self.grid[coords.get_indices(z1, y1, x1)] <= -1:
+                                step = np.asarray([z1-coords.z, y1-coords.y, x1-coords.x])
+                                step = math.sqrt(step.dot(step))
+                                coords.E += self._getELoss(coords) * step
+                                m = 1
+                            energies.append(coords.E)  # saving electron energy at this point
+                            mask.append(m)
+                            coords.x, coords.y, coords.z = x1, y1, z1
+                            flag = True
+                            break
+                    i, j, k = coords.get_indices()
+                    if flag:  # finishing trajectory mapping if electron is beyond chamber walls
+                        flag = False
+                        break
 
-            # Determining material of the current voxel
-            if self.grid[i, j, k] == -2:  # curent cell is substrate
-                self.material = self.substrate
-            if self.grid[i, j, k] == -1:  # current cell is deponat
-                self.material = self.deponat
-            # ctheta, stheta, psi, a = self.__generate_angles(coords)
-            a = self._getAlpha(coords)
-            step = -self._getLambda_el(coords, a) * log(rnd.uniform(0.00001, 1))  # actual distance an electron travels
-            # cc, cb, ca = coords.get_direction(ctheta, stheta, psi)  # direction cosines
-            # Next step coordinates:
-            # x1 = coords.x + step * ca
-            # y1 = coords.y + step * cb
-            # z1 = coords.z - step * cc
-            coords.get_next_point(a, step)
-            if not coords.check_boundaries():
-                break
-            coords.E += self._getELoss(coords) * step
-            # trajectories.append((z1, y1, x1))  # saving current point
-            trajectories.append((coords.z, coords.y, coords.x))  # saving current point
-            energies.append(coords.E)  # saving electron energy at this point
-            mask.append(1)
-            # Making the new point the current point for the next iteration
-            # coords.x, coords.y, coords.z = x1, y1, z1
-            # coords.cx, coords.cy, coords.cz = ca, cb, cc
-        self.passes.append((trajectories, energies, mask))  # collecting mapped trajectories and energies
-        return (trajectories, energies, mask)
+                # Determining material of the current voxel
+                if self.grid[i, j, k] == -2:  # curent cell is substrate
+                    self.material = self.substrate
+                if self.grid[i, j, k] == -1:  # current cell is deponat
+                    self.material = self.deponat
+                # ctheta, stheta, psi, a = self.__generate_angles(coords)
+                a = self._getAlpha(coords)
+                step = -self._getLambda_el(coords, a) * log(rnd.uniform(0.00001, 1))  # actual distance an electron travels
+                # cc, cb, ca = coords.get_direction(ctheta, stheta, psi)  # direction cosines
+                # Next step coordinates:
+                # x1 = coords.x + step * ca
+                # y1 = coords.y + step * cb
+                # z1 = coords.z - step * cc
+                coords.get_next_point(a, step)
+                if not coords.check_boundaries():
+                    break
+                coords.E += self._getELoss(coords) * step
+                # trajectories.append((z1, y1, x1))  # saving current point
+                trajectories.append((coords.z, coords.y, coords.x))  # saving current point
+                energies.append(coords.E)  # saving electron energy at this point
+                mask.append(1)
+                # Making the new point the current point for the next iteration
+                # coords.x, coords.y, coords.z = x1, y1, z1
+                # coords.cx, coords.cy, coords.cz = ca, cb, cc
+            self.passes.append((trajectories, energies, mask))  # collecting mapped trajectories and energies
+        # return (trajectories, energies, mask)
+        return self.passes
 
     # def __get_direction(self, ctheta, stheta, psi):
     #     """

@@ -74,7 +74,7 @@ def plot(m3d:map3d.ETrajMap3d, sim:et.ETrajectory=nan): # plot energy loss and a
     # PE trajectories
     render.add_trajectory(trajs, pe_energies, 0.5, step=4, scalar_name='PE Energy, keV', button_name='PEs', cmap='viridis')
     # SEs
-    render.add_trajectory(se_trajes, radius=0.2, step=20, button_name='SEs', color='red')
+    # render.add_trajectory(se_trajes, radius=0.2, step=20, button_name='SEs', color='red')
 
     render.p.camera_position = [(463.14450307610286, 271.1171723376318, 156.56895424388603),
                                 (225.90027381807235, 164.9577775224395, 71.42188811921902),
@@ -117,7 +117,7 @@ def run_simulation(sim: et.ETrajectory, deposit:np.ndarray, surface: np.ndarray,
     sim.run(i0, j0)
     m3d = map3d.ETrajMap3d()
     m3d.get_structure(deposit, surface, sim.cell_dim)
-    m3d.map_trajectory(sim.passes) # mapping all cached MC trajectories for every generated point[x0, y0]
+    m3d.map_follow(sim.passes,1) # mapping all cached MC trajectories for every generated point[x0, y0]
     m3d.flux /= ((sim.dt*sim.cell_dim*sim.cell_dim)/sim.norm_factor)
     plot(m3d, sim)
     return sim
@@ -146,7 +146,7 @@ def rerun_simulation(y0, x0, deposit, surface, sim):
     # sim.run(y0, x0)
     sim.map_wrapper(y0, x0)
     t = timeit.default_timer() - start
-    print(f'Took {t} s')
+    print(f'{sim.N} trajectories took {t} s')
     # print(f'Run with {sim.N} iters took {t}')
     sim.ztop = np.nonzero(surface)[0].max()+1
     m3d = map3d.ETrajMap3d()
@@ -178,9 +178,8 @@ def rerun_simulation(y0, x0, deposit, surface, sim):
     #     file.write(f'{len(pas)}\t{t}\n')
     #     print(f'Run {len(pas)/100} with {len(pas)} iters took {t}')
     # file.close()
-    plot(m3d, sim)
-
-    return np.int32(m3d.flux*sim.norm_factor/(sim.dt*sim.cell_dim*sim.cell_dim))
+    # plot(m3d, sim)
+    return np.int32(m3d.flux/m3d.amplifying_factor*sim.norm_factor/(sim.dt*sim.cell_dim*sim.cell_dim))
 
 
 if __name__ == '__main__':
