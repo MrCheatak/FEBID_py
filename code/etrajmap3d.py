@@ -19,33 +19,25 @@ from modified_libraries.ray_traversal import traversal
 
 @total_ordering # realises all comparison operations without having to define them explicitly
 class ETrajMap3d(object):
-
-    def __init__(self, e = 72, lambda_ascape = 3.5, segment_min_length = 2):
-        self.DE = None # will hold accumulated deposited energy for each voxel
-        self.state = None # wild hold states of voxels after read_vtk()
-        self.grid = None # will hold uniform grid after read_vtk()
-        self.nx, self.ny, self.nz = 0, 0, 0 # number of cells; will be set after read_vtk()
-        self.e = e # fitting parameter related to energy required to initiate a SE cascade, material specific, eV
-        self.lambda_escape = lambda_ascape # mean free escape path, material specific, nm
-        self.x0, self.y0, self.z0 = 0, 0, 0  # origin of 3d grid
-        self.segment_min_length = segment_min_length # sets the discretization of SE emission
-        rnd.seed()
-
-    def get_structure(self, structure, surface, cell_dim, x=0, y=0):
-        self.grid = structure
-        self.state = structure
+    def __init__(self, deposit, surface, sim, segment_min_length = 2):
+        self.grid = deposit
+        self.state = deposit
         self.surface = surface
-        self.cell_dim = cell_dim # absolute dimension of a cell, nm
+        self.cell_dim = sim.cell_dim # absolute dimension of a cell, nm
         self.nz, self.ny, self.nx = np.asarray(self.grid.shape)- 1 # simulation chamber dimensions
         self.zdim_abs, self.ydim_abs, self.xdim_abs = [x*self.cell_dim for x in [self.nz, self.ny, self.nx]]
         self.DE = np.zeros((self.nz+1, self.ny+1, self.nx+1)) # array for storing of deposited energies
         self.flux = np.zeros((self.nz+1, self.ny+1, self.nx+1)) # array for storing SE fluxes
         self.amplifying_factor = 1000 # artificially increases SE yield to preserve accuracy
-        self.dn = floor(self.lambda_escape * 2 / self.cell_dim) # number of cells an SE can intersect
-        self.x = x
-        self.y = y
+        # self.e = e # fitting parameter related to energy required to initiate a SE cascade, material specific, eV
+        self.deponat= sim.deponat
+        self.substrate = sim.substrate
+        # self.lambda_escape = lambda_escape # mean free escape path, material specific, nm
+        # self.dn = floor(self.lambda_escape * 2 / self.cell_dim) # number of cells an SE can intersect
         self.trajectories = [] # holds all trajectories mapped to 3d structure
         self.se_traj = []
+        self.x0, self.y0, self.z0 = 0, 0, 0  # origin of 3d grid
+        rnd.seed()
 
     def __lt__(self, x):
         return x < self.xdim_abs
@@ -125,27 +117,7 @@ class ETrajMap3d(object):
             max_traversed_cells = int(L.max()/self.cell_dim*2)+10 # maximum number of cells traversed by a segment in the a trajectory
             max_traversed_cells = ceil(np.sum(1/step_t, axis=1).max())+5
             traversal.traverse_segment(self.DE, self.grid, self.cell_dim, p0, pn, direction, t, step_t, des, max_traversed_cells)
-            # for q in range(0, len(points) - 1):  # go through rays
-            #     i, j, k = self.__triple(p0[q])
-            #     self.generate_se(dEs[q], i, j, k ,p0[q])
-            #     # profiled_func(dEs[q], i, j, k ,p0[q])
-            #     # if points[q,0] >= self.zdim_abs or points[q,1] >= self.ydim_abs or points[q,2] >= self.xdim_abs:
-            #     #     continue
-            #
-            #     crossings = np.asarray(self.traverse_cells(p0[q], pn[q], direction[q], t[q], step_t[q])) # only this part was not vectorized
-            #
-            #     #TODO: this could probably be vectorized by either padding or masking
-            #     deltas = crossings[1:] - crossings[:-1]  # distances traveled inside each box
-            #     coords = np.intp(crossings[1:] / self.cell_dim) # coordinates of traversed cells
-            #     # [cells.append(coord) for coord in coords]
-            #     coords = coords.transpose()  # coordinates of traversed cells, for indexing
-            #     for r in range(len(deltas)):
-            #         #TODO: this check may be avoided, if the input segments are filtered off the void.
-            #          # It takes 15% of the call time
-            #         if self.grid[coords[0, r], coords[1, r], coords[2, r]] <= -1:
-            #             self.DE[coords[0, r], coords[1, r], coords[2, r]] += sqrt(deltas[r].dot(deltas[r])) / L[q] * dEs[q] # energies deposited
-        # profiler.print_stats()
-        # return cells
+
 
     def prep_se_emission(self, passes):
         """
@@ -204,56 +176,29 @@ class ETrajMap3d(object):
         dEs_all = np.concatenate((dEs_all), axis=0)
         self.dES_all = dEs_all
         self.coords_all = coords_all
-        # for l in long[0]:
-        #     a = int(L[l])+1
-        #     step = direction[l]/a
-        #     de = dEs[l]/L[l]
-        #     for i in range(a):
-        #         coords_l.append(points[l]+step*i)
-        #         E_l.append(de)
-        # profile_func(generate_se, dEs_all, coords_all, surface)
-        # return self.generate_se_cy(dEs_all, coords_all)
 
     def generate_se(self):
         rng = default_rng()
-        n_se = self.dES_all / self.e * self.amplifying_factor # number of generated SEs, usually ~0.1
+        coords = np.int64(self.coords_all/self.cell_dim).T
+        cell_material = self.grid[coords[0], coords[1], coords[2]]
+        e = np.where(cell_material==-1, self.deponat.e, 0) + np.where(cell_material==-2, self.substrate.e, 0)
+        e[e==0] = 1000000
+        lambda_escape = np.where(cell_material==-1, self.deponat.lambda_escape, 0.00001) + np.where(cell_material==-2, self.substrate.lambda_escape, 0.00001)
+        n_se = self.dES_all / e * self.amplifying_factor # number of generated SEs, usually ~0.1
         alpha = rng.uniform(0, 1, self.dES_all.shape) * 2 * pi
-        # gamma = rng.uniform(-1, 1.000001, self.dES_all.shape) * pi
-        length = self.lambda_escape * 2
-        max_traversed_cells = int(length/self.cell_dim*2)
-        # cos = np.cos(alpha)
-        # sin = np.sin(alpha)
-        # cos_g = np.cos(gamma)
-        z = rng.uniform(0, 1, self.dES_all.shape)
-        y = np.sin(alpha) * np.sqrt(1-z*z)
-        x = np.cos(alpha) * np.sqrt(1-z*z)
-        direction = np.column_stack((z, y, x)) * length
+        length = lambda_escape
+        max_traversed_cells = int(length.max()/self.cell_dim*2+5)
+        z = rng.uniform(0, 1, self.dES_all.shape) * length
+        y = np.sin(alpha) * np.sqrt(1-z*z) * length
+        x = np.cos(alpha) * np.sqrt(1-z*z) * length
+        direction = np.column_stack((z, y, x))
+        # direction *=  np.broadcast_to(length, (length.shape, 3))
         pn = direction + self.coords_all
         step = np.sign(direction) * self.cell_dim
         step_t = step / direction
         delta = -(self.coords_all % self.cell_dim)
         t = np.abs((delta + np.maximum(step, 0) + (delta == 0) * step) / direction)
         traversal.generate_flux(self.flux, self.surface.view(dtype=np.uint8), self.cell_dim, self.coords_all, pn, direction, t, step_t, n_se)
-        # for i in range(E.shape[0]):
-        #     crossings = np.intp(np.asarray(traverse_cells(p0[i], pn[i], direction[i], t[i], step_t[i])) / cell_dim).T
-            # crossings = np.intp(np.asarray(tc.traverse_cells(p0[i], pn[i], direction[i], t[i], step_t[i]))/cell_dim).T
-            # crossings = profiled_func(p0[i], pn[i], direction[i], t[i], step_t[i])/cell_dim
-            # if surface[(crossings[0], crossings[1], crossings[2])].any():
-            #     for crossing in crossings.T:
-            #         if surface[crossing[0], crossing[1], crossing[2]]:
-            #             flux[crossing[0], crossing[1], crossing[2]] += n_se[i]
-            #             break
-
-        # s1, s2, s3 = (p[0] + length * cos(gamma)), (p[1] + length * sin(alpha)), (p[2] + length * cos(alpha))
-        # Ray-box intersection routine:
-        # For a collection of (energy, position):
-        # 0. Check for which positions the surface is unreachable with the given escape length
-        # 1. Calculate angles and resulting vector
-        # 2. Get vector's endpoint index
-        # 3. Check which vectors cross surface (Ray-Box)
-        # 4. Discard not crossing / select crossing vectors
-        # 5. Calculate n_se for the vectors that crossed surface
-        # 6. Add those n_se to the crossed surface cells
 
     def __setup_trajectory(self, points, energies, mask):
         '''Setup trajectory from MC simulation data for further computation.
@@ -350,17 +295,6 @@ class ETrajMap3d(object):
                         break
                 # self.trajectories.append(traj)
         return self.flux, self.DE, self.se_traj # has to be returned, as every process (when using multiprocessing) gets its own copy of the whole class and thus does not write to the original
-
-    def __mesh_traj(self, traj):
-        lines = np.asarray(traj)
-        m = pv.PolyData()
-        m.points = lines
-        cells = np.full((len(lines) - 1, 3), 2, dtype=np.int_)
-        cells[:, 1] = np.arange(0, len(lines) - 1, dtype=np.int_)
-        cells[:, 2] = np.arange(1, len(lines), dtype=np.int_)
-        m.lines = cells
-        line = m.tube(radius=2)
-        self.tr_plot.add_mesh(line, color='red')
 
 
 ############ Old code ##############

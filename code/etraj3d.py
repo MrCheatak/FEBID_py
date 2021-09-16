@@ -82,7 +82,7 @@ def plot(m3d:map3d.ETrajMap3d, sim:et.ETrajectory=nan): # plot energy loss and a
     camera_pos = render.show()
 
 
-def cache_params(fn_cfg, deposit, surface, cell_dim, beam_ef_rad, dt):
+def cache_params(params, deposit, surface, dt):
     """
     Creates an instance of simulation class and fetches necessary parameters
 
@@ -90,14 +90,12 @@ def cache_params(fn_cfg, deposit, surface, cell_dim, beam_ef_rad, dt):
     :param deposit: initial structure
     :param surface: array pointing to surface cells
     :param cell_dim: dimensions of a cell
-    :param beam_ef_rad: effective radius of the beam
     :param dt: time step of the simulation
     :return:
     """
 
-    params = fn_cfg # getting configurations
     sim = et.ETrajectory(name=params['name']) # creating an instance of Monte-Carlo simulation class
-    sim.setParameters(params, deposit, surface, cell_dim, beam_ef_rad, dt) # setting parameters
+    sim.setParameters(params, deposit, surface, dt) # setting parameters
     return sim
 
 
@@ -138,31 +136,20 @@ def rerun_simulation(y0, x0, deposit, surface, sim):
     start = timeit.default_timer()
     # sim.run(y0, x0, 3000)
     # t = timeit.default_timer()-start
-    # print(f'Run with {3000} iters took {t}')
     # picks.append(copy.deepcopy(sim.passes))
     # file = open(f'{sys.path[0]}{os.sep}Trajes_3000.txt', 'wb')
     # pickle.dump(picks, file)
     # file.close()
-    # sim.run(y0, x0)
     sim.map_wrapper(y0, x0)
     t = timeit.default_timer() - start
-    print(f'{sim.N} trajectories took {t} s')
-    # print(f'Run with {sim.N} iters took {t}')
-    sim.ztop = np.nonzero(surface)[0].max()+1
-    m3d = map3d.ETrajMap3d()
-    m3d.get_structure(deposit, surface, sim.cell_dim)
+    print(f'\n{sim.N} trajectories took {t} s')
+    m3d = map3d.ETrajMap3d(deposit, surface, sim)
     start = timeit.default_timer()
-    # m3d.map_trajectory(sim.passes)
     flux1, enrgies1, _ = m3d.map_follow(sim.passes, 1)
     t = timeit.default_timer() - start
     print(f'Took {t} s')
 
-    # m3d.get_structure(deposit, surface, sim.cell_dim)
-    # start = timeit.default_timer()
-    # # m3d.map_trajectory(sim.passes)
-    # flux2, enrgies2, _ = m3d.map_follow(sim.passes, 0)
-    # t = timeit.default_timer() - start
-    # print(f'Took {t} s')
+
     # print("Loading trajectories file...")
     # file = open(f'{sys.path[0]}{os.sep}Trajes_200-4900.txt', 'rb')
     # passes = pickle.load(file)
@@ -189,5 +176,3 @@ if __name__ == '__main__':
     #     hockeystick.vti hockeystick.cfg y y
     #     print('Exit.')
     #     exit(0)
-
-    run_simulation(sys.argv[0], sys.argv[1], sys.argv[2], sys.argv[3])

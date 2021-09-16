@@ -18,19 +18,7 @@ import concurrent.futures
 import itertools
 from timebudget import timebudget
 
-NA = 6.022141E23 # Avogadro number
 
-
-class Element:
-    """
-    Represents a material
-    """
-    def __init__(self, name='noname', Z=1, A=1, rho=1):
-        self.name = name
-        self.rho = rho
-        self.Z = Z
-        self.A = A
-        self.J = ETrajectory._getJ(self)
 
 class ETrajectory(object):
     def __init__(self, name='noname'):
@@ -156,17 +144,18 @@ class ETrajectory(object):
         def get_direction(self, ctheta=None, stheta=None, psi=None):
             return self.__get_direction(ctheta, stheta, psi)
 
-    def setParameters(self, params, deposit, surface, cell_dim, beam_ef_rad, dt, stat=1000):
+    def setParameters(self, params, deposit, surface, dt, stat=1000):
+        self.NA = 6.022141E23 # Avogadro number
         self.E0 = params['E0']
         self.Z = params['Z']
         self.A = params['A']
         self.rho = params['rho']
-        self.e = 72 # fitting parameter related to energy required to initiate a SE cascade, material specific, eV
-        self.lambda_escape = 3.5 # mean free escape path, material specific, nm
+        self.e = params['e'] # fitting parameter related to energy required to initiate a SE cascade, material specific, eV
+        self.lambda_escape = params['l'] # mean free escape path, material specific, nm
         self.grid = deposit
         self.surface = surface
-        self.cell_dim = cell_dim
-        self.x0, self.y0, self.z0 = deposit.shape[2]*cell_dim/2, deposit.shape[1]*cell_dim/2, self.grid.shape[0]*self.cell_dim-1
+        self.cell_dim = params['cell_dim']
+        self.x0, self.y0, self.z0 = deposit.shape[2]*self.cell_dim/2, deposit.shape[1]*self.cell_dim/2, self.grid.shape[0]*self.cell_dim-1
         self.zdim, self.ydim, self.xdim = self.grid.shape
         self.zdim_abs, self.ydim_abs, self.xdim_abs = self.zdim * self.cell_dim, self.ydim * self.cell_dim, self.xdim * self.cell_dim
         self.ztop = np.nonzero(self.surface)[0].max()+1 # highest point of the structure
@@ -174,14 +163,13 @@ class ETrajectory(object):
         self.sigma = params['sigma']
         self.N = stat
         self.norm_factor = params['N'] / self.N
-        self.beam_ef_rad = beam_ef_rad
         self.PEL = 0
         self.SE_passes = []
-        self.deponat = Element(params["name"], params["Z"], params["A"], params["rho"])
-        self.substrate = Element(params["sub"], params["Z_s"], params["A_s"], params["rho_s"])
-        self.material = nan
+        self.deponat = Element(params['name'], params['Z'], params['A'], params['rho'], params['e'], params['l'])
+        self.substrate = substrates[params['sub']]
+        self.material = None
         self.dt = dt
-        self.Emin = 0.1 # cut-off energy for PE, keV
+        self.Emin = params['Emin'] # cut-off energy for PE, keV
 
 
 
@@ -332,6 +320,7 @@ class ETrajectory(object):
         # TODO: Vectorize !
         # TODO: if electron escapes
         self.passes = []
+        self.ztop = np.nonzero(self.surface)[0].max() + 1
         for x,y in zip(x0,y0):
             flag = False
             trajectories = []  # trajectory will be a sequence of points
@@ -586,7 +575,7 @@ class ETrajectory(object):
         :return:
         """
         # sigma = self._getSigma()
-        return self.A/(NA*self.material.rho*1.0E-21*self._getSigma(coords, a))
+        return self.A/(self.NA*self.material.rho*1.0E-21*self._getSigma(coords, a))
 
 
     def _getLambda_in(self, material=nan, Emin=0.1):
@@ -684,66 +673,35 @@ class ETrajectory(object):
         cam = self.p.show() #(screenshot='PE_trajes.png')
 
 
-def render_3Darray(arr, cell_dim, lower_t=0, upper_t=1, name='scalars_s', invert=False ):
+class Element:
     """
-    Renders a 3D numpy array and trimms values
-    Array is plotted as a solid block without value trimming
-
-    :param arr: array
-    :param cell_dim: size of a single cell
-    :param lower_t: lower cutoff threshold
-    :param upper_t: upper cutoff threshold
-    :return: pyvista.PolyData object
+    Represents a material
     """
-    if upper_t == 1: upper_t = arr.max()
-    if lower_t == 0: lower_t = arr.min()
-    grid = pv.UniformGrid()
-    grid.dimensions = np.asarray([arr.shape[2], arr.shape[1], arr.shape[0]]) + 1 # creating grid with the size of the array
-    grid.spacing = (cell_dim, cell_dim, cell_dim) # assigning dimensions of a cell
-    grid.cell_arrays[name] = arr.flatten() # writing values
-    grid = grid.threshold([lower_t,upper_t], invert=invert) # trimming
-    return grid
+    def __init__(self, name='noname', Z=1, A=1.0, rho=1.0, e=50, lambda_escape=1.0):
+        self.name = name # name of the material
+        self.rho = rho # density, g/cm^3
+        self.Z = Z # atomic number (or average if compound)
+        self.A = A # molar mass, g/mol
+        self.J = ETrajectory._getJ(self) # ionisation potential
+        self.e = e # effective energy required to produce an SE, eV [lin]
+        self.lambda_escape = lambda_escape # effective SE escape path, nm [lin]
 
+        # [lin] Lin Y., Joy D.C., Surf. Interface Anal. 2005; 37: 895–900
 
-def render_trajectories(traj, energies=[], radius=0.7, step=1, name='scalars_t'):
-    """
-    Renders mapped trajectories as splines with the given thickness
+    def __add__(self, other):
+        if other == 0:
+            return self
 
-    :param traj: collection of trajectories
-    :param energies: collection of energies
-    :param radius: line width
-    :return: pyvista.PolyData object
-    """
+    def __radd__(self, other):
+        if other == 0:
+            return self
+        else:
+            return self.__add__(other)
 
-    mesh = pv.PolyData()
-    # If energies are provided, they are gonna be used as scalars to color trajectories
-    if any(energies):
-        for i in tqdm(range(0, len(traj), step)): #
-            mesh = mesh + render_trajectory(traj[i], energies[i], radius, name)
-            # mesh.plot()
-    else:
-        for i in tqdm(range(0, len(traj), step)):
-            mesh = mesh + render_trajectory(traj[i], 0, radius, name)
-    return mesh.tube(radius=radius) # it is important for color mapping to creaate tubes after all trajectories are added
+substrates = {}
+substrates["Au"] = Element(name='Au', Z=79, A=196.967, rho=19.32, e=35, lambda_escape=0.5)
+substrates["Si"] = Element(name='Si', Z=14, A=29.09, rho=2.33, e=90, lambda_escape=2.7)
 
-def render_trajectory(traj, energies=0, radius=0.7, name='scalars'):
-    """
-    Renders a single trajectory with the given thickness
-
-    :param traj: collection of points
-    :param energies: energies for every point
-    :param radius: line width
-    :return: pyvista.PolyData object
-    """
-    points = np.asarray([[t[2], t[1], t[0]] for t in traj]) # coordinates are provided in a numpy array manner [z,y,x], but vista implements [x,y,z]
-    mesh = pv.PolyData()
-    mesh.points = points # assigning points between segments
-    line = np.arange(0, len(points), dtype=np.int_)
-    line = np.insert(line, 0, len(points))
-    mesh.lines = line # assigning lines that connect the points
-    if energies:
-        mesh[name] = np.asarray(energies) # assigning energies for every point
-    return mesh #.tube(radius=radius) # making line thicker
 
 if __name__ == "__main__":
     params = {}
