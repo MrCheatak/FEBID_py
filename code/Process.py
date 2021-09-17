@@ -6,29 +6,29 @@
 #
 ####################################################################
 import datetime
-
-import numpy as np
-from numpy import asarray, zeros, copy, where, mgrid, s_
-import yaml
-import scipy.constants as scpc
 import math
+import os
+import sys
+import timeit
+from contextlib import suppress
+from tkinter import filedialog as fd
+
+import line_profiler
+import numpy as np
 # import matplotlib.pyplot as plt
 # from matplotlib import cm
 import pyvista as pv
-# import VTK_Rendering as vr
+import scipy.constants as scpc
+import yaml
 # import ipyvolume as ipv
-from numexpr_mod import evaluate, evaluate_cached, cache_expression
-import numexpr
-import cProfile
-import sys
-import os
-from contextlib import suppress
-import etraj3d, etrajectory, etrajmap3d
+from numexpr_mod import evaluate_cached, cache_expression
+from numpy import zeros, copy, s_
 from tqdm import tqdm
-from tkinter import filedialog as fd
-import logging
-import timeit
-# import line_profiler
+
+import VTK_Rendering as vr
+import etraj3d
+from modified_libraries.rolling import roll
+
 # from timebudget import timebudget
 # TODO: look into k-d trees
 # TODO: add a benchmark to determine optimal threads number for current machine
@@ -757,43 +757,55 @@ def laplace_term_rolling(grid, ghosts_bool, D, dt, add = 0, div: int = 0):
     shore = grid[:, :, 1:]
     wave = grid[:, :, :-1]
     shore[ghosts_bool[:, :, 1:]] = wave[ghosts_bool[:, :, 1:]] # assigning values to ghost cells forward along X-axis
-    grid_out[:,:, :-1]+=grid[:,:, 1:] #rolling forward (actually backwards)
-    grid_out[:,:,-1] += grid[:,:,-1] #taking care of edge values
+    # grid_out[:,:, :-1]+=grid[:,:, 1:] #rolling forward (actually backwards)
+    roll.rolling_3d(grid_out[:,:,:-1], grid[:,:,1:])
+    # grid_out[:,:,-1] += grid[:,:,-1] #taking care of edge values
+    roll.rolling_2d(grid_out[:,:,-1], grid[:,:,-1])
     grid[ghosts_bool] = 0 # flushing ghost cells
     # Doing the same, but in reverse
     shore = grid[:, :, :-1]
     wave = grid[:, :, 1:]
     shore[ghosts_bool[:, :, :-1]] = wave[ghosts_bool[:, :, :-1]]
-    grid_out[:,:,1:] += grid[:,:,:-1] #rolling backwards
-    grid_out[:, :, 0] += grid[:, :, 0]
+    # grid_out[:,:,1:] += grid[:,:,:-1] #rolling backwards
+    roll.rolling_3d(grid_out[:,:,1:], grid[:,:,:-1])
+    # grid_out[:, :, 0] += grid[:, :, 0]
+    roll.rolling_2d(grid_out[:, :, 0], grid[:, :, 0])
     grid[ghosts_bool] = 0
 
     # Y axis:
     shore = grid[:, 1:, :]
     wave = grid[:, :-1, :]
     shore[ghosts_bool[:, 1:, :]] = wave[ghosts_bool[:, 1:, :]]
-    grid_out[:, :-1, :] += grid[:, 1:, :]
-    grid_out[:, -1, :] += grid[:, -1, :]
+    # grid_out[:, :-1, :] += grid[:, 1:, :]
+    roll.rolling_3d(grid_out[:, :-1, :], grid[:, 1:, :])
+    # grid_out[:, -1, :] += grid[:, -1, :]
+    roll.rolling_2d(grid_out[:, -1, :], grid[:, -1, :])
     grid[ghosts_bool] = 0
     shore = grid[:, :-1, :]
     wave = grid[:, 1:, :]
     shore[ghosts_bool[:, :-1, :]] = wave[ghosts_bool[:, :-1, :]]
-    grid_out[:, 1:, :] += grid[:, :-1, :]
-    grid_out[:, 0, :] += grid[:, 0, :]
+    # grid_out[:, 1:, :] += grid[:, :-1, :]
+    roll.rolling_3d(grid_out[:, 1:, :], grid[:, :-1, :])
+    # grid_out[:, 0, :] += grid[:, 0, :]
+    roll.rolling_2d(grid_out[:, 0, :], grid[:, 0, :])
     grid[ghosts_bool] = 0
 
     # Z axis:
     shore = grid[1:, :, :]
     wave = grid[:-1, :, :]
     shore[ghosts_bool[1:, :, :]] = wave[ghosts_bool[1:, :, :]]
-    grid_out[:-1, :, :] += grid[1:, :, :]
-    grid_out[-1, :, :] += grid[-1, :, :]
+    # c
+    roll.rolling_3d(grid_out[:-1, :, :], grid[1:, :, :])
+    # grid_out[-1, :, :] += grid[-1, :, :]
+    roll.rolling_2d(grid_out[-1, :, :], grid[-1, :, :])
     grid[ghosts_bool] = 0
     shore = grid[:-1, :, :]
     wave = grid[1:, :, :]
     shore[ghosts_bool[:-1, :, :]] = wave[ghosts_bool[:-1, :, :]]
-    grid_out[1:, :, :] += grid[:-1, :, :]
-    grid_out[0, :, :] += grid[0, :, :]
+    # grid_out[1:, :, :] += grid[:-1, :, :]
+    roll.rolling_3d(grid_out[1:, :, :], grid[:-1, :, :])
+    # grid_out[0, :, :] += grid[0, :, :]
+    roll.rolling_2d(grid_out[0, :, :], grid[0, :, :])
     grid[ghosts_bool] = 0
     grid_out[ghosts_bool]=0 # result also has to be cleaned as it contains redundant values in ghost cells
     # numexpr: 1 core performs better
@@ -969,11 +981,14 @@ def printing(loops=1, p_cfg='', t_cfg='', s_cfg=''):
                        button_name='precursor', cmap='plasma')
             # render.add_3Darray(deposit, structure.cell_dimension, -2, -0.5, 0.7, scalar_name='Deposit',
             #            button_name='Deposit', color='white', show_scalar_bar=False)
-            render.p.add_text(str(datetime.timedelta(seconds=timeit.default_timer())))  # showing time passed
-            render.p.add_text(f'Sim. time: {t}', position=(0, 0.9),viewport=True, font_size=12)
-            render.p.add_text(str(f'Cells: {total_dep_cells[i]}'), position='upper_right', font_size=12)  # showing total number of deposited cells
-            render.p.add_text((str(f'Height: {max_z} nm')), position=(0.82, 0.92), viewport=True, font_size=12)  # showing current height of the structure
-            render.p.add_text((str(f'Growth rate: {int(np.asarray(growth_rate).mean())} cell/h')), position=(0, 0.8), viewport=True, font_size=12)  # showing average growth rate
+            render.p.add_text(f'Time: {str(datetime.timedelta(seconds=int(timeit.default_timer())))} \n'
+                            f'Sim. time: {(t):.8f} s \n'
+                            f'Speed: {(t/timeit.default_timer()):.8f} \n'  # showing time passed
+                            f'Relative growth rate: {int(total_dep_cells[i]/timeit.default_timer()*60*60)} cell/h \n'  # showing average growth rate
+                            f'Real growth rate: {int(total_dep_cells[i] / t * 60)} cell/min \n', position='upper_left', font_size=12)  # showing average growth rate
+            render.p.add_text(f'Cells: {total_dep_cells[i]} \n' # showing total number of deposited cells
+                              f'Height: {max_z} nm \n', position='upper_right', font_size=12)  # showing current height of the structure
+
             render.update(100000, force_redraw=True)
         if flag:
             beam_matrix = etraj3d.rerun_simulation(y, x, deposit, surface_bool, sim)
@@ -986,7 +1001,7 @@ def printing(loops=1, p_cfg='', t_cfg='', s_cfg=''):
         deposition(deposit[irradiated_area_3D],
                    substrate[irradiated_area_3D],
                    beam_matrix[irradiated_area_3D],
-                   surface_bool[irradiated_area_3D], sigma*V*dt, 4)  # depositing on a selected area
+                   surface_bool[irradiated_area_3D], sigma*V*dt, 16)  # depositing on a selected area
         flag = update_surface(deposit[irradiated_area_3D],
                                substrate[irradiated_area_3D],
                                surface_bool[irradiated_area_3D],
