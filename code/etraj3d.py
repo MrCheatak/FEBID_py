@@ -147,7 +147,7 @@ def rerun_simulation(y0, x0, deposit, surface, sim):
     start = timeit.default_timer()
     flux1, enrgies1, _ = m3d.map_follow(sim.passes, 1)
     t = timeit.default_timer() - start
-    print(f'Took {t} s')
+    print(f' =  {t} s')
 
 
     # print("Loading trajectories file...")

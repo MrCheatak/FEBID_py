@@ -38,6 +38,7 @@ class ETrajMap3d(object):
         self.se_traj = []
         self.x0, self.y0, self.z0 = 0, 0, 0  # origin of 3d grid
         rnd.seed()
+        self.segment_min_length = segment_min_length
 
     def __lt__(self, x):
         return x < self.xdim_abs
@@ -85,7 +86,7 @@ class ETrajMap3d(object):
             crossings.append(crossing_point)  # saving crossing point
         return crossings
 
-    def follow_segment(self, passes):  #(self, points: np.ndarray, dEs):
+    def follow_segment(self, points_all, dEs_all):  #(self, points: np.ndarray, dEs):
         """
         Calculates distances traversed by a trajectory segment inside cells
         and gets energy losses corresponding to the distances.
@@ -102,12 +103,14 @@ class ETrajMap3d(object):
         # cells = []
         # profiler = line_profiler.LineProfiler()
         # profiled_func = profiler(self.generate_se)
-        for one_pass in passes:
-            points, dEs = self.__setup_trajectory(one_pass[0][1:], one_pass[1][1:], one_pass[2][1:])  # Adding distance from the beam origin to surface to all the points (shifting trajectories down) and getting energy losses
+        for points, dEs in zip(points_all, dEs_all):
+            # points, dEs = self.__setup_trajectory(one_pass[0][1:], one_pass[1][1:], one_pass[2][1:])  # Adding distance from the beam origin to surface to all the points (shifting trajectories down) and getting energy losses
             if not dEs.any():
                 continue
             direction = points[:, 1, :] - points[:, 0, :] # vector of a ray
-            L = np.linalg.norm(direction, axis=1) # length of a rays
+            # L = np.linalg.norm(direction, axis=1) # length of a rays
+            L = np.empty_like(dEs)
+            traversal.det_2d(direction, L)
             des = dEs/L
             step = np.sign(direction) * self.cell_dim # distance traveled by a ray along each axis in the ray direction, when crossing a cell
             step_t = step / direction # iteration step of the t-values
@@ -119,7 +122,7 @@ class ETrajMap3d(object):
             traversal.traverse_segment(self.DE, self.grid, self.cell_dim, p0, pn, direction, t, step_t, des, max_traversed_cells)
 
 
-    def prep_se_emission(self, passes):
+    def prep_se_emission(self, points_all, dEs_all):
         """
         The idea behind this method is to divide trajectory segments into pieces
         and emit SEs from every piece based on the energy lost on it.
@@ -127,12 +130,14 @@ class ETrajMap3d(object):
         :param passes:
         :return:
         """
-        dEs_all = []
+        energies_all = []
         coords_all = []
-        for i in range(len(passes)):  # go through trajectories
-            points, dEs = self.__setup_trajectory(passes[i][0][1:], passes[i][1][1:], passes[i][2][1:])  # Adding distance from the beam origin to surface to all the points (shifting trajectories down) and getting energy losses
-            direction = points[:, 1, :] - points[:, 0, :] # vector of a ray
-            L = np.linalg.norm(direction, axis=1)
+        for points, dEs in zip(points_all, dEs_all):  # go through trajectories
+            # points, dEs = self.__setup_trajectory(passes[i][0][1:], passes[i][1][1:], passes[i][2][1:])  # Adding distance from the beam origin to surface to all the points (shifting trajectories down) and getting energy losses
+            # direction = points[:, 1, :] - points[:, 0, :] # vector of a ray
+            # L = np.linalg.norm(direction, axis=1)
+            L = np.empty(dEs.shape, dtype=np.float64)
+            traversal.det_2d(points[:, 1, :] - points[:, 0, :], L)
             # Segments are divided into even parts, that become SE emission centers.
             # It has been observed, that segments are often smaller than the cell (~0.5nm average)
             # Thus there is no point in dividing all segments and going through every piece in a loop.
@@ -146,7 +151,7 @@ class ETrajMap3d(object):
             # short = np.nonzero(L <= 1.5 and dEs>0)
             # coords_all.append(np.asarray((points[short], points[np.asarray(short[0])+1])))
             coords_all.append(points[short,0].reshape(short[0].shape[0], 3))
-            dEs_all.append(dEs[short])
+            energies_all.append(dEs[short])
 
             # Collecting long segments
             long = np.logical_and(L > self.segment_min_length, dEs != 0).nonzero()
@@ -157,24 +162,28 @@ class ETrajMap3d(object):
                 # coords_long = np.asarray([points[long], points[np.asarray(long[0]) + 1]]) # creating coordinates pairs for all long segments
                 shorts = []
                 energies_l = []
+                vector = coords_long[:, 1, :] - coords_long[:, 0, :]
                 for i in range(len(long)):
                     # delta = np.fabs(coords_long[i, 1] - coords_long[i,0])
                     # num = int(delta.max()/1.5)
                     num = ceil(L[long[0][i]] / 2) # number of pieces
+                    delta = vector/num
+                    pieces = np.empty((num, 3))
+                    for j in range(num):
+                        pieces[j] = coords_long[i,0]+delta[i]*j
+                    shorts.append(pieces)
                     # Evenly dividing segment into pieces
-                    shorts.append(np.asarray((np.linspace(coords_long[i, 0, 0], coords_long[i, 1, 0], num, False),
-                                              np.linspace(coords_long[i, 0, 1], coords_long[i, 1, 1], num, False),
-                                              np.linspace(coords_long[i, 0, 2], coords_long[i, 1, 2], num, False))).T)
+                    # shorts.append(np.asarray((np.linspace(coords_long[i, 0, 0], coords_long[i, 1, 0], num, False), np.linspace(coords_long[i, 0, 1], coords_long[i, 1, 1], num, False),np.linspace(coords_long[i, 0, 2], coords_long[i, 1, 2], num, False))).T)
                     energies_l.append(np.repeat(dEs[long[0][i]] / (num), num))
                 longs = np.concatenate((shorts), axis=0)
                 # coords_all.append(np.asarray((longs[:-1], longs[1:])))
                 coords_all.append(longs)
                 e_l = np.concatenate((energies_l), axis=0)
-                dEs_all.append(e_l)
+                energies_all.append(e_l)
         # Combining all the collected segments into one array
         coords_all = np.concatenate((coords_all), axis=0)
-        dEs_all = np.concatenate((dEs_all), axis=0)
-        self.dES_all = dEs_all
+        energies_all = np.concatenate((energies_all), axis=0)
+        self.dES_all = energies_all
         self.coords_all = coords_all
 
     def generate_se(self):
@@ -183,7 +192,7 @@ class ETrajMap3d(object):
         cell_material = self.grid[coords[0], coords[1], coords[2]]
         e = np.where(cell_material==-1, self.deponat.e, 0) + np.where(cell_material==-2, self.substrate.e, 0)
         e[e==0] = 1000000
-        lambda_escape = np.where(cell_material==-1, self.deponat.lambda_escape, 0.00001) + np.where(cell_material==-2, self.substrate.lambda_escape, 0.00001)
+        lambda_escape = np.where(cell_material==-1, self.deponat.lambda_escape*2, 0.00001) + np.where(cell_material==-2, self.substrate.lambda_escape*2, 0.00001)
         n_se = self.dES_all / e * self.amplifying_factor # number of generated SEs, usually ~0.1
         alpha = rng.uniform(0, 1, self.dES_all.shape) * 2 * pi
         length = lambda_escape
@@ -198,7 +207,8 @@ class ETrajMap3d(object):
         step_t = step / direction
         delta = -(self.coords_all % self.cell_dim)
         t = np.abs((delta + np.maximum(step, 0) + (delta == 0) * step) / direction)
-        traversal.generate_flux(self.flux, self.surface.view(dtype=np.uint8), self.cell_dim, self.coords_all, pn, direction, t, step_t, n_se)
+        max_traversed_cells = lambda_escape.max()/self.cell_dim * 2 +5
+        traversal.generate_flux(self.flux, self.surface.view(dtype=np.uint8), self.cell_dim, self.coords_all, pn, direction, t, step_t, n_se,max_traversed_cells)
 
     def __setup_trajectory(self, points, energies, mask):
         '''Setup trajectory from MC simulation data for further computation.
@@ -256,13 +266,8 @@ class ETrajMap3d(object):
             # for one_pass in passes:
             #     pts, dEs = self.__setup_trajectory(one_pass[0][1:], one_pass[1][1:])  # Adding distance from the beam origin to surface to all the points (shifting trajectories down) and getting energy losses
             #     self.follow_segment(pts, dEs)
-            # profiler = line_profiler.LineProfiler()
-            # profiled_func = profiler(self.follow_segment)
-            # try:
-            #     profiled_func(passes)
-            # finally:
-            #     profiler.print_stats()
-            #
+
+
             # profiled_func = profiler(hw.follow_trajectory_vec)
             # try:
             #     profiled_func(passes, self.grid, self.cell_dim)
@@ -270,17 +275,35 @@ class ETrajMap3d(object):
             #     profiler.print_stats()
             print(f'Energy deposition took: \t SE preparation took: \t Flux counting took:')
             start = timeit.default_timer()
-            self.follow_segment(passes)
+            points = []
+            dEs = []
+            for one_pass in passes:
+                pairs, energies = self.__setup_trajectory(one_pass[0][1:], one_pass[1][1:], one_pass[2][1:])
+                points.append(pairs)
+                dEs.append((energies))
+            # profiler = line_profiler.LineProfiler()
+            # profiled_func = profiler(self.follow_segment)
+            # try:
+            #     profiled_func(points, dEs)
+            # finally:
+            #     profiler.print_stats()
+            self.follow_segment(points, dEs)
             print(f'{timeit.default_timer()-start}', end='\t')
             # cell = self.DE.nonzero()
             # for i in range(len(cell[0])):
             #     self.generate_se(self.DE[cell[0][i], cell[1][i], cell[2][i]], cell[0][i], cell[1][i], cell[2][i], np.asarray([cell[0][i]*self.cell_dim+self.cell_dim/2, cell[1][i]*self.cell_dim, cell[2][i]*self.cell_dim]))
             start = timeit.default_timer()
-            self.prep_se_emission(passes)
+            # profiler = line_profiler.LineProfiler()
+            # profiled_func = profiler(self.prep_se_emission)
+            # try:
+            #     profiled_func(points, dEs)
+            # finally:
+            #     profiler.print_stats()
+            self.prep_se_emission(points, dEs)
             print(f'{timeit.default_timer()-start}', end='\t')
             start = timeit.default_timer()
             self.generate_se()
-            print(f'{timeit.default_timer()-start}')
+            print(f'{timeit.default_timer()-start}', end='\t')
 
 
         else:

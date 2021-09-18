@@ -1,5 +1,6 @@
 #cython: language_level=3
-#cython: cdivision=True # in particular enables special integer division
+#cython: cdivision=True
+#in particular enables special integer division
 
 import cython
 import numpy as np
@@ -40,24 +41,28 @@ cpdef double traverse_segment(double[:,:,:] energies, double[:,:,:] grid, int ce
     return traverse_segment_c(energies, grid, cell_dim, p0, pn, direction, t, step_t, dEs, dEs.shape[0], max_count)
 
 
-cpdef float[:,:] traverse_cells(double[:] p0, double[:] pn, double[:] direction, double[:] t, double[:] step_t, int N):
-    """
-    Wrapper for Cython function.
-    Get a collection of points where ray crossed the cells
-    
-    :param p0: starting point
-    :param pn: end-point
-    :param direction: pointing direction
-    :param t: arbitrary values to detect crossing
-    :param step_t: increment of t value
-    :param N: size of output array
-    :return: array of points
-    """
-    cdef:
-        float[:,:] crossings = np.empty((int(np.sum(1/step_t))+5))
-
-    traverse_cells_c(p0, pn, direction, t, step_t, crossings)
-    return crossings
+# cpdef float[:,:] traverse_cells(double[:] p0, double[:] pn, double[:] direction, double[:] t, double[:] step_t, int N):
+#     """
+#     Wrapper for Cython function.
+#     Get a collection of points where ray crossed the cells
+#
+#     :param p0: starting point
+#     :param pn: end-point
+#     :param direction: pointing direction
+#     :param t: arbitrary values to detect crossing
+#     :param step_t: increment of t value
+#     :param N: size of output array
+#     :return: array of points
+#     """
+#     cdef:
+#         # float[:,:] crossings = np.empty((N,3))
+#         float ** crossings = <float**> malloc(N * sizeof(float *))
+#     for i in range(N):
+#         crossings[i] = <float *> malloc(3 * sizeof(float))
+#
+#     traverse_cells_c(p0, pn, direction, t, step_t, crossings, N)
+#
+#     return crossings
 
 cpdef double generate_flux(double[:,:,:] flux, unsigned char[:,:,:] surface, int cell_dim, double[:,:] p0, double[:,:] pn, double[:,:] direction, double[:,:] t, double[:,:] step_t, double[:] n_se, int max_count):
     """
@@ -79,6 +84,37 @@ cpdef double generate_flux(double[:,:,:] flux, unsigned char[:,:,:] surface, int
 
     return generate_flux_c(flux, surface, cell_dim, p0, pn, direction, t, step_t, n_se, n_se.shape[0], max_count)
 
+cpdef double det_1d(double[:] vector):
+    """
+    Calculate the length of a vector
+    :param vector: array with 3 elements
+    :return: 
+    """
+    return det_c_debug(vector)
+
+cpdef void det_2d(double[:,:] arr_of_vectors, double[:] out):
+    """
+    Calculate the length of vectors in an array 
+    
+    :param arr_of_vectors: array of vectors listed along 0 axis
+    :param out: output array, has to be the same length as input's 0 axis
+    :return: 
+    """
+    for i in range(arr_of_vectors.shape[0]):
+        out[i] = det_c_debug(arr_of_vectors[i])
+
+# cpdef double[:] det_2d_full(double[:,:] arr_of_vectors):  # returns a memeoryview, not an ndarray
+#     """
+#     Calculate the length of vectors in an array
+#
+#     :param arr_of_vectors: array of vectors listed along 0 axis
+#     :param out: output array, has to be the same length as input's 0 axis
+#     :return:
+#     """
+#     cdef double[:] out = np.empty(arr_of_vectors.shape[0])
+#     for i in range(arr_of_vectors.shape[0]):
+#         out[i] = det_c_debug(arr_of_vectors[i])
+#     return out
 
 ################ Cython Functions #################
 ## For internal use only
@@ -288,7 +324,8 @@ cdef inline (double, char) arr_min(double[:] x) nogil:
         else:
             return x[0], 0
 
-
+@cython.boundscheck(False) # turn off bounds-checking for entire function
+@cython.wraparound(False)  # turn off negative index wrapping for entire function
 cdef inline double det_c(float* vec) nogil:
     """
     Find the length of a vector.
@@ -299,7 +336,9 @@ cdef inline double det_c(float* vec) nogil:
     cdef double length = sqrt(vec[0] * vec[0] + vec[1] * vec[1] + vec[2] * vec[2])
     return length
 
-cdef double det_c_debug(double[:] vec) nogil:
+@cython.boundscheck(False) # turn off bounds-checking for entire function
+@cython.wraparound(False)  # turn off negative index wrapping for entire function
+cdef inline double det_c_debug(double[:] vec) nogil:
     cdef double length = sqrt(vec[0] * vec[0] + vec[1] * vec[1] + vec[2] * vec[2])
     return length
 
