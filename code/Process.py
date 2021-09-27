@@ -146,6 +146,7 @@ class Structure():
             else:
                 self.cell_dimension = vtk_obj.spacing[0]
             self.zdim, self.ydim, self.xdim = vtk_obj.dimensions[2] - 1, vtk_obj.dimensions[1] - 1, vtk_obj.dimensions[0] - 1
+            self.shape = (self.zdim, self.ydim, self.xdim)
             if 'surface_bool' in vtk_obj.array_names: # checking if it is a complete result of a deposition process
                 self.deposit = np.asarray(vtk_obj.cell_arrays['deposit'].reshape((vtk_obj.dimensions[2]-1, vtk_obj.dimensions[1]-1, vtk_obj.dimensions[0]-1)))
                 self.substrate = np.asarray(vtk_obj.cell_arrays['precursor_density'].reshape((vtk_obj.dimensions[2]-1, vtk_obj.dimensions[1]-1, vtk_obj.dimensions[0]-1)))
@@ -286,6 +287,8 @@ class Structure():
         self.ghosts_bool[0, :, :] += self.surface_bool[0, :, :]
         self.ghosts_bool[self.surface_bool] = False
 
+    def max_z(self):
+        return self.deposit.nonzero()[0].max()
 
     def save_to_vtk(self):
         import time
@@ -415,13 +418,13 @@ def define_ghosts_2(surface):
 
 
 # @jit(nopython=True, parallel=True)
-def deposition(deposit, substrate, flux_matrix, surface_bool, dt, sigma_V_dt=sigma*V*dt):
+def deposition(deposit, precursor, flux_matrix, surface_bool, sigma_V_dt, gr = 1):
 
     """
     Calculates deposition on the surface for a given time step dt (outer loop)
 
     :param deposit: 3D deposit array
-    :param substrate: 3D precursor density array
+    :param precursor: 3D precursor density array
     :param flux_matrix: matrix of electron flux distribution
     :param dt: time step
     :return: writes back to deposit array
@@ -429,16 +432,16 @@ def deposition(deposit, substrate, flux_matrix, surface_bool, dt, sigma_V_dt=sig
     # Instead of processing cell by cell and on the whole surface, it is implemented to process only (effectively) irradiated area and array-wise(thanks to Numpy)
     # Math here cannot be efficiently simplified, because multiplication of constant variables here produces a value below np.float32 accuracy
     # np.float32 — ~1E-7, produced value — ~1E-10
-    deposit[surface_bool] += substrate[surface_bool] * flux_matrix[surface_bool] * sigma_V_dt
+    deposit[surface_bool] += precursor[surface_bool] * flux_matrix[surface_bool] * sigma_V_dt * gr
 
 
 # @jit(nopython=True, parallel=True)
-def update_surface(deposit, substrate, surface_bool, semi_surf_bool, ghosts_bool):
+def update_surface(deposit, precursor, surface_bool, semi_surf_bool, ghosts_bool):
     """
     Evolves surface upon a full deposition of a cell. This method holds has the vast majority of logic
 
     :param deposit: 3D deposit array
-    :param substrate: 3D precursor density array
+    :param precursor: 3D precursor density array
     :param surface_bool: array representing surface cells
     :param semi_surf_bool: array representing semi-surface cells
     :param ghosts_bool: array representing ghost cells
@@ -450,7 +453,7 @@ def update_surface(deposit, substrate, surface_bool, semi_surf_bool, ghosts_bool
         for cell in new_deposits:
             # deposit[cell[0]+1, cell[1], cell[2]] += deposit[cell[0], cell[1], cell[2]] - 1  # if the cell was filled above unity, transferring that surplus to the cell above
             deposit[cell[0], cell[1], cell[2]] = -1  # a fully deposited cell is always a minus unity
-            substrate[cell[0], cell[1], cell[2]] = -1
+            precursor[cell[0], cell[1], cell[2]] = -1
             ghosts_bool[cell[0], cell[1], cell[2]] = True # deposited cell belongs to ghost shell
             surface_bool[cell[0], cell[1], cell[2]] = False  # rising the surface one cell up (new cell)
 
@@ -565,7 +568,11 @@ def update_surface(deposit, substrate, surface_bool, semi_surf_bool, ghosts_bool
             condition = np.logical_and(surf_kern==0, semi_s_kern==0) # True for elements that are neither surface nor semi-surface cells
             ghosts_kern[condition] = True
 
-            # refresh(substrate, surface_bool, semi_surf_bool, ghosts_bool, cell[0] + 1, cell[1], cell[2])
+            deposit[cell[0], cell[1], cell[2]] = -1  # a fully deposited cell is always a minus unity
+            precursor[cell[0], cell[1], cell[2]] = -1
+            ghosts_bool[cell[0], cell[1], cell[2]] = True # deposited cell belongs to ghost shell
+            surface_bool[cell[0], cell[1], cell[2]] = False  # rising the surface one cell up (new cell)
+            # refresh(precursor, surface_bool, semi_surf_bool, ghosts_bool, cell[0] + 1, cell[1], cell[2])
         else: # when loop finishes
         #     if cell[0] > h_max-3:
         #         h_max += 1
@@ -575,11 +582,11 @@ def update_surface(deposit, substrate, surface_bool, semi_surf_bool, ghosts_bool
 
 
 # @jit(nopython=True) # parallel=True)
-def refresh(substrate, surface_bool, semi_s_bool, ghosts_bool, z,y,x):
+def refresh(precursor, surface_bool, semi_s_bool, ghosts_bool, z,y,x):
     """
     Updates surface, semi-surface and ghost cells collections according to the provided coordinate of a newly deposited cell
 
-    :param substrate: 3D precursor density array
+    :param precursor: 3D precursor density array
     :param semi_s_bool: array representing semi-surface cells
     :param ghosts_bool: array representing ghost cells
     :param z: z-coordinate of the cell above the new deposit
@@ -587,7 +594,7 @@ def refresh(substrate, surface_bool, semi_s_bool, ghosts_bool, z,y,x):
     :param x: x-coordinate of the deposit
     :return: changes surface array, semi-surface and ghosts collections
     """
-    # this is needed, due to the substrate view being 2 cells wider in case of semi-surface or ghost cell falling out of the bounds of the view
+    # this is needed, due to the precursor view being 2 cells wider in case of semi-surface or ghost cell falling out of the bounds of the view
     semi_s_bool[z, y, x] = False # removing the new cell from the semi_surface collection, because it belongs to surface now
     semi_s_bool[z-1, y-1, x] = False
     surface_bool[z-1, y-1, x] = True
@@ -598,37 +605,37 @@ def refresh(substrate, surface_bool, semi_s_bool, ghosts_bool, z,y,x):
     semi_s_bool[z-1, y, x+1] = False
     surface_bool[z-1, y, x+1] = True
     ghosts_bool[z, y, x] = False # removing the new cell from the ghost shell collection
-    substrate[z, y, x] += substrate[z - 1, y, x] # if the deposited cell had precursor in it, transfer that surplus to the cell above
+    precursor[z, y, x] += precursor[z - 1, y, x] # if the deposited cell had precursor in it, transfer that surplus to the cell above
     # this may lead to an overfilling of a cell above unity, but it is not causing any anomalies due to diffusion process
-    substrate[z - 1, y, x] = -1  # precursor density is NaN in the fully deposited cells (it was previously set to zero, but later some of the zero cells were added back to semi-surface)
-    if substrate[z+1, y, x] == 0: # if the cell that is above the new cell is empty, then add it to the ghost shell collection
+    precursor[z - 1, y, x] = -1  # precursor density is NaN in the fully deposited cells (it was previously set to zero, but later some of the zero cells were added back to semi-surface)
+    if precursor[z+1, y, x] == 0: # if the cell that is above the new cell is empty, then add it to the ghost shell collection
         ghosts_bool[z+1, y, x] = True
     # Adding neighbors(in x-y plane) of the new cell to the semi_surface collection
     # and updating ghost shell for every neighbor:
     with suppress(IndexError): # It basically skips operations that occur out of the array
-        if substrate[z, y - 1, x] == 0:
+        if precursor[z, y - 1, x] == 0:
             semi_s_bool[z, y - 1, x] = True
-            substrate[z, y - 1, x] += 1E-7 # this "marks" cell as a surface one, because some of the checks refer to if the cell is empty. This assignment is essential. It corresponds to the smallest value that float32 can hold and should be changed corrspondingly to the variable type.
-            refresh_ghosts(substrate, ghosts_bool, x, y-1, z) # update ghost shell around
-        if substrate[z, y + 1, x] == 0:
+            precursor[z, y - 1, x] += 1E-7 # this "marks" cell as a surface one, because some of the checks refer to if the cell is empty. This assignment is essential. It corresponds to the smallest value that float32 can hold and should be changed corrspondingly to the variable type.
+            refresh_ghosts(precursor, ghosts_bool, x, y-1, z) # update ghost shell around
+        if precursor[z, y + 1, x] == 0:
             semi_s_bool[z, y + 1, x] = True
-            substrate[z, y + 1, x] += 1E-7
-            refresh_ghosts(substrate, ghosts_bool,  x, y+1, z)
-        if substrate[z, y, x - 1] == 0:
+            precursor[z, y + 1, x] += 1E-7
+            refresh_ghosts(precursor, ghosts_bool,  x, y+1, z)
+        if precursor[z, y, x - 1] == 0:
             semi_s_bool[z, y, x - 1] = True
-            substrate[z, y, x - 1] += 1E-7
-            refresh_ghosts(substrate, ghosts_bool, x-1, y, z)
-        if substrate[z, y, x + 1] == 0:
+            precursor[z, y, x - 1] += 1E-7
+            refresh_ghosts(precursor, ghosts_bool, x-1, y, z)
+        if precursor[z, y, x + 1] == 0:
             semi_s_bool[z, y, x + 1] = True
-            substrate[z, y, x + 1] += 1E-7
-            refresh_ghosts(substrate, ghosts_bool, x+1, y, z)
+            precursor[z, y, x + 1] += 1E-7
+            refresh_ghosts(precursor, ghosts_bool, x+1, y, z)
 
 # @jit(nopython=True) # parallel=True)
-def refresh_ghosts(substrate, ghosts_bool, x, y, z):
+def refresh_ghosts(precursor, ghosts_bool, x, y, z):
     """
     Updates ghost cells collection around the specified cell
 
-    :param substrate: 3D precursor density array
+    :param precursor: 3D precursor density array
     :param ghosts_bool: array representing ghost cells
     :param x: x-coordinates of the cell
     :param y: y-coordinates of the cell
@@ -638,32 +645,32 @@ def refresh_ghosts(substrate, ghosts_bool, x, y, z):
     # It must be kept in mind, that z-coordinate here is absolute, but x and y are relative to the view
     # Firstly, deleting current cell from ghost shell and then adding all neighboring cells(along all axis) if they are zero
     ghosts_bool[z, y, x] = False
-    if substrate[z - 1, y, x] == 0:
+    if precursor[z - 1, y, x] == 0:
         ghosts_bool[z - 1, y, x] = True
-    if substrate[z + 1, y, x] == 0:
+    if precursor[z + 1, y, x] == 0:
         ghosts_bool[z + 1, y, x] = True
-    if substrate[z, y - 1, x] == 0:
+    if precursor[z, y - 1, x] == 0:
         ghosts_bool[z, y - 1, x] = True
-    if substrate[z, y + 1, x] == 0:
+    if precursor[z, y + 1, x] == 0:
         ghosts_bool[z, y + 1, x] = True
-    if substrate[z, y, x - 1] == 0:
+    if precursor[z, y, x - 1] == 0:
         ghosts_bool[z, y, x - 1] = True
-    if substrate[z, y, x + 1] == 0:
+    if precursor[z, y, x + 1] == 0:
         ghosts_bool[z, y, x + 1] = True
 
 
 # @profile
-def precursor_density(flux_matrix, substrate, surface_bool, ghosts_bool, F, n0, tau, sigma, D, dt):
+def precursor_density(flux_matrix, precursor, surface_bool, ghosts_bool, F, n0, tau, sigma, D, dt):
     """
     Recalculates precursor density on the whole surface
 
     :param flux_matrix: matrix of electron flux distribution
-    :param substrate: 3D precursor density array
+    :param precursor: 3D precursor density array
     :param surface_bool: array representing surface cells
     :param semi_surf_bool: array representing semi-surface cells
     :param ghosts_bool: array representing ghost cells
     :param dt: time step
-    :return: changes substrate array
+    :return: changes precursor array
     """
     diffusion_matrix = laplace_term_rolling(substrate, ghosts_bool, D, dt)  # Diffusion term is calculated separately and added in the end
     substrate[surface_bool] += rk4(dt, substrate[surface_bool], F, n0, tau, sigma, flux_matrix[surface_bool]) # An increment is calculated through Runge-Kutta method without the diffusion term
@@ -759,9 +766,11 @@ def laplace_term_rolling(grid, ghosts_bool, D, dt, add = 0, div: int = 0):
     shore[ghosts_bool[:, :, 1:]] = wave[ghosts_bool[:, :, 1:]] # assigning values to ghost cells forward along X-axis
     # grid_out[:,:, :-1]+=grid[:,:, 1:] #rolling forward (actually backwards)
     roll.rolling_3d(grid_out[:,:,:-1], grid[:,:,1:])
+    index = ghosts_bool.reshape(-1).nonzero()
     # grid_out[:,:,-1] += grid[:,:,-1] #taking care of edge values
     roll.rolling_2d(grid_out[:,:,-1], grid[:,:,-1])
-    grid[ghosts_bool] = 0 # flushing ghost cells
+    # grid[ghosts_bool] = 0 # flushing ghost cells
+    grid.reshape(-1)[index] = 0
     # Doing the same, but in reverse
     shore = grid[:, :, :-1]
     wave = grid[:, :, 1:]
@@ -770,7 +779,8 @@ def laplace_term_rolling(grid, ghosts_bool, D, dt, add = 0, div: int = 0):
     roll.rolling_3d(grid_out[:,:,1:], grid[:,:,:-1])
     # grid_out[:, :, 0] += grid[:, :, 0]
     roll.rolling_2d(grid_out[:, :, 0], grid[:, :, 0])
-    grid[ghosts_bool] = 0
+    # grid[ghosts_bool] = 0
+    grid.reshape(-1)[index] = 0
 
     # Y axis:
     shore = grid[:, 1:, :]
@@ -780,7 +790,8 @@ def laplace_term_rolling(grid, ghosts_bool, D, dt, add = 0, div: int = 0):
     roll.rolling_3d(grid_out[:, :-1, :], grid[:, 1:, :])
     # grid_out[:, -1, :] += grid[:, -1, :]
     roll.rolling_2d(grid_out[:, -1, :], grid[:, -1, :])
-    grid[ghosts_bool] = 0
+    # grid[ghosts_bool] = 0
+    grid.reshape(-1)[index] = 0
     shore = grid[:, :-1, :]
     wave = grid[:, 1:, :]
     shore[ghosts_bool[:, :-1, :]] = wave[ghosts_bool[:, :-1, :]]
@@ -788,7 +799,8 @@ def laplace_term_rolling(grid, ghosts_bool, D, dt, add = 0, div: int = 0):
     roll.rolling_3d(grid_out[:, 1:, :], grid[:, :-1, :])
     # grid_out[:, 0, :] += grid[:, 0, :]
     roll.rolling_2d(grid_out[:, 0, :], grid[:, 0, :])
-    grid[ghosts_bool] = 0
+    # grid[ghosts_bool] = 0
+    grid.reshape(-1)[index] = 0
 
     # Z axis:
     shore = grid[1:, :, :]
@@ -798,7 +810,8 @@ def laplace_term_rolling(grid, ghosts_bool, D, dt, add = 0, div: int = 0):
     roll.rolling_3d(grid_out[:-1, :, :], grid[1:, :, :])
     # grid_out[-1, :, :] += grid[-1, :, :]
     roll.rolling_2d(grid_out[-1, :, :], grid[-1, :, :])
-    grid[ghosts_bool] = 0
+    # grid[ghosts_bool] = 0
+    grid.reshape(-1)[index] = 0
     shore = grid[:-1, :, :]
     wave = grid[1:, :, :]
     shore[ghosts_bool[:-1, :, :]] = wave[ghosts_bool[:-1, :, :]]
@@ -806,8 +819,10 @@ def laplace_term_rolling(grid, ghosts_bool, D, dt, add = 0, div: int = 0):
     roll.rolling_3d(grid_out[1:, :, :], grid[:-1, :, :])
     # grid_out[0, :, :] += grid[0, :, :]
     roll.rolling_2d(grid_out[0, :, :], grid[0, :, :])
-    grid[ghosts_bool] = 0
-    grid_out[ghosts_bool]=0 # result also has to be cleaned as it contains redundant values in ghost cells
+    # grid[ghosts_bool] = 0
+    grid.reshape(-1)[index] = 0
+    # grid_out[ghosts_bool]=0
+    grid_out.reshape(-1)[index] = 0 # result also has to be cleaned as it contains redundant values in ghost cells
     # numexpr: 1 core performs better
     # numexpr.set_num_threads(nn)
     return evaluate_cached(expressions["laplace1"], local_dict={'dt_D': dt*D, 'grid_out':grid_out}, casting='same_kind')
@@ -843,9 +858,13 @@ def initialize_framework(from_file=False):
     mc_config, equation_values, timings, nr = buffer_constants(precursor, settings, sim_params)
     structure = None
     if from_file:
-        vtk_file = fd.askopenfilename()
-        vtk_obj = pv.read(vtk_file)
-        structure = Structure(vtk_obj=vtk_obj)
+        try:
+            vtk_file = fd.askopenfilename() # '/Users/sandrik1742/Documents/PycharmProjects/FEBID/code/New Folder With Items/35171.372k_of_1000000.0_loops_k_gr4 15/02/42.vtk'#
+            vtk_obj = pv.read(vtk_file)
+            structure = Structure(vtk_obj=vtk_obj)
+        except FileNotFoundError:
+            structure = Structure(sim_params['cell_dimension'], sim_params['width'], sim_params['length'],
+                                  sim_params['height'], sim_params['substrate_height'], nr)
     else:
         structure = Structure(sim_params['cell_dimension'], sim_params['width'], sim_params['length'],
                               sim_params['height'], sim_params['substrate_height'], nr)
@@ -862,10 +881,10 @@ def buffer_constants(precursor: dict, settings: dict, sim_params: dict):
     """
     td = settings["dwell_time"]  # dwell time of a beam, s
     Ie = settings["beam_current"]  # beam current, A
-    beam_d = 2.36*settings["gauss_dev"]  # electron beam diameter, nm
+    beam_FWHM = 2.36*settings["gauss_dev"]  # electron beam diameter, nm
     F = settings["precursor_flux"]  # precursor flux at the surface, 1/(nm^2*s)   here assumed a constant, but may be dependent on time and position
-    effective_diameter = beam_d * 3.3  # radius of an area which gets 99% of the electron beam
-    f = Ie / scpc.elementary_charge / (math.pi * beam_d * beam_d / 4)  # electron flux at the surface, 1/(nm^2*s)
+    effective_diameter = beam_FWHM * 3.3  # radius of an area which gets 99% of the electron beam
+    f = Ie / scpc.elementary_charge / (math.pi * beam_FWHM * beam_FWHM / 4)  # electron flux at the surface, 1/(nm^2*s)
     e = precursor["SE_emission_activation_energy"]
     l = precursor["SE_mean_free_path"]
 
@@ -883,7 +902,7 @@ def buffer_constants(precursor: dict, settings: dict, sim_params: dict):
     nr = F / kr  # absolute density after long time
     nd = F / kd  # depleted absolute density
     t_out = 1 / (1 / tau + F / n0)  # effective residence time
-    p_out = 2 * math.sqrt(D * t_out) / beam_d
+    p_out = 2 * math.sqrt(D * t_out) / beam_FWHM
 
     # Initializing framework
     dt = sim_params["time_step"]
@@ -915,12 +934,12 @@ def buffer_constants(precursor: dict, settings: dict, sim_params: dict):
 # /The printing loop.
 # @jit(nopython=True)
 # @profile
-def printing(loops=1, p_cfg='', t_cfg='', s_cfg=''):
+def printing(loops=1, dwell_time=1):
     """
     Performs FEBID printing process in a zig-zag manner for given number of times
 
     :param loops: number of repetitions of the route
-    :return: changes deposit and substrate arrays
+    :return: changes deposit and precursor arrays
     """
 
     structure, mc_config, equation_values, timings = initialize_framework()
@@ -943,18 +962,20 @@ def printing(loops=1, p_cfg='', t_cfg='', s_cfg=''):
     semi_surface_bool = structure.semi_surface_bool
     ghosts_bool = structure.ghosts_bool
     deposit = structure.deposit
-    substrate = structure.substrate
+    precursor = structure.precursor
 
-    sim = etraj3d.cache_params(mc_config, deposit, surface_bool, dt)
+    sim = etraj3d.cache_params(mc_config, deposit, surface_bool)
 
     y, x = structure.ydim / 2, structure.xdim / 2
 
     max_z=int(sub_h + np.nonzero(surface_bool)[0].max()+3) # used to track the highest point
+    y_start, y_end, x_start, x_end = 0, 0, 0, 0
+    irradiated_area_3D = None
 
     flag = True
     render = vr.Render()
-    render.add_3Darray(deposit, structure.cell_dimension, -2, -1, opacity=1, nan_opacity=1, scalar_name='Deposit',
-                       button_name='deposit', cmap='plasma')
+    render.add_3Darray(precursor, structure.cell_dimension, 0.00001, 1, opacity=0.9, nan_opacity=1, scalar_name='Precursor',
+                       button_name='precursor', cmap='plasma')
     render.show(interactive_update=True, cam_pos=[(206.34055818793468, 197.6510638707941, 100.47106597548205),
                                                   (0.0, 0.0, 0.0),
                                                   (-0.23307751464125356, -0.236197909312718, 0.9433373838690787)])
@@ -969,7 +990,7 @@ def printing(loops=1, p_cfg='', t_cfg='', s_cfg=''):
             i += 1
             # structure.cell_dimension = cell_dimension
             # structure.deposit = deposit
-            # structure.substrate = substrate
+            # structure.precursor = precursor
             # structure.ghosts_bool = ghosts_bool
             # structure.surface_bool = surface_bool
             # vr.save_deposited_structure(structure, f'{l/1000}k_of_{loops/1000}_loops_k_gr16 ')
@@ -977,7 +998,7 @@ def printing(loops=1, p_cfg='', t_cfg='', s_cfg=''):
             print(f'Time passed: {timeit.default_timer()}, Av.speed: {l/timeit.default_timer()}')
             total_dep_cells.append(np.count_nonzero(deposit[deposit < 0]) - init_cells)
             growth_rate.append((total_dep_cells[i] - total_dep_cells[i - 1]) / (time_stamp - time_step+0.001) * 60 * 60)
-            render.add_3Darray(substrate, structure.cell_dimension, 0.0001, 1, 1, show_edges=True, scalar_name='Precursor',
+            render.add_3Darray(precursor, structure.cell_dimension, 0.0001, 1, 1, show_edges=True, scalar_name='Precursor',
                        button_name='precursor', cmap='plasma')
             # render.add_3Darray(deposit, structure.cell_dimension, -2, -0.5, 0.7, scalar_name='Deposit',
             #            button_name='Deposit', color='white', show_scalar_bar=False)
@@ -987,11 +1008,14 @@ def printing(loops=1, p_cfg='', t_cfg='', s_cfg=''):
                             f'Relative growth rate: {int(total_dep_cells[i]/timeit.default_timer()*60*60)} cell/h \n'  # showing average growth rate
                             f'Real growth rate: {int(total_dep_cells[i] / t * 60)} cell/min \n', position='upper_left', font_size=12)  # showing average growth rate
             render.p.add_text(f'Cells: {total_dep_cells[i]} \n' # showing total number of deposited cells
-                              f'Height: {max_z} nm \n', position='upper_right', font_size=12)  # showing current height of the structure
+                              f'Height: {max_z*structure.cell_dimension} nm \n', position='upper_right', font_size=12)  # showing current height of the structure
 
             render.update(100000, force_redraw=True)
         if flag:
-            beam_matrix = etraj3d.rerun_simulation(y, x, deposit, surface_bool, sim)
+            start = timeit.default_timer()
+            beam_matrix = etraj3d.rerun_simulation(y, x, deposit, surface_bool, sim, dt)
+            print(f'Took total {timeit.default_timer() - start}')
+            y_start, y_end, x_start, x_end = define_irr_area(beam_matrix[sub_h:max_z])
             max_z = int(sub_h + np.nonzero(surface_bool)[0].max() + 3)
             flag = False
         y_start, y_end, x_start, x_end = define_irr_area(beam_matrix[sub_h:max_z])
@@ -999,25 +1023,25 @@ def printing(loops=1, p_cfg='', t_cfg='', s_cfg=''):
         # irradiated_area_3D_ext = s_[:max_z, y_start - ext:y_end + ext, x_start - ext:x_end + ext]
         # beam_exposure[irradiated_area_3D] += beam_matrix[irradiated_area_3D] # accumulates beam exposure for precursor density if it is called with an interval bigger that dt
         deposition(deposit[irradiated_area_3D],
-                   substrate[irradiated_area_3D],
+                   precursor[irradiated_area_3D],
                    beam_matrix[irradiated_area_3D],
-                   surface_bool[irradiated_area_3D], sigma*V*dt, 16)  # depositing on a selected area
+                   surface_bool[irradiated_area_3D], sigma*V*dt, 4)  # depositing on a selected area
         flag = update_surface(deposit[irradiated_area_3D],
-                               substrate[irradiated_area_3D],
+                               precursor[irradiated_area_3D],
                                surface_bool[irradiated_area_3D],
                                semi_surface_bool[irradiated_area_3D],
                                ghosts_bool[irradiated_area_3D],)  # updating surface on a selected area
         # if t % refresh_dt < 1E-6:
         # TODO: look into DASK for processing arrays by chunks in parallel
         precursor_density(beam_matrix[sub_h:max_z, :, :],
-                          substrate[sub_h:max_z, :, :],
+                          precursor[sub_h:max_z, :, :],
                           surface_bool[sub_h:max_z, :, :],
                           ghosts_bool[sub_h:max_z, :, :], F, n0, tau, sigma, D, dt)
             # if l==3:
             #     profiler = line_profiler.LineProfiler()
             #     profiled_func = profiler(precursor_density)
             #     try:
-            #         profiled_func(beam_matrix, substrate[:surface.max()+3,:,:], surface, ghosts_index, refresh_dt)
+            #         profiled_func(beam_matrix, precursor[:surface.max()+3,:,:], surface, ghosts_index, refresh_dt)
             #     finally:
             #         profiler.print_stats()
             # beam_exposure[:max_z, y_offset-effective_radius_relative:y_limit+effective_radius_relative,x_offset-effective_radius_relative:x_limit+effective_radius_relative] = 0 # flushing accumulated radiation
