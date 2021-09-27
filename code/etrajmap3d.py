@@ -19,7 +19,7 @@ from modified_libraries.ray_traversal import traversal
 
 @total_ordering # realises all comparison operations without having to define them explicitly
 class ETrajMap3d(object):
-    def __init__(self, deposit, surface, sim, segment_min_length = 2):
+    def __init__(self, deposit, surface, sim, segment_min_length = 1):
         self.grid = deposit
         self.state = deposit
         self.surface = surface
@@ -28,7 +28,7 @@ class ETrajMap3d(object):
         self.zdim_abs, self.ydim_abs, self.xdim_abs = [x*self.cell_dim for x in [self.nz, self.ny, self.nx]]
         self.DE = np.zeros((self.nz+1, self.ny+1, self.nx+1)) # array for storing of deposited energies
         self.flux = np.zeros((self.nz+1, self.ny+1, self.nx+1)) # array for storing SE fluxes
-        self.amplifying_factor = 1000 # artificially increases SE yield to preserve accuracy
+        self.amplifying_factor = 10000 # artificially increases SE yield to preserve accuracy
         # self.e = e # fitting parameter related to energy required to initiate a SE cascade, material specific, eV
         self.deponat= sim.deponat
         self.substrate = sim.substrate
@@ -117,8 +117,10 @@ class ETrajMap3d(object):
             delta = -(points[:, 0] % self.cell_dim) # positions of the ray origin relative to its enclosing cell position
             t = np.abs((delta + (step == self.cell_dim) * self.cell_dim + (delta == 0) * step) / direction) # initial t-value
             p0, pn = points[:, 0], points[:, 1]  # ray origin and end
-            max_traversed_cells = int(L.max()/self.cell_dim*2)+10 # maximum number of cells traversed by a segment in the a trajectory
-            max_traversed_cells = ceil(np.sum(1/step_t, axis=1).max())+5
+            max_traversed_cells = int(L.max()/self.cell_dim*2)+10 # maximum number of cells traversed by a segment in the a trajectory;
+            # this is essential to allocate enough memory for the traversal algorithm
+            # TODO: produced NaN at gr=4
+            # max_traversed_cells = ceil(np.sum(1/step_t, axis=1).max())+5
             traversal.traverse_segment(self.DE, self.grid, self.cell_dim, p0, pn, direction, t, step_t, des, max_traversed_cells)
 
 
@@ -163,10 +165,10 @@ class ETrajMap3d(object):
                 shorts = []
                 energies_l = []
                 vector = coords_long[:, 1, :] - coords_long[:, 0, :]
-                for i in range(len(long)):
+                for i in range(len(long[0])):
                     # delta = np.fabs(coords_long[i, 1] - coords_long[i,0])
                     # num = int(delta.max()/1.5)
-                    num = ceil(L[long[0][i]] / 2) # number of pieces
+                    num = ceil(L[long[0][i]] / self.segment_min_length) # number of pieces
                     delta = vector/num
                     pieces = np.empty((num, 3))
                     for j in range(num):
@@ -190,17 +192,29 @@ class ETrajMap3d(object):
         rng = default_rng()
         coords = np.int64(self.coords_all/self.cell_dim).T
         cell_material = self.grid[coords[0], coords[1], coords[2]]
-        e = np.where(cell_material==-1, self.deponat.e, 0) + np.where(cell_material==-2, self.substrate.e, 0)
-        e[e==0] = 1000000
+        # e = np.where(cell_material==-1, self.deponat.e, 0) + np.where(cell_material==-2, self.substrate.e, 0)
+        e = np.empty_like(cell_material)
+        e[cell_material==-1] = self.deponat.e
+        e[cell_material==-2] = self.substrate.e
+        e[cell_material>=0] = 1000000
         lambda_escape = np.where(cell_material==-1, self.deponat.lambda_escape*2, 0.00001) + np.where(cell_material==-2, self.substrate.lambda_escape*2, 0.00001)
-        n_se = self.dES_all / e * self.amplifying_factor # number of generated SEs, usually ~0.1
+        try:
+            n_se = self.dES_all / e * self.amplifying_factor # number of generated SEs, usually ~0.1
+        except Exception as e:
+            print(e.args)
         alpha = rng.uniform(0, 1, self.dES_all.shape) * 2 * pi
         length = lambda_escape
         max_traversed_cells = int(length.max()/self.cell_dim*2+5)
-        z = rng.uniform(0, 1, self.dES_all.shape) * length
-        y = np.sin(alpha) * np.sqrt(1-z*z) * length
-        x = np.cos(alpha) * np.sqrt(1-z*z) * length
-        direction = np.column_stack((z, y, x))
+        # z = rng.uniform(0, 1, self.dES_all.shape)
+        # y = np.sin(alpha) * np.sqrt(1-z*z) * length
+        # x = np.cos(alpha) * np.sqrt(1-z*z) * length
+        direction = np.empty((self.dES_all.shape[0], 3))
+        direction[:,0] = rng.uniform(0, 1, self.dES_all.shape)
+        z_sqrt = np.sqrt(1-direction[:,0]*direction[:,0]) * length
+        direction[:,1] = np.sin(alpha) * z_sqrt
+        direction[:,2] = np.cos(alpha) * z_sqrt
+        direction[:,0] *= length
+        # direction = np.column_stack((z*length, y, x))
         # direction *=  np.broadcast_to(length, (length.shape, 3))
         pn = direction + self.coords_all
         step = np.sign(direction) * self.cell_dim
@@ -209,6 +223,8 @@ class ETrajMap3d(object):
         t = np.abs((delta + np.maximum(step, 0) + (delta == 0) * step) / direction)
         max_traversed_cells = lambda_escape.max()/self.cell_dim * 2 +5
         traversal.generate_flux(self.flux, self.surface.view(dtype=np.uint8), self.cell_dim, self.coords_all, pn, direction, t, step_t, n_se,max_traversed_cells)
+
+        self.coords_all = np.hstack((self.coords_all.reshape((pn.shape[0],1,3)), pn.reshape((pn.shape[0],1,3))))
 
     def __setup_trajectory(self, points, energies, mask):
         '''Setup trajectory from MC simulation data for further computation.
@@ -227,6 +243,7 @@ class ETrajMap3d(object):
         pnp = np.array(points[0:len(points)]) # to get easy access to x, y, z coordinates of points
         p0, pn = pnp[:-1], pnp[1:]
         pairs = np.stack((p0,pn))
+        # TODO: Thrown 'axis don't match array' exception :
         pairs = np.transpose(pairs, axes=(1,0,2))[mask.nonzero()]
         # np.delete(pairs, (mask==0), axis=0)
         # result = pairs[mask.nonzero()]
@@ -278,6 +295,8 @@ class ETrajMap3d(object):
             points = []
             dEs = []
             for one_pass in passes:
+                if len(one_pass[1][:])<2:
+                    continue
                 pairs, energies = self.__setup_trajectory(one_pass[0][1:], one_pass[1][1:], one_pass[2][1:])
                 points.append(pairs)
                 dEs.append((energies))
@@ -293,29 +312,31 @@ class ETrajMap3d(object):
             # for i in range(len(cell[0])):
             #     self.generate_se(self.DE[cell[0][i], cell[1][i], cell[2][i]], cell[0][i], cell[1][i], cell[2][i], np.asarray([cell[0][i]*self.cell_dim+self.cell_dim/2, cell[1][i]*self.cell_dim, cell[2][i]*self.cell_dim]))
             start = timeit.default_timer()
-            # profiler = line_profiler.LineProfiler()
-            # profiled_func = profiler(self.prep_se_emission)
-            # try:
-            #     profiled_func(points, dEs)
-            # finally:
-            #     profiler.print_stats()
             self.prep_se_emission(points, dEs)
             print(f'{timeit.default_timer()-start}', end='\t')
             start = timeit.default_timer()
+            # profiler = line_profiler.LineProfiler()
+            # profiled_func = profiler(self.generate_se)
+            # try:
+            #     for i in range(100):
+            #         profiled_func()
+            # finally:
+            #     profiler.print_stats()
             self.generate_se()
             print(f'{timeit.default_timer()-start}', end='\t')
+            a=0
 
 
-        else:
-            for one_pass in passes:
-                pts, dEs = self.__setup_trajectory(one_pass[0][1:], one_pass[1][1:])  # Adding distance from the beam origin to surface to all the points (shifting trajectories down) and getting energy losses
-                p1 = pts[0]
-                traj = []
-                for i in range(len(pts) - 1):
-                    p2 = p1 + (pts[i + 1] - pts[i])  # set p1 and p2 as endpoints of current segment
-                    p1, cont = self.__follow_segment(traj, p1, p2, dEs[i])
-                    if not cont:  # if endpoint leaves simulation volume break
-                        break
+        # else:
+        #     for one_pass in passes:
+        #         pts, dEs = self.__setup_trajectory(one_pass[0][1:], one_pass[1][1:])  # Adding distance from the beam origin to surface to all the points (shifting trajectories down) and getting energy losses
+        #         p1 = pts[0]
+        #         traj = []
+        #         for i in range(len(pts) - 1):
+        #             p2 = p1 + (pts[i + 1] - pts[i])  # set p1 and p2 as endpoints of current segment
+        #             p1, cont = self.__follow_segment(traj, p1, p2, dEs[i])
+        #             if not cont:  # if endpoint leaves simulation volume break
+        #                 break
                 # self.trajectories.append(traj)
         return self.flux, self.DE, self.se_traj # has to be returned, as every process (when using multiprocessing) gets its own copy of the whole class and thus does not write to the original
 
