@@ -1,9 +1,14 @@
-import timeit
-
-import pyvista as pv
-import numpy as np
-from math import *
+import logging
+import multiprocessing
 import random as rnd
+import sys
+import timeit
+# import sandbox.HelloWorld as hw
+from functools import total_ordering
+from math import *
+
+import numpy as np
+import pyvista as pv
 from numpy.random import default_rng
 import os, sys
 from tqdm import tqdm
@@ -20,6 +25,8 @@ from modified_libraries.ray_traversal import traversal
 @total_ordering # realises all comparison operations without having to define them explicitly
 class ETrajMap3d(object):
     def __init__(self, deposit, surface, sim, segment_min_length = 1):
+        #TODO: ETrajMap3d class should probably be merged with Etrajectory
+        # These classes
         self.grid = deposit
         self.state = deposit
         self.surface = surface
@@ -152,36 +159,51 @@ class ETrajMap3d(object):
             short = np.logical_and(L <= self.segment_min_length, dEs != 0).nonzero() # If the energy loss is 0, it means that electron escaped solid should be discarded
             # short = np.nonzero(L <= 1.5 and dEs>0)
             # coords_all.append(np.asarray((points[short], points[np.asarray(short[0])+1])))
-            coords_all.append(points[short,0].reshape(short[0].shape[0], 3))
-            energies_all.append(dEs[short])
+            if short[0].shape[0]>0:
+                coords_all.append(points[short,0].reshape(short[0].shape[0], 3))
+                energies_all.append(dEs[short])
 
             # Collecting long segments
             long = np.logical_and(L > self.segment_min_length, dEs != 0).nonzero()
             if long[0].any():
                 coords = []
-                [coords.append([points[index,0], points[index,1]]) for index in long[0]]
-                coords_long = np.asarray(coords)
+                # [coords.append([points[index,0], points[index,1]]) for index in long[0]]
+                coords_long = np.take(points, long[0], axis=0)
+                # coords_long = np.asarray(coords)
                 # coords_long = np.asarray([points[long], points[np.asarray(long[0]) + 1]]) # creating coordinates pairs for all long segments
                 shorts = []
                 energies_l = []
                 vector = coords_long[:, 1, :] - coords_long[:, 0, :]
+                # BUG: np.ceil refuses to cast to integer even with 'casting=unsafe'
+                num = np.intp(np.ceil(L[long[0]] / self.segment_min_length)) # np.ceil r
+                delta = vector / np.broadcast_to(num, (3, num.shape[0])).T
+                pieces = np.zeros((np.sum(num, dtype=int), 3))
+                energies = np.zeros(np.sum(num, dtype=int))
+                count = 0
                 for i in range(len(long[0])):
                     # delta = np.fabs(coords_long[i, 1] - coords_long[i,0])
                     # num = int(delta.max()/1.5)
-                    num = ceil(L[long[0][i]] / self.segment_min_length) # number of pieces
-                    delta = vector/num
-                    pieces = np.empty((num, 3))
-                    for j in range(num):
-                        pieces[j] = coords_long[i,0]+delta[i]*j
-                    shorts.append(pieces)
+                    # num = ceil(L[long[0][i]] / self.segment_min_length) # number of pieces
+                    # delta = vector[i]/num
+
                     # Evenly dividing segment into pieces
+                    energies[count:count+num[i]] = np.repeat(dEs[long[0][i]] / (num[i]), num[i])
+                    for j in range(num[i]):
+                        pieces[count] = coords_long[i,0]+delta[i]*j
+                        count += 1
+                    # shorts.append(pieces)
+
                     # shorts.append(np.asarray((np.linspace(coords_long[i, 0, 0], coords_long[i, 1, 0], num, False), np.linspace(coords_long[i, 0, 1], coords_long[i, 1, 1], num, False),np.linspace(coords_long[i, 0, 2], coords_long[i, 1, 2], num, False))).T)
-                    energies_l.append(np.repeat(dEs[long[0][i]] / (num), num))
-                longs = np.concatenate((shorts), axis=0)
+                    # energies_l.append(np.repeat(dEs[long[0][i]] / (num), num))
+                # longs = np.concatenate((shorts), axis=0)
                 # coords_all.append(np.asarray((longs[:-1], longs[1:])))
-                coords_all.append(longs)
-                e_l = np.concatenate((energies_l), axis=0)
-                energies_all.append(e_l)
+                coords_all.append(pieces)
+                # e_l = np.concatenate((energies_l), axis=0)
+                energies_all.append(energies)
+            coords_all.append(points[points.shape[0]-1,1].reshape(1,3))
+            l= len(energies_all)-1
+            energies_all.append(energies_all[l][energies_all[l].shape[0]-1].reshape(1))
+
         # Combining all the collected segments into one array
         coords_all = np.concatenate((coords_all), axis=0)
         energies_all = np.concatenate((energies_all), axis=0)
@@ -190,39 +212,46 @@ class ETrajMap3d(object):
 
     def generate_se(self):
         rng = default_rng()
-        coords = np.int64(self.coords_all/self.cell_dim).T
+        alpha = rng.uniform(0, 1, self.dES_all.shape) * 2 * pi
+        # z = rng.uniform(0, 1, self.dES_all.shape)
+        # y = np.sin(alpha) * np.sqrt(1-z*z) * length
+        # x = np.cos(alpha) * np.sqrt(1-z*z) * length
+        direction = np.empty((self.dES_all.shape[0], 3))
+        direction[:, 0] = rng.uniform(0, 1, self.dES_all.shape)
+        z_sqrt = np.sqrt(1 - direction[:, 0] * direction[:, 0])
+        direction[:, 1] = np.sin(alpha) * z_sqrt
+        direction[:, 2] = np.cos(alpha) * z_sqrt
+        sign = np.int8(np.sign(direction))
+        sign[sign==-1] = 0
+        sign[sign==1] = -1
+        delta = -(self.coords_all % self.cell_dim)
+        sign = (delta==0) * sign
+
+
+        # coords = (np.int64(self.coords_all/self.cell_dim + (delta == 0) * sign)).T
+        coords = (np.int64(self.coords_all / self.cell_dim)).T
         cell_material = self.grid[coords[0], coords[1], coords[2]]
         # e = np.where(cell_material==-1, self.deponat.e, 0) + np.where(cell_material==-2, self.substrate.e, 0)
         e = np.empty_like(cell_material)
         e[cell_material==-1] = self.deponat.e
         e[cell_material==-2] = self.substrate.e
         e[cell_material>=0] = 1000000
-        lambda_escape = np.where(cell_material==-1, self.deponat.lambda_escape*2, 0.00001) + np.where(cell_material==-2, self.substrate.lambda_escape*2, 0.00001)
-        try:
-            n_se = self.dES_all / e * self.amplifying_factor # number of generated SEs, usually ~0.1
-        except Exception as e:
-            print(e.args)
-        alpha = rng.uniform(0, 1, self.dES_all.shape) * 2 * pi
+        lambda_escape = np.where(cell_material == -1, self.deponat.lambda_escape * 2, 0.00001) + np.where(cell_material == -2, self.substrate.lambda_escape * 2, 0.00001)
+        n_se = self.dES_all / e * self.amplifying_factor  # number of generated SEs, usually ~0.1
+
         length = lambda_escape
-        max_traversed_cells = int(length.max()/self.cell_dim*2+5)
-        # z = rng.uniform(0, 1, self.dES_all.shape)
-        # y = np.sin(alpha) * np.sqrt(1-z*z) * length
-        # x = np.cos(alpha) * np.sqrt(1-z*z) * length
-        direction = np.empty((self.dES_all.shape[0], 3))
-        direction[:,0] = rng.uniform(0, 1, self.dES_all.shape)
-        z_sqrt = np.sqrt(1-direction[:,0]*direction[:,0]) * length
-        direction[:,1] = np.sin(alpha) * z_sqrt
-        direction[:,2] = np.cos(alpha) * z_sqrt
-        direction[:,0] *= length
         # direction = np.column_stack((z*length, y, x))
         # direction *=  np.broadcast_to(length, (length.shape, 3))
+        direction[:,0] *= length
+        direction[:,1] *= length
+        direction[:,2] *= length
         pn = direction + self.coords_all
         step = np.sign(direction) * self.cell_dim
         step_t = step / direction
-        delta = -(self.coords_all % self.cell_dim)
+
         t = np.abs((delta + np.maximum(step, 0) + (delta == 0) * step) / direction)
-        max_traversed_cells = lambda_escape.max()/self.cell_dim * 2 +5
-        traversal.generate_flux(self.flux, self.surface.view(dtype=np.uint8), self.cell_dim, self.coords_all, pn, direction, t, step_t, n_se,max_traversed_cells)
+        max_traversed_cells = int(np.amax(length, initial=0)/self.cell_dim*2+5)
+        traversal.generate_flux(self.flux, self.surface.view(dtype=np.uint8), self.cell_dim, self.coords_all, pn, direction, sign, t, step_t, n_se, max_traversed_cells)
 
         self.coords_all = np.hstack((self.coords_all.reshape((pn.shape[0],1,3)), pn.reshape((pn.shape[0],1,3))))
 
@@ -290,16 +319,16 @@ class ETrajMap3d(object):
             #     profiled_func(passes, self.grid, self.cell_dim)
             # finally:
             #     profiler.print_stats()
-            print(f'Energy deposition took: \t SE preparation took: \t Flux counting took:')
             start = timeit.default_timer()
             points = []
             dEs = []
             for one_pass in passes:
-                if len(one_pass[1][:])<2:
+                if len(one_pass[1][:])<3:
                     continue
                 pairs, energies = self.__setup_trajectory(one_pass[0][1:], one_pass[1][1:], one_pass[2][1:])
-                points.append(pairs)
-                dEs.append((energies))
+                if pairs.shape[0]:
+                    points.append(pairs)
+                    dEs.append((energies))
             # profiler = line_profiler.LineProfiler()
             # profiled_func = profiler(self.follow_segment)
             # try:
@@ -307,13 +336,13 @@ class ETrajMap3d(object):
             # finally:
             #     profiler.print_stats()
             self.follow_segment(points, dEs)
-            print(f'{timeit.default_timer()-start}', end='\t')
+            print(f'{timeit.default_timer()-start}', end='\t\t')
             # cell = self.DE.nonzero()
             # for i in range(len(cell[0])):
             #     self.generate_se(self.DE[cell[0][i], cell[1][i], cell[2][i]], cell[0][i], cell[1][i], cell[2][i], np.asarray([cell[0][i]*self.cell_dim+self.cell_dim/2, cell[1][i]*self.cell_dim, cell[2][i]*self.cell_dim]))
             start = timeit.default_timer()
             self.prep_se_emission(points, dEs)
-            print(f'{timeit.default_timer()-start}', end='\t')
+            print(f'{timeit.default_timer()-start}', end='\t\t')
             start = timeit.default_timer()
             # profiler = line_profiler.LineProfiler()
             # profiled_func = profiler(self.generate_se)
@@ -338,7 +367,7 @@ class ETrajMap3d(object):
         #             if not cont:  # if endpoint leaves simulation volume break
         #                 break
                 # self.trajectories.append(traj)
-        return self.flux, self.DE, self.se_traj # has to be returned, as every process (when using multiprocessing) gets its own copy of the whole class and thus does not write to the original
+        return self.flux, self.DE # has to be returned, as every process (when using multiprocessing) gets its own copy of the whole class and thus does not write to the original
 
 
 ############ Old code ##############
