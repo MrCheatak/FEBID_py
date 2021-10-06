@@ -56,33 +56,45 @@ def read_cfg(fname):
 
 
 def plot(m3d:map3d.ETrajMap3d, sim:et.ETrajectory=nan): # plot energy loss and all trajectories
-    struct = m3d.grid
-    trajs = m3d.trajectories
-    pe_energies = 0
-    if sim:
-        pe_energies = np.asarray(sim.passes)[:, 1]
-        trajs = np.asarray(sim.passes)[:, 0]
-    energies = m3d.DE
-    se_trajes = m3d.se_traj
-    render = vr.Render()
-    # Deposited structure
-    render.add_3Darray(m3d.grid, m3d.cell_dim, -3, 0, button_name="Structure", color='white', invert=True)
-    # Deposited energies
-    render.add_3Darray(m3d.DE, m3d.cell_dim, 1, opacity=1, scalar_name='Deposited energy, eV', button_name="Deposited energy", cmap='coolwarm', log_scale=True)
-    # SE flux at the surface
-    render.add_3Darray(m3d.flux, m3d.cell_dim, 1, scalar_name='Flux, 1/(nm^2*s)', button_name='SE surface flux', cmap='plasma', log_scale=True)
-    # PE trajectories
-    render.add_trajectory(trajs, pe_energies, 0.5, step=4, scalar_name='PE Energy, keV', button_name='PEs', cmap='viridis')
-    # SEs
-    # render.add_trajectory(se_trajes, radius=0.2, step=20, button_name='SEs', color='red')
 
-    render.p.camera_position = [(463.14450307610286, 271.1171723376318, 156.56895424388603),
-                                (225.90027381807235, 164.9577775224395, 71.42188811921902),
-                                (-0.27787912231751677, -0.1411181984824172, 0.950194110399093)]
-    camera_pos = render.show()
+    render = vr.Render(sim.cell_dim)
+    pe_trajectories = np.asarray(sim.passes)
+    render.show_mc_result(sim.grid, pe_trajectories, m3d.DE, m3d.flux, m3d.coords_all)
 
 
-def cache_params(params, deposit, surface, dt):
+    # struct = m3d.grid
+    # trajs = m3d.trajectories
+    # pe_energies = 0
+    # if sim:
+    #     pe_energies = np.asarray(sim.passes)[:, 1]
+    #     trajs = np.asarray(sim.passes)[:, 0]
+    # energies = m3d.DE
+    # se_trajes = m3d.coords_all
+    # init_cells = np.count_nonzero(sim.grid[sim.grid == -2]) # substrate layer
+    # total_dep_cells = np.count_nonzero(sim.grid[sim.grid < 0]) - init_cells
+    # height = sim.grid.nonzero()[0].max()
+    # render = vr.Render(sim.cell_dim)
+    # # Deposited structure
+    # render._add_3Darray(m3d.grid, -3, -0.0001, 1, show_edges=True, button_name="Structure", color='white', invert=False)
+    # # Deposited energies
+    # # render.add_3Darray(m3d.DE, m3d.cell_dim, 1, opacity=1, scalar_name='Deposited energy, eV', button_name="Deposited energy", cmap='coolwarm', log_scale=True)
+    # # SE flux at the surface
+    # render._add_3Darray(m3d.flux,1, scalar_name='SE Flux, 1/(nm^2*s)', button_name='SE surface flux', cmap='plasma', log_scale=False)
+    # # PE trajectories
+    # render._add_trajectory(trajs, pe_energies, 0.2, step=1, scalar_name='PE Energy, keV', button_name='PEs', cmap='viridis')
+    # # SEs
+    # # render.add_trajectory(se_trajes, radius=0.05, step=20, button_name='SEs', color='red')
+    # render.p.add_text(f'Cells: {total_dep_cells} \n'  # showing total number of deposited cells
+    #                   f'Height: {height} nm \n', position='upper_right',
+    #                   font_size=9)  # showing current height of the structure
+    #
+    # render.p.camera_position = [(463.14450307610286, 271.1171723376318, 156.56895424388603),
+    #                             (225.90027381807235, 164.9577775224395, 71.42188811921902),
+    #                             (-0.27787912231751677, -0.1411181984824172, 0.950194110399093)]
+    # camera_pos = render.show()
+
+
+def cache_params(params, deposit, surface):
     """
     Creates an instance of simulation class and fetches necessary parameters
 
@@ -95,8 +107,9 @@ def cache_params(params, deposit, surface, dt):
     """
 
     sim = et.ETrajectory(name=params['name']) # creating an instance of Monte-Carlo simulation class
-    sim.setParameters(params, deposit, surface, dt) # setting parameters
+    sim.setParameters(params, deposit, surface) # setting parameters
     return sim
+
 
 
 def run_simulation(sim: et.ETrajectory, deposit:np.ndarray, surface: np.ndarray, i0=25, j0=25):
@@ -121,7 +134,7 @@ def run_simulation(sim: et.ETrajectory, deposit:np.ndarray, surface: np.ndarray,
     return sim
 
 
-def rerun_simulation(y0, x0, deposit, surface, sim):
+def rerun_simulation(y0, x0, deposit, surface, sim, dt):
     """
     Rerun simulation using existing instance
 
@@ -143,9 +156,10 @@ def rerun_simulation(y0, x0, deposit, surface, sim):
     sim.map_wrapper(y0, x0)
     t = timeit.default_timer() - start
     print(f'\n{sim.N} trajectories took {t} s')
+    print(f'Energy deposition took: \t SE preparation took: \t Flux counting took:')
     m3d = map3d.ETrajMap3d(deposit, surface, sim)
     start = timeit.default_timer()
-    flux1, enrgies1, _ = m3d.map_follow(sim.passes, 1)
+    m3d.map_follow(sim.passes, 1)
     t = timeit.default_timer() - start
     print(f' =  {t} s')
 
@@ -166,7 +180,7 @@ def rerun_simulation(y0, x0, deposit, surface, sim):
     #     print(f'Run {len(pas)/100} with {len(pas)} iters took {t}')
     # file.close()
     # plot(m3d, sim)
-    return np.int32(m3d.flux/m3d.amplifying_factor*sim.norm_factor/(sim.dt*sim.cell_dim*sim.cell_dim))
+    return np.int32(m3d.flux/m3d.amplifying_factor*sim.norm_factor/(dt*sim.cell_dim*sim.cell_dim))
 
 
 if __name__ == '__main__':

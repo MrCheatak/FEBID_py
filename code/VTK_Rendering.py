@@ -7,7 +7,7 @@ import pylab as p
 from matplotlib import cm
 import pyvista as pv
 import pyvistaqt as pvqt
-from Process import Structure
+# from Process import Structure
 from tqdm import tqdm
 import os, sys, time
 from datetime import datetime
@@ -46,7 +46,7 @@ class Render:
         def __call__(self, state):
             self.actor.SetVisibility(state)
 
-    def show_full_structure(self, structure:Structure, struct=True, deposit=True, precursor=True, surface=True, semi_surface=True, ghosts=True):
+    def show_full_structure(self, structure, struct=True, deposit=True, precursor=True, surface=True, semi_surface=True, ghosts=True):
         """
         Render and plot all the structure components
 
@@ -78,23 +78,24 @@ class Render:
                    (-0.27787912231751677, -0.1411181984824172, 0.950194110399093)]
         self.show(cam_pos=cam_pos)
 
-    def show_mc_result(self, grid, pe_traj=None, deposited_E=None, surface_flux=None, se_traj=None ):
+    def show_mc_result(self, grid, pe_traj=None, deposited_E=None, surface_flux=None, se_traj=None, cam_pos=None):
         if grid is not None:
             self._add_3Darray(grid, -2, -0.01, False, opacity=0.7, show_edges=True, scalar_name='Structure', button_name='Structure', color='white')
         if pe_traj is not None:
             self._add_trajectory(pe_traj[:,0], pe_traj[:,1], 0.2, step=1, scalar_name='PE Energy, keV', button_name='PEs', cmap='viridis')
         if deposited_E is not None:
-            self._add_3Darray(deposited_E, 1, exclude_zeros=False, opacity=1, show_edges=False, scalar_name='Deposited energy, eV', button_name="Deposited energy", color='coolwarm')
+            self._add_3Darray(deposited_E, 1, exclude_zeros=False, opacity=1, show_edges=False, scalar_name='Deposited energy, eV', button_name="Deposited energy", cmap='coolwarm', log_scale=True)
         if surface_flux is not None:
-            self._add_3Darray(surface_flux, 1, exclude_zeros=False, opacity=1, show_edges=False, scalar_name='SE Flux, 1/(nm^2*s)', button_name="SE surface flux", cmap='plasma')
+            self._add_3Darray(surface_flux, 1, exclude_zeros=False, opacity=1, show_edges=False, scalar_name='SE Flux, 1/(nm^2*s)', button_name="SE surface flux", cmap='plasma', log_scale=True)
         if se_traj is not None:
-            max_trajes = 6000
-            step = int(se_traj.shape[0]/max_trajes)
-            self._add_trajectory(se_traj, radius=1, step=step, button_name='SEs', color='red')
-        cam_pos = [(463.14450307610286, 271.1171723376318, 156.56895424388603),
+            max_trajes = 4000
+            step = int(se_traj.shape[0]/max_trajes)+1
+            self._add_trajectory(se_traj, radius=0.1, step=step, button_name='SEs', color='red')
+        if cam_pos is None:
+            cam_pos = [(463.14450307610286, 271.1171723376318, 156.56895424388603),
                    (225.90027381807235, 164.9577775224395, 71.42188811921902),
                    (-0.27787912231751677, -0.1411181984824172, 0.950194110399093)]
-        self.show(cam_pos=cam_pos)
+        return self.show(cam_pos=cam_pos)
 
     def _add_trajectory(self, traj, energies=[], radius=0.7, step=1, scalar_name='scalars_t', button_name='1', color='', cmap='plasma'):
         """
@@ -140,7 +141,7 @@ class Render:
                     obj_a = self.p.add_mesh(obj, style='surface', opacity=opacity, nan_opacity=nan_opacity, clim=clim, name=name, label='Structure', log_scale=log_scale, show_scalar_bar=show_scalar_bar, color=color, lighting=True, show_edges=show_edges, render=False) # adding data to the plot
                     break
                 if cmap:
-                    obj_a = self.p.add_mesh(obj, style='surface', opacity=opacity, nan_opacity=nan_opacity, clim=clim, name=name, label='Structure', log_scale=log_scale, show_scalar_bar=show_scalar_bar, cmap=cmap, lighting=True, show_edges=show_edges, render=False)
+                    obj_a = self.p.add_mesh(obj, style='surface', opacity=opacity, use_transparency=False, nan_opacity=nan_opacity, clim=clim, name=name, label='Structure', log_scale=log_scale, show_scalar_bar=show_scalar_bar, cmap=cmap, lighting=True, show_edges=show_edges, render=False)
                     break
             except Exception as e:
                 print(f'Error:{e.args}')
@@ -165,8 +166,8 @@ class Render:
         if lower_t == 0: lower_t = arr.min()
         grid = numpy_to_vtk(arr, self.cell_dim, data_name=name)
         if exclude_zeros:
-            grid.active_scalars[grid.active_scalars == 0] = np.nan
-        if lower_t:
+            grid.remove_cells((arr==0).flatten())
+        if lower_t is not None:
             grid = grid.threshold([lower_t,upper_t], invert=invert) # trimming
         return grid
 
@@ -242,7 +243,7 @@ class Render:
             self.p.show_grid()
         if keep_plot:
             p1 = copy.deepcopy(self.p)
-        camera_pos = self.p.show(screenshot=screenshot, interactive_update=interactive_update, cpos=cam_pos)
+        camera_pos = self.p.show(screenshot=screenshot, interactive_update=interactive_update, cpos=cam_pos, return_cpos=True)
         if keep_plot:
             self.p = copy.deepcopy(p1)
         self.y_pos = 5
@@ -268,10 +269,11 @@ def numpy_to_vtk(arr, cell_dim, data_name='scalar', grid=None):
             grid.dimensions = np.asarray([arr.shape[2], arr.shape[1], arr.shape[0]]) + 1  # creating a grid with the size of the array
             grid.spacing = (cell_dim, cell_dim, cell_dim)  # assigning dimensions of a cell
         grid.cell_data[data_name] = arr.flatten()  # writing values
+        grid = grid.cast_to_unstructured_grid()
         return grid
 
 
-def save_deposited_structure(structure: Structure, filename=None):
+def save_deposited_structure(structure, filename=None):
     """
     Saves current deposition result to a vtk file
 
@@ -299,17 +301,17 @@ def save_deposited_structure(structure: Structure, filename=None):
     # Eventually, vtk does not save those new attributes
     vtk_obj.save((f'{sys.path[0]}{os.sep}{filename}{time.strftime("%H:%M:%S", time.localtime())}.vtk'))
 
-def open_deposited_structure(filename=None):
-    vtk_obj = pv.read(filename)
-    structure = Structure()
-    cell_dimension = vtk_obj.spacing[0]
-    deposit = np.asarray(vtk_obj.cell_data['deposit'].reshape((vtk_obj.dimensions[2] - 1, vtk_obj.dimensions[1] - 1, vtk_obj.dimensions[0] - 1)))
-    substrate = np.asarray(vtk_obj.cell_data['precursor_density'].reshape((vtk_obj.dimensions[2] - 1, vtk_obj.dimensions[1] - 1, vtk_obj.dimensions[0] - 1)))
-    surface_bool = np.asarray(vtk_obj.cell_data['surface_bool'].reshape((vtk_obj.dimensions[2] - 1, vtk_obj.dimensions[1] - 1, vtk_obj.dimensions[0] - 1)))
-    semi_surface_bool = np.asarray(vtk_obj.cell_data['semi_surface_bool'].reshape((vtk_obj.dimensions[2] - 1, vtk_obj.dimensions[1] - 1, vtk_obj.dimensions[0] - 1)))
-    ghosts_bool = np.asarray(vtk_obj.cell_data['ghosts_bool'].reshape((vtk_obj.dimensions[2] - 1, vtk_obj.dimensions[1] - 1, vtk_obj.dimensions[0] - 1)))
-
-    return (cell_dimension, deposit, substrate, surface_bool, semi_surface_bool, ghosts_bool)
+# def open_deposited_structure(filename=None):
+#     vtk_obj = pv.read(filename)
+#     structure = Structure()
+#     cell_dimension = vtk_obj.spacing[0]
+#     deposit = np.asarray(vtk_obj.cell_data['deposit'].reshape((vtk_obj.dimensions[2] - 1, vtk_obj.dimensions[1] - 1, vtk_obj.dimensions[0] - 1)))
+#     substrate = np.asarray(vtk_obj.cell_data['precursor_density'].reshape((vtk_obj.dimensions[2] - 1, vtk_obj.dimensions[1] - 1, vtk_obj.dimensions[0] - 1)))
+#     surface_bool = np.asarray(vtk_obj.cell_data['surface_bool'].reshape((vtk_obj.dimensions[2] - 1, vtk_obj.dimensions[1] - 1, vtk_obj.dimensions[0] - 1)))
+#     semi_surface_bool = np.asarray(vtk_obj.cell_data['semi_surface_bool'].reshape((vtk_obj.dimensions[2] - 1, vtk_obj.dimensions[1] - 1, vtk_obj.dimensions[0] - 1)))
+#     ghosts_bool = np.asarray(vtk_obj.cell_data['ghosts_bool'].reshape((vtk_obj.dimensions[2] - 1, vtk_obj.dimensions[1] - 1, vtk_obj.dimensions[0] - 1)))
+#
+#     return (cell_dimension, deposit, substrate, surface_bool, semi_surface_bool, ghosts_bool)
 
 
 def show_animation(directory=''):
