@@ -115,7 +115,10 @@ class Structure():
     """
     Represents simulation chamber and holds grid parameters
     """
-    def __init__(self, cell_dim=5, width=50, length=50, height=100, substrate_height=4, nr=1, vtk_obj: pv.UniformGrid = None, volume_prefill=0.0,):
+    def __init__(self):
+        pass
+
+    def load_from_vtk(self, vtk_obj: pv.UniformGrid):
         """
         Frame initializer. Either a vtk object should be specified or initial conditions given.
 
@@ -131,67 +134,76 @@ class Structure():
         :param vtk_obj: a vtk object from file
         :param volume_prefill: level of initial filling for every cell. This is used to artificially speed up the depositing process
         """
-        if vtk_obj:
-            self.cell_dimension = 1
-            if vtk_obj.spacing[0] != vtk_obj.spacing[1] != vtk_obj.spacing[2]:
-                choice = input(f'Cell\'s dimensions must be equal and represent a cube. \nType x, y or z to specify dimension value that will be used for all three. \nThis may lead to a change of structure\'s shape. Press any other key to exit.')
-                if choice == 'x':
-                    self.cell_dimension = vtk_obj.spacing[0]
-                if choice == 'y':
-                    self.cell_dimension = vtk_obj.spacing[1]
-                if choice == 'z':
-                    self.cell_dimension = vtk_obj.spacing[2]
-                else:
-                    sys.exit("Exiting.")
-            else:
+        self.cell_dimension = 1
+        if vtk_obj.spacing[0] != vtk_obj.spacing[1] or vtk_obj.spacing[0] != vtk_obj.spacing[2] or vtk_obj.spacing[1] != vtk_obj.spacing[2]:
+            choice = 'z'#input(f'Cell\'s dimensions must be equal and represent a cube. '
+                           # f'\nType x, y or z to specify dimension value that will be used for all three. '
+                           # f'\nx={vtk_obj.spacing[0]} \ny={vtk_obj.spacing[1]} \nz={vtk_obj.spacing[2]} '
+                           # f'\nThis may lead to a change of the structure\'s shape. Press any other key to exit.')
+            if choice == 'x':
                 self.cell_dimension = vtk_obj.spacing[0]
-            self.zdim, self.ydim, self.xdim = vtk_obj.dimensions[2] - 1, vtk_obj.dimensions[1] - 1, vtk_obj.dimensions[0] - 1
-            self.shape = (self.zdim, self.ydim, self.xdim)
-            if 'surface_bool' in vtk_obj.array_names: # checking if it is a complete result of a deposition process
-                self.deposit = np.asarray(vtk_obj.cell_arrays['deposit'].reshape((vtk_obj.dimensions[2]-1, vtk_obj.dimensions[1]-1, vtk_obj.dimensions[0]-1)))
-                self.substrate = np.asarray(vtk_obj.cell_arrays['precursor_density'].reshape((vtk_obj.dimensions[2]-1, vtk_obj.dimensions[1]-1, vtk_obj.dimensions[0]-1)))
-                self.surface_bool = np.asarray(vtk_obj.cell_arrays['surface_bool'].reshape((vtk_obj.dimensions[2] - 1, vtk_obj.dimensions[1] - 1, vtk_obj.dimensions[0] - 1)))
-                self.semi_surface_bool= np.asarray(vtk_obj.cell_arrays['semi_surface_bool'].reshape((vtk_obj.dimensions[2] - 1, vtk_obj.dimensions[1] - 1, vtk_obj.dimensions[0] - 1)))
-                self.ghosts_bool = np.asarray(vtk_obj.cell_arrays['ghosts_bool'].reshape((vtk_obj.dimensions[2] - 1, vtk_obj.dimensions[1] - 1, vtk_obj.dimensions[0] - 1)))
-                # An attempt to attach new attributes to vtk object failed:
-                # self.substrate_height = vtk_obj['substrate_height']
-                # self.substrate_val = vtk_obj['substrate_val']
-                # self.deposit_val = vtk_obj['deposit_val']
-                # self.vol_prefill = vtk_obj['volume_prefill']
-                self.substrate_val = -2
-                self.deposit_val = -1
-                self.substrate_height = np.nonzero(self.deposit==self.substrate_val)[0].max()+1
-                self.vol_prefill = self.deposit[-1,-1,-1]
-            else:
-                # TODO: if a sample structure would be provided, it will be necessary to create a substrate under it
-                self.deposit = np.asarray(vtk_obj.cell_arrays.active_scalars.reshape((vtk_obj.dimensions[2]-1, vtk_obj.dimensions[1]-1, vtk_obj.dimensions[0]-1)))
-                self.substrate = np.zeros((self.zdim, self.ydim, self.xdim), dtype=np.float64)
-                self.substrate_height = substrate_height
-                self.substrate_val = -2
-                self.deposit_val = -1
-                self.vol_prefill = self.deposit[-1, -1, -1] # checking if there is a prefill by probing top corner cell
-                self.surface_bool = np.zeros((self.zdim, self.ydim, self.xdim), dtype=bool)
-                self.semi_surface_bool = np.zeros((self.zdim, self.ydim, self.xdim), dtype=bool)
-                self.ghosts_bool = np.zeros((self.zdim, self.ydim, self.xdim), dtype=bool)
-                self.define_surface()
-                self.define_ghosts()
+            if choice == 'y':
+                self.cell_dimension = vtk_obj.spacing[1]
+            if choice == 'z':
+                self.cell_dimension = 5# vtk_obj.spacing[2]
+            if choice not in ['x','y','z']:
+                sys.exit("Exiting.")
         else:
-            self.cell_dimension = cell_dim
-            self.zdim, self.ydim, self.xdim = height, width, length
-            self.shape = (self.zdim, self.ydim, self.xdim)
-            self.deposit = np.zeros((self.zdim+substrate_height, self.ydim, self.xdim), dtype=np.float64)
-            self.substrate = np.zeros((self.zdim+substrate_height, self.ydim, self.xdim), dtype=np.float64)
+            self.cell_dimension = vtk_obj.spacing[0]
+        self.cell_dimension = (self.cell_dimension)
+        self.zdim, self.ydim, self.xdim = vtk_obj.dimensions[2] - 1, vtk_obj.dimensions[1] - 1, vtk_obj.dimensions[0] - 1
+        self.shape = (self.zdim, self.ydim, self.xdim)
+        if 'surface_bool' in vtk_obj.array_names: # checking if it is a complete result of a deposition process
+            print(f'VTK file is FEBID file, reading arrays...')
+            self.deposit = np.asarray(vtk_obj.cell_arrays['deposit'].reshape((vtk_obj.dimensions[2]-1, vtk_obj.dimensions[1]-1, vtk_obj.dimensions[0]-1)))
+            self.precursor = np.asarray(vtk_obj.cell_arrays['precursor_density'].reshape((vtk_obj.dimensions[2]-1, vtk_obj.dimensions[1]-1, vtk_obj.dimensions[0]-1)))
+            self.surface_bool = np.asarray(vtk_obj.cell_arrays['surface_bool'].reshape((vtk_obj.dimensions[2] - 1, vtk_obj.dimensions[1] - 1, vtk_obj.dimensions[0] - 1)), dtype=bool)
+            self.semi_surface_bool= np.asarray(vtk_obj.cell_arrays['semi_surface_bool'].reshape((vtk_obj.dimensions[2] - 1, vtk_obj.dimensions[1] - 1, vtk_obj.dimensions[0] - 1)),dtype=bool)
+            self.ghosts_bool = np.asarray(vtk_obj.cell_arrays['ghosts_bool'].reshape((vtk_obj.dimensions[2] - 1, vtk_obj.dimensions[1] - 1, vtk_obj.dimensions[0] - 1)),dtype=bool)
+            # An attempt to attach new attributes to vtk object failed:
+            # self.substrate_height = vtk_obj['substrate_height']
+            # self.substrate_val = vtk_obj['substrate_val']
+            # self.deposit_val = vtk_obj['deposit_val']
+            # self.vol_prefill = vtk_obj['volume_prefill']
             self.substrate_val = -2
             self.deposit_val = -1
-            self.substrate_height = substrate_height
-            self.vol_prefill = volume_prefill
-            self.nr = nr
-            self.flush_structure()
-            self.surface_bool = np.zeros((self.zdim+substrate_height, self.ydim, self.xdim),dtype=bool)
-            self.semi_surface_bool = np.zeros((self.zdim+substrate_height, self.ydim, self.xdim),dtype=bool)
-            self.ghosts_bool = np.zeros((self.zdim+substrate_height, self.ydim, self.xdim),dtype=bool)
+            self.substrate_height = np.nonzero(self.deposit==self.substrate_val)[0].max()+1
+            # self.vol_prefill = self.deposit[-1,-1,-1]
+        else:
+            # TODO: if a sample structure would be provided, it will be necessary to create a substrate under it
+            self.deposit = np.asarray(vtk_obj.cell_arrays.active_scalars.reshape((vtk_obj.dimensions[2]-1, vtk_obj.dimensions[1]-1, vtk_obj.dimensions[0]-1)))
+            self.deposit[self.deposit != 0] = -1
+            self.precursor = np.zeros(self.shape, dtype=np.float64)
+            # self.substrate_height = substrate_height/self.cell_dimension
+            self.substrate_val = -2
+            self.deposit_val = -1
+            # self.vol_prefill = self.deposit[-1, -1, -1] # checking if there is a prefill by probing top corner cell
+            self.surface_bool = np.zeros(self.shape, dtype=bool)
+            self.semi_surface_bool = np.zeros(self.shape, dtype=bool)
+            self.ghosts_bool = np.zeros(self.shape, dtype=bool)
             self.define_surface()
+            self.define_semi_surface()
             self.define_ghosts()
+        self.substrate_height = 0
+
+
+    def create_from_parameters(self, cell_dim=5, width=50, length=50, height=100, substrate_height=4, nr=1):
+        self.cell_dimension = cell_dim
+        self.zdim, self.ydim, self.xdim = height, width, length
+        self.shape = (self.zdim, self.ydim, self.xdim)
+        self.deposit = np.zeros((self.zdim + substrate_height, self.ydim, self.xdim), dtype=np.float64)
+        self.precursor = np.zeros((self.zdim + substrate_height, self.ydim, self.xdim), dtype=np.float64)
+        self.substrate_val = -2
+        self.deposit_val = -1
+        self.substrate_height = substrate_height
+        # self.vol_prefill = volume_prefill
+        self.nr = nr
+        self.flush_structure()
+        self.surface_bool = np.zeros((self.zdim + substrate_height, self.ydim, self.xdim), dtype=bool)
+        self.semi_surface_bool = np.zeros((self.zdim + substrate_height, self.ydim, self.xdim), dtype=bool)
+        self.ghosts_bool = np.zeros((self.zdim + substrate_height, self.ydim, self.xdim), dtype=bool)
+        self.define_surface()
+        self.define_ghosts()
         self.t = 0
 
     def flush_structure(self):
@@ -205,13 +217,13 @@ class Structure():
         :param volume_prefill: initial deposit in the volume, can be a predefined structure in an 3D array same size as deposit array (constant value is virtual and used for code development)
         :return:
         """
-        self.substrate[...] = 0
-        self.substrate[0:self.substrate_height, :, :] = 0  # substrate surface
-        self.substrate[self.substrate_height, :, :] = self.nr  # filling substrate surface with initial precursor density
-        if self.vol_prefill == 0:
-            self.deposit[...] = 0
-        else:
-            self.deposit[...] = self.vol_prefill  # partially filling cells with deposit
+        self.precursor[...] = 0
+        self.precursor[0:self.substrate_height, :, :] = 0  # substrate surface
+        self.precursor[self.substrate_height, :, :] = self.nr  # filling substrate surface with initial precursor density
+        # if self.vol_prefill == 0:
+        #     self.deposit[...] = 0
+        # else:
+        #     self.deposit[...] = self.vol_prefill  # partially filling cells with deposit
             # if init_deposit != 0:
             #     self.deposit[1, :, :] = init_deposit  # partially fills surface cells with deposit
         self.deposit[0:self.substrate_height, :, :] = -2
@@ -251,7 +263,7 @@ class Structure():
         # Trimming unchanged cells:     using tolerance in case of inaccuracy
         grid[abs(grid - self.deposit_val) < 0.0000001] = 0  # fully deposited cells
         grid[abs(grid - self.substrate_val) < 0.0000001] = 0  # substrate
-        grid[abs(grid - self.vol_prefill) < 0.000001] = 0  # prefilled cells
+        # grid[abs(grid - self.vol_prefill) < 0.000001] = 0  # prefilled cells
         # Now making a boolean array of changed cells
         combined = np.full((self.deposit.shape), False, dtype=bool)
         combined[abs(grid) > 0] = True
@@ -260,7 +272,25 @@ class Structure():
         grid += positive
         grid += combined
         self.surface_bool[grid == 2] = True
-
+    
+    def define_semi_surface(self):
+        grid = np.zeros_like(self.deposit)
+        grid[:, :, :-1] += self.surface_bool[:, :, 1:]  # rolling forward (actually backwards)
+        grid[:, :, -1] += self.surface_bool[:, :, -1]  # taking care of edge values
+        grid[:, :, 1:] += self.surface_bool[:, :, :-1]  # rolling backwards
+        grid[:, :, 0] += self.surface_bool[:, :, 0]
+        grid[:, :-1, :] += self.surface_bool[:, 1:, :]
+        grid[:, -1, :] += self.surface_bool[:, -1, :]
+        grid[:, 1:, :] += self.surface_bool[:, :-1, :]
+        grid[:, 0, :] += self.surface_bool[:, 0, :]
+        grid[:-1, :, :] += self.surface_bool[1:, :, :]
+        grid[-1, :, :] += self.surface_bool[-1, :, :]
+        grid[1:, :, :] += self.surface_bool[:-1, :, :]
+        grid[0, :, :] += self.surface_bool[0, :, :]
+        grid[self.deposit != 0] = 0
+        grid[self.surface_bool] = 0
+        grid[grid < 2] = 0
+        self.semi_surface_bool[grid != 0] = True
 
     def define_ghosts(self):
         """
@@ -272,20 +302,21 @@ class Structure():
 
         # Rolling in all directions marks all the neighboring cells
         # Subtracting surface from that selection results in a "shell" around the surface
-        self.ghosts_bool = np.copy(self.surface_bool)
-        self.ghosts_bool[:, :, :-1] += self.surface_bool[:, :, 1:]  # rolling forward (actually backwards)
-        self.ghosts_bool[:, :, -1] += self.surface_bool[:, :, -1]  # taking care of edge values
-        self.ghosts_bool[:, :, 1:] += self.surface_bool[:, :, :-1]  # rolling backwards
-        self.ghosts_bool[:, :, 0] += self.surface_bool[:, :, 0]
-        self.ghosts_bool[:, :-1, :] += self.surface_bool[:, 1:, :]
-        self.ghosts_bool[:, -1, :] += self.surface_bool[:, -1, :]
-        self.ghosts_bool[:, 1:, :] += self.surface_bool[:, :-1, :]
-        self.ghosts_bool[:, 0, :] += self.surface_bool[:, 0, :]
-        self.ghosts_bool[:-1, :, :] += self.surface_bool[1:, :, :]
-        self.ghosts_bool[-1, :, :] += self.surface_bool[-1, :, :]
-        self.ghosts_bool[1:, :, :] += self.surface_bool[:-1, :, :]
-        self.ghosts_bool[0, :, :] += self.surface_bool[0, :, :]
-        self.ghosts_bool[self.surface_bool] = False
+        roller = np.logical_or(self.surface_bool, self.semi_surface_bool)
+        self.ghosts_bool = np.copy(roller)
+        self.ghosts_bool[:, :, :-1] += roller[:, :, 1:]  # rolling forward (actually backwards)
+        self.ghosts_bool[:, :, -1] += roller[:, :, -1]  # taking care of edge values
+        self.ghosts_bool[:, :, 1:] += roller[:, :, :-1]  # rolling backwards
+        self.ghosts_bool[:, :, 0] += roller[:, :, 0]
+        self.ghosts_bool[:, :-1, :] += roller[:, 1:, :]
+        self.ghosts_bool[:, -1, :] += roller[:, -1, :]
+        self.ghosts_bool[:, 1:, :] += roller[:, :-1, :]
+        self.ghosts_bool[:, 0, :] += roller[:, 0, :]
+        self.ghosts_bool[:-1, :, :] += roller[1:, :, :]
+        self.ghosts_bool[-1, :, :] += roller[-1, :, :]
+        self.ghosts_bool[1:, :, :] += roller[:-1, :, :]
+        self.ghosts_bool[0, :, :] += roller[0, :, :]
+        self.ghosts_bool[roller] = False
 
     def max_z(self):
         return self.deposit.nonzero()[0].max()
@@ -453,7 +484,7 @@ def update_surface(deposit, precursor, surface_bool, semi_surf_bool, ghosts_bool
         for cell in new_deposits:
             # deposit[cell[0]+1, cell[1], cell[2]] += deposit[cell[0], cell[1], cell[2]] - 1  # if the cell was filled above unity, transferring that surplus to the cell above
             deposit[cell[0], cell[1], cell[2]] = -1  # a fully deposited cell is always a minus unity
-            precursor[cell[0], cell[1], cell[2]] = -1
+            precursor[cell[0], cell[1], cell[2]] = 1
             ghosts_bool[cell[0], cell[1], cell[2]] = True # deposited cell belongs to ghost shell
             surface_bool[cell[0], cell[1], cell[2]] = False  # rising the surface one cell up (new cell)
 
@@ -572,6 +603,9 @@ def update_surface(deposit, precursor, surface_bool, semi_surf_bool, ghosts_bool
             precursor[cell[0], cell[1], cell[2]] = -1
             ghosts_bool[cell[0], cell[1], cell[2]] = True # deposited cell belongs to ghost shell
             surface_bool[cell[0], cell[1], cell[2]] = False  # rising the surface one cell up (new cell)
+            precursor_kern = precursor[neighbors_2nd]
+            precursor_kern[semi_s_kern] += 0.0001 # only for plotting purpose (to pass vtk threshold filter)
+            precursor_kern[surf_kern] +=0.0001
             # refresh(precursor, surface_bool, semi_surf_bool, ghosts_bool, cell[0] + 1, cell[1], cell[2])
         else: # when loop finishes
         #     if cell[0] > h_max-3:
@@ -672,11 +706,12 @@ def precursor_density(flux_matrix, precursor, surface_bool, ghosts_bool, F, n0, 
     :param dt: time step
     :return: changes precursor array
     """
-    diffusion_matrix = laplace_term_rolling(substrate, ghosts_bool, D, dt)  # Diffusion term is calculated separately and added in the end
-    substrate[surface_bool] += rk4(dt, substrate[surface_bool], F, n0, tau, sigma, flux_matrix[surface_bool]) # An increment is calculated through Runge-Kutta method without the diffusion term
-    # substrate[semi_surf_bool] += rk4(dt, substrate[semi_surf_bool])  # same process for semi-cells, but without dissociation term
-    substrate+=diffusion_matrix # finally adding diffusion term
-    # if substrate[substrate > 1] != 0:
+    # profiled_func(precursor, surface_bool, ghosts_bool, D, dt)
+    diffusion_matrix = laplace_term_rolling(precursor, surface_bool, ghosts_bool, D, dt)  # Diffusion term is calculated separately and added in the end
+    precursor[surface_bool] += rk4(dt, precursor[surface_bool], F, n0, tau, sigma, flux_matrix[surface_bool]) # An increment is calculated through Runge-Kutta method without the diffusion term
+    # precursor[semi_surf_bool] += rk4(dt, precursor[semi_surf_bool])  # same process for semi-cells, but without dissociation term
+    precursor+=diffusion_matrix # finally adding diffusion term
+    # if precursor[precursor > 1] != 0:
     #     raise Exception("Normalized precursor density is more than 1")
 
 
@@ -856,17 +891,19 @@ def initialize_framework(from_file=False):
     sim_params = yaml.load(open(f'{sys.path[0]}{os.sep}Simulation.yml', 'r'),
                            Loader=yaml.Loader)  # Size of the chamber, cell size and time step
     mc_config, equation_values, timings, nr = buffer_constants(precursor, settings, sim_params)
-    structure = None
+    structure = Structure()
     if from_file:
         try:
             vtk_file = fd.askopenfilename() # '/Users/sandrik1742/Documents/PycharmProjects/FEBID/code/New Folder With Items/35171.372k_of_1000000.0_loops_k_gr4 15/02/42.vtk'#
             vtk_obj = pv.read(vtk_file)
-            structure = Structure(vtk_obj=vtk_obj)
+            structure.load_from_vtk(vtk_obj)
+            structure.precursor[structure.surface_bool] = nr
+            structure.precursor[structure.semi_surface_bool] = nr
         except FileNotFoundError:
-            structure = Structure(sim_params['cell_dimension'], sim_params['width'], sim_params['length'],
+            structure.create_from_parameters(sim_params['cell_dimension'], sim_params['width'], sim_params['length'],
                                   sim_params['height'], sim_params['substrate_height'], nr)
     else:
-        structure = Structure(sim_params['cell_dimension'], sim_params['width'], sim_params['length'],
+        structure.create_from_parameters(sim_params['cell_dimension'], sim_params['width'], sim_params['length'],
                               sim_params['height'], sim_params['substrate_height'], nr)
     return structure, mc_config, equation_values, timings
 
@@ -942,7 +979,9 @@ def printing(loops=1, dwell_time=1):
     :return: changes deposit and precursor arrays
     """
 
-    structure, mc_config, equation_values, timings = initialize_framework()
+
+
+    structure, mc_config, equation_values, timings = initialize_framework(True)
 
     F = equation_values['F']
     n0 = equation_values['n0']
@@ -953,7 +992,8 @@ def printing(loops=1, dwell_time=1):
     dt = equation_values['dt']
     sub_h = structure.substrate_height
 
-    t = 2E-6 # absolute time, s
+    t = 0 # absolute time, s
+    t+=dt
     refresh_dt = dt*2 # dt for precursor density recalculation
 
     beam_matrix = zeros(structure.shape, dtype=int)  # matrix for electron beam flux distribution
@@ -973,44 +1013,95 @@ def printing(loops=1, dwell_time=1):
     irradiated_area_3D = None
 
     flag = True
-    render = vr.Render()
-    render.add_3Darray(precursor, structure.cell_dimension, 0.00001, 1, opacity=0.9, nan_opacity=1, scalar_name='Precursor',
+    precursor[sub_h, 30, 30] = 0.01
+    render = vr.Render(structure.cell_dimension)
+    render._add_3Darray(precursor, 0.00001, 1, opacity=1, nan_opacity=1, scalar_name='Precursor',
                        button_name='precursor', cmap='plasma')
     render.show(interactive_update=True, cam_pos=[(206.34055818793468, 197.6510638707941, 100.47106597548205),
                                                   (0.0, 0.0, 0.0),
                                                   (-0.23307751464125356, -0.236197909312718, 0.9433373838690787)])
-    time_step = 15 # s
-    time_stamp = 0 # s
-    init_cells = np.count_nonzero(deposit[deposit < 0]) # substrate layer
+    frame_rate = 0.3
+    frame = 0
+    time_step = 60 # s
+    time_stamp = 0# 2*24*60*60 + 16*60*60 + 0*60 # s
+    start_time = 0
+    init_cells = np.count_nonzero(deposit[deposit == -2]) # substrate layer
     total_dep_cells = [np.count_nonzero(deposit[deposit < 0]) - init_cells]  # total number of fully deposited cells
     growth_rate = []  # growth rate on each step
     i = 0
-    for l in tqdm(range(loops)):  # loop repeats, currently beam travels in a zig-zack manner (array indexing)
-        if timeit.default_timer() >= time_stamp:
-            i += 1
-            # structure.cell_dimension = cell_dimension
+    redraw_flag = True
+    a = 1
+    timeit.default_timer()
+    def show_threaded(frame, i, redraw_flag):
+        frame += frame_rate
+        i += 1
+        if redraw_flag:
+            render.p.clear()
+            total_dep_cells.append(np.count_nonzero(deposit[deposit < 0]) - init_cells)
+            growth_rate.append((total_dep_cells[i] - total_dep_cells[i - 1]) / (time_stamp - time_step + 0.001) * 60 * 60)
+            render._add_3Darray(precursor, 0.00001, 1, opacity=0.5, show_edges=True, exclude_zeros=False,
+                               scalar_name='Precursor',
+                               button_name='precursor', cmap='plasma')
+            # render.add_3Darray(deposit, structure.cell_dimension, -2, -0.5, 0.7, scalar_name='Deposit',
+            #            button_name='Deposit', color='white', show_scalar_bar=False)
+            render.p.add_text(f'Time: {str(datetime.timedelta(seconds=int(time_stamp)))} \n'
+                              f'Sim. time: {(t):.8f} s \n'
+                              f'Speed: {(t / time_stamp):.8f} \n'  # showing time passed
+                              f'Relative growth rate: {int(total_dep_cells[i] / time_stamp * 60 * 60)} cell/h \n'  # showing average growth rate
+                              f'Real growth rate: {int(total_dep_cells[i] / t * 60)} cell/min \n', position='upper_left',
+                              font_size=12)  # showing average growth rate
+            render.p.add_text(f'Cells: {total_dep_cells[i]} \n'  # showing total number of deposited cells
+                              f'Height: {max_z * structure.cell_dimension} nm \n', position='upper_right',
+                              font_size=12)  # showing current height of the structure
+            redraw_flag = False
+        else:
+            # render.p.mesh['precursor'] = precursor[precursor!=0]
+            render.p.update_scalars(precursor[precursor>0])
+            render.p.update_scalar_bar_range(clim=[precursor[precursor>0].min(), precursor.max()])
+        render.p.update()
+        return frame, redraw_flag
+
+    for l in tqdm(range(0, loops)):  # loop repeats
+        if timeit.default_timer() >= start_time:
+
             # structure.deposit = deposit
             # structure.precursor = precursor
             # structure.ghosts_bool = ghosts_bool
             # structure.surface_bool = surface_bool
             # vr.save_deposited_structure(structure, f'{l/1000}k_of_{loops/1000}_loops_k_gr16 ')
             time_stamp += time_step
-            print(f'Time passed: {timeit.default_timer()}, Av.speed: {l/timeit.default_timer()}')
-            total_dep_cells.append(np.count_nonzero(deposit[deposit < 0]) - init_cells)
-            growth_rate.append((total_dep_cells[i] - total_dep_cells[i - 1]) / (time_stamp - time_step+0.001) * 60 * 60)
-            render.add_3Darray(precursor, structure.cell_dimension, 0.0001, 1, 1, show_edges=True, scalar_name='Precursor',
-                       button_name='precursor', cmap='plasma')
-            # render.add_3Darray(deposit, structure.cell_dimension, -2, -0.5, 0.7, scalar_name='Deposit',
-            #            button_name='Deposit', color='white', show_scalar_bar=False)
-            render.p.add_text(f'Time: {str(datetime.timedelta(seconds=int(timeit.default_timer())))} \n'
-                            f'Sim. time: {(t):.8f} s \n'
-                            f'Speed: {(t/timeit.default_timer()):.8f} \n'  # showing time passed
-                            f'Relative growth rate: {int(total_dep_cells[i]/timeit.default_timer()*60*60)} cell/h \n'  # showing average growth rate
-                            f'Real growth rate: {int(total_dep_cells[i] / t * 60)} cell/min \n', position='upper_left', font_size=12)  # showing average growth rate
-            render.p.add_text(f'Cells: {total_dep_cells[i]} \n' # showing total number of deposited cells
-                              f'Height: {max_z*structure.cell_dimension} nm \n', position='upper_right', font_size=12)  # showing current height of the structure
-
-            render.update(100000, force_redraw=True)
+            start_time += time_step
+            print(f'Time passed: {time_stamp}, Av.speed: {l/time_stamp}')
+        if timeit.default_timer() > frame:
+            frame += frame_rate
+            if a == 1:
+                i += 1
+                render.p.clear()
+                total_dep_cells.append(np.count_nonzero(deposit[deposit < 0]) - init_cells)
+                growth_rate.append((total_dep_cells[i] - total_dep_cells[i - 1]) / (time_stamp - time_step + 0.001) * 60 * 60)
+                render._add_3Darray(precursor, 0.00001, 1, opacity=0.5, show_edges=True, exclude_zeros=False,
+                                    scalar_name='Precursor',
+                                    button_name='precursor', cmap='plasma')
+                render.meshes_count += 1
+                # render.add_3Dar1ray(deposit, structure.cell_dimension, -2, -0.5, 0.7, scalar_name='Deposit',
+                #            button_name='Deposit', color='white', show_scalar_bar=False)
+                render.p.add_text(f'Time: {str(datetime.timedelta(seconds=int(time_stamp)))} \n'
+                                  f'Sim. time: {(t):.8f} s \n'
+                                  f'Speed: {(t / time_stamp):.8f} \n'  # showing time passed
+                                  f'Relative growth rate: {int(total_dep_cells[i] / time_stamp * 60 * 60)} cell/h \n'  # showing average growth rate
+                                  f'Real growth rate: {int(total_dep_cells[i] / t * 60)} cell/min \n',
+                                  position='upper_left',
+                                  font_size=12)  # showing average growth rate
+                render.p.add_text(f'Cells: {total_dep_cells[i]} \n'  # showing total number of deposited cells
+                                  f'Height: {max_z * structure.cell_dimension} nm \n', position='upper_right',
+                                  font_size=12)  # showing current height of the structure
+                redraw_flag = False
+                a = 0
+            else:
+                # render.p.mesh['precursor'] = precursor[precursor!=0]
+                render.p.update_scalars(precursor[precursor > 0])
+                render.p.update_scalar_bar_range(clim=[precursor[precursor > 0].min(), precursor.max()])
+            render.p.update()
         if flag:
             start = timeit.default_timer()
             beam_matrix = etraj3d.rerun_simulation(y, x, deposit, surface_bool, sim, dt)
@@ -1018,19 +1109,18 @@ def printing(loops=1, dwell_time=1):
             y_start, y_end, x_start, x_end = define_irr_area(beam_matrix[sub_h:max_z])
             max_z = int(sub_h + np.nonzero(surface_bool)[0].max() + 3)
             flag = False
-        y_start, y_end, x_start, x_end = define_irr_area(beam_matrix[sub_h:max_z])
-        irradiated_area_3D = s_[sub_h:max_z, y_start:y_end,x_start:x_end]  # a slice of the currently irradiated area
-        # irradiated_area_3D_ext = s_[:max_z, y_start - ext:y_end + ext, x_start - ext:x_end + ext]
-        # beam_exposure[irradiated_area_3D] += beam_matrix[irradiated_area_3D] # accumulates beam exposure for precursor density if it is called with an interval bigger that dt
+            irradiated_area_3D = s_[sub_h:max_z, y_start:y_end,x_start:x_end]  # a slice of the currently irradiated area
         deposition(deposit[irradiated_area_3D],
                    precursor[irradiated_area_3D],
                    beam_matrix[irradiated_area_3D],
                    surface_bool[irradiated_area_3D], sigma*V*dt, 4)  # depositing on a selected area
-        flag = update_surface(deposit[irradiated_area_3D],
+        redraw_flag = flag = update_surface(deposit[irradiated_area_3D],
                                precursor[irradiated_area_3D],
                                surface_bool[irradiated_area_3D],
                                semi_surface_bool[irradiated_area_3D],
                                ghosts_bool[irradiated_area_3D],)  # updating surface on a selected area
+        if flag:
+            a = 1
         # if t % refresh_dt < 1E-6:
         # TODO: look into DASK for processing arrays by chunks in parallel
         precursor_density(beam_matrix[sub_h:max_z, :, :],
@@ -1048,8 +1138,8 @@ def printing(loops=1, dwell_time=1):
             # beam_exposure[...] =  0
         t += dt
         # beam_matrix[irradiated_area_3D] = 0
-        if flag:
-            beam_matrix[...] = 0
+        # if flag:
+        #     beam_matrix[irradiated_area_3D] = 0
         #     except Exception as e:
         #         logging.exception('Caught an Error:')
         # except Exception as e:
@@ -1075,7 +1165,7 @@ def open_params():
 
 if __name__ == '__main__':
     # precursor_cfg, tech_cfg, sim_cfg = open_params()
-    printing(100000)
-    # cProfile.runctx('printing(100)',globals(),locals())
-    # <editor-fold desc="Plot">
+    # profiled_func(10000000)
+    printing(1000000000)
+    # profiler.print_stats()
     q=0
