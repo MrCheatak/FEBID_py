@@ -23,7 +23,7 @@ END: Cython Metadata */
 #else
 #define CYTHON_ABI "0_29_24"
 #define CYTHON_HEX_VERSION 0x001D18F0
-#define CYTHON_FUTURE_DIVISION 0
+#define CYTHON_FUTURE_DIVISION 1
 #include <stddef.h>
 #ifndef offsetof
   #define offsetof(type, member) ( (size_t) & ((type*)0) -> member )
@@ -1198,18 +1198,8 @@ static CYTHON_INLINE int __pyx_sub_acquisition_count_locked(
 static CYTHON_INLINE void __Pyx_INC_MEMVIEW(__Pyx_memviewslice *, int, int);
 static CYTHON_INLINE void __Pyx_XDEC_MEMVIEW(__Pyx_memviewslice *, int, int);
 
-/* ArgTypeTest.proto */
-#define __Pyx_ArgTypeTest(obj, type, none_allowed, name, exact)\
-    ((likely((Py_TYPE(obj) == type) | (none_allowed && (obj == Py_None)))) ? 1 :\
-        __Pyx__ArgTypeTest(obj, type, name, exact))
-static int __Pyx__ArgTypeTest(PyObject *obj, PyTypeObject *type, const char *name, int exact);
-
-/* PyObjectCall.proto */
-#if CYTHON_COMPILING_IN_CPYTHON
-static CYTHON_INLINE PyObject* __Pyx_PyObject_Call(PyObject *func, PyObject *arg, PyObject *kw);
-#else
-#define __Pyx_PyObject_Call(func, arg, kw) PyObject_Call(func, arg, kw)
-#endif
+/* None.proto */
+static void __Pyx_RaiseUnboundMemoryviewSliceNogil(const char *varname);
 
 /* PyThreadStateGet.proto */
 #if CYTHON_FAST_THREAD_STATE
@@ -1245,6 +1235,24 @@ static CYTHON_INLINE void __Pyx_ErrFetchInState(PyThreadState *tstate, PyObject 
 #define __Pyx_ErrFetchInState(tstate, type, value, tb)  PyErr_Fetch(type, value, tb)
 #define __Pyx_ErrRestore(type, value, tb)  PyErr_Restore(type, value, tb)
 #define __Pyx_ErrFetch(type, value, tb)  PyErr_Fetch(type, value, tb)
+#endif
+
+/* WriteUnraisableException.proto */
+static void __Pyx_WriteUnraisable(const char *name, int clineno,
+                                  int lineno, const char *filename,
+                                  int full_traceback, int nogil);
+
+/* ArgTypeTest.proto */
+#define __Pyx_ArgTypeTest(obj, type, none_allowed, name, exact)\
+    ((likely((Py_TYPE(obj) == type) | (none_allowed && (obj == Py_None)))) ? 1 :\
+        __Pyx__ArgTypeTest(obj, type, name, exact))
+static int __Pyx__ArgTypeTest(PyObject *obj, PyTypeObject *type, const char *name, int exact);
+
+/* PyObjectCall.proto */
+#if CYTHON_COMPILING_IN_CPYTHON
+static CYTHON_INLINE PyObject* __Pyx_PyObject_Call(PyObject *func, PyObject *arg, PyObject *kw);
+#else
+#define __Pyx_PyObject_Call(func, arg, kw) PyObject_Call(func, arg, kw)
 #endif
 
 /* RaiseException.proto */
@@ -1669,6 +1677,12 @@ static CYTHON_INLINE __Pyx_memviewslice __Pyx_PyObject_to_MemoryviewSlice_dsds_d
 /* ObjectToMemviewSlice.proto */
 static CYTHON_INLINE __Pyx_memviewslice __Pyx_PyObject_to_MemoryviewSlice_dsds_double__const__(PyObject *, int writable_flag);
 
+/* ObjectToMemviewSlice.proto */
+static CYTHON_INLINE __Pyx_memviewslice __Pyx_PyObject_to_MemoryviewSlice_ds_double(PyObject *, int writable_flag);
+
+/* ObjectToMemviewSlice.proto */
+static CYTHON_INLINE __Pyx_memviewslice __Pyx_PyObject_to_MemoryviewSlice_ds_double__const__(PyObject *, int writable_flag);
+
 /* GCCDiagnostics.proto */
 #if defined(__GNUC__) && (__GNUC__ > 4 || (__GNUC__ == 4 && __GNUC_MINOR__ >= 6))
 #define __Pyx_HAS_GCC_DIAGNOSTIC
@@ -1729,10 +1743,12 @@ static PyObject *contiguous = 0;
 static PyObject *indirect_contiguous = 0;
 static int __pyx_memoryview_thread_locks_used;
 static PyThread_type_lock __pyx_memoryview_thread_locks[8];
-static void __pyx_f_7roll_rolling_3d(__Pyx_memviewslice, __Pyx_memviewslice, int __pyx_skip_dispatch); /*proto*/
-static void __pyx_f_7roll_rolling_3d_cy(__Pyx_memviewslice, __Pyx_memviewslice); /*proto*/
-static void __pyx_f_7roll_rolling_2d(__Pyx_memviewslice, __Pyx_memviewslice, int __pyx_skip_dispatch); /*proto*/
-static void __pyx_f_7roll_rolling_2d_cy(__Pyx_memviewslice, __Pyx_memviewslice); /*proto*/
+static void __pyx_f_4roll_rolling_3d(__Pyx_memviewslice, __Pyx_memviewslice, int __pyx_skip_dispatch); /*proto*/
+static void __pyx_f_4roll_rolling_3d_cy(__Pyx_memviewslice, __Pyx_memviewslice); /*proto*/
+static void __pyx_f_4roll_rolling_2d(__Pyx_memviewslice, __Pyx_memviewslice, int __pyx_skip_dispatch); /*proto*/
+static void __pyx_f_4roll_rolling_2d_cy(__Pyx_memviewslice, __Pyx_memviewslice); /*proto*/
+static void __pyx_f_4roll_rolling_1d(__Pyx_memviewslice, __Pyx_memviewslice, int __pyx_skip_dispatch); /*proto*/
+static void __pyx_f_4roll_rolling_1d_cy(__Pyx_memviewslice, __Pyx_memviewslice); /*proto*/
 static struct __pyx_array_obj *__pyx_array_new(PyObject *, Py_ssize_t, char *, char *, char *); /*proto*/
 static void *__pyx_align_pointer(void *, size_t); /*proto*/
 static PyObject *__pyx_memoryview_new(PyObject *, int, int, __Pyx_TypeInfo *); /*proto*/
@@ -1959,8 +1975,9 @@ static PyObject *__pyx_kp_s_unable_to_allocate_array_data;
 static PyObject *__pyx_kp_s_unable_to_allocate_shape_and_str;
 static PyObject *__pyx_n_s_unpack;
 static PyObject *__pyx_n_s_update;
-static PyObject *__pyx_pf_7roll_rolling_3d(CYTHON_UNUSED PyObject *__pyx_self, __Pyx_memviewslice __pyx_v_arr, __Pyx_memviewslice __pyx_v_brr); /* proto */
-static PyObject *__pyx_pf_7roll_2rolling_2d(CYTHON_UNUSED PyObject *__pyx_self, __Pyx_memviewslice __pyx_v_a, __Pyx_memviewslice __pyx_v_b); /* proto */
+static PyObject *__pyx_pf_4roll_rolling_3d(CYTHON_UNUSED PyObject *__pyx_self, __Pyx_memviewslice __pyx_v_arr, __Pyx_memviewslice __pyx_v_brr); /* proto */
+static PyObject *__pyx_pf_4roll_2rolling_2d(CYTHON_UNUSED PyObject *__pyx_self, __Pyx_memviewslice __pyx_v_a, __Pyx_memviewslice __pyx_v_b); /* proto */
+static PyObject *__pyx_pf_4roll_4rolling_1d(CYTHON_UNUSED PyObject *__pyx_self, __Pyx_memviewslice __pyx_v_a, __Pyx_memviewslice __pyx_v_b); /* proto */
 static int __pyx_array___pyx_pf_15View_dot_MemoryView_5array___cinit__(struct __pyx_array_obj *__pyx_v_self, PyObject *__pyx_v_shape, Py_ssize_t __pyx_v_itemsize, PyObject *__pyx_v_format, PyObject *__pyx_v_mode, int __pyx_v_allocate_buffer); /* proto */
 static int __pyx_array___pyx_pf_15View_dot_MemoryView_5array_2__getbuffer__(struct __pyx_array_obj *__pyx_v_self, Py_buffer *__pyx_v_info, int __pyx_v_flags); /* proto */
 static void __pyx_array___pyx_pf_15View_dot_MemoryView_5array_4__dealloc__(struct __pyx_array_obj *__pyx_v_self); /* proto */
@@ -2038,34 +2055,34 @@ static PyObject *__pyx_tuple__24;
 static PyObject *__pyx_codeobj__25;
 /* Late includes */
 
-/* "roll.pyx":4
- * 
+/* "roll.pyx":11
+ * # With smaller arrays bottleneck is the overhead, with bigger arrays Numpy works faster
  * 
  * cpdef void rolling_3d(double[:,:,:] arr, const double[:,:,:] brr):             # <<<<<<<<<<<<<<
- *     rolling_3d_cy(arr, brr)
- * 
+ *     """
+ *     Analog of the np.roll for 3d arrays
  */
 
-static PyObject *__pyx_pw_7roll_1rolling_3d(PyObject *__pyx_self, PyObject *__pyx_args, PyObject *__pyx_kwds); /*proto*/
-static void __pyx_f_7roll_rolling_3d(__Pyx_memviewslice __pyx_v_arr, __Pyx_memviewslice __pyx_v_brr, CYTHON_UNUSED int __pyx_skip_dispatch) {
+static PyObject *__pyx_pw_4roll_1rolling_3d(PyObject *__pyx_self, PyObject *__pyx_args, PyObject *__pyx_kwds); /*proto*/
+static void __pyx_f_4roll_rolling_3d(__Pyx_memviewslice __pyx_v_arr, __Pyx_memviewslice __pyx_v_brr, CYTHON_UNUSED int __pyx_skip_dispatch) {
   __Pyx_RefNannyDeclarations
   __Pyx_RefNannySetupContext("rolling_3d", 0);
 
-  /* "roll.pyx":5
- * 
- * cpdef void rolling_3d(double[:,:,:] arr, const double[:,:,:] brr):
+  /* "roll.pyx":19
+ *     :return:
+ *     """
  *     rolling_3d_cy(arr, brr)             # <<<<<<<<<<<<<<
  * 
  * @cython.boundscheck(False) # turn off bounds-checking for entire function
  */
-  __pyx_f_7roll_rolling_3d_cy(__pyx_v_arr, __pyx_v_brr);
+  __pyx_f_4roll_rolling_3d_cy(__pyx_v_arr, __pyx_v_brr);
 
-  /* "roll.pyx":4
- * 
+  /* "roll.pyx":11
+ * # With smaller arrays bottleneck is the overhead, with bigger arrays Numpy works faster
  * 
  * cpdef void rolling_3d(double[:,:,:] arr, const double[:,:,:] brr):             # <<<<<<<<<<<<<<
- *     rolling_3d_cy(arr, brr)
- * 
+ *     """
+ *     Analog of the np.roll for 3d arrays
  */
 
   /* function exit code */
@@ -2073,8 +2090,9 @@ static void __pyx_f_7roll_rolling_3d(__Pyx_memviewslice __pyx_v_arr, __Pyx_memvi
 }
 
 /* Python wrapper */
-static PyObject *__pyx_pw_7roll_1rolling_3d(PyObject *__pyx_self, PyObject *__pyx_args, PyObject *__pyx_kwds); /*proto*/
-static PyObject *__pyx_pw_7roll_1rolling_3d(PyObject *__pyx_self, PyObject *__pyx_args, PyObject *__pyx_kwds) {
+static PyObject *__pyx_pw_4roll_1rolling_3d(PyObject *__pyx_self, PyObject *__pyx_args, PyObject *__pyx_kwds); /*proto*/
+static char __pyx_doc_4roll_rolling_3d[] = "\n    Analog of the np.roll for 3d arrays\n    :param arr: array to add to\n    :param brr: addition\n    \n    :return: \n    ";
+static PyObject *__pyx_pw_4roll_1rolling_3d(PyObject *__pyx_self, PyObject *__pyx_args, PyObject *__pyx_kwds) {
   __Pyx_memviewslice __pyx_v_arr = { 0, 0, { 0 }, { 0 }, { 0 } };
   __Pyx_memviewslice __pyx_v_brr = { 0, 0, { 0 }, { 0 }, { 0 } };
   int __pyx_lineno = 0;
@@ -2106,11 +2124,11 @@ static PyObject *__pyx_pw_7roll_1rolling_3d(PyObject *__pyx_self, PyObject *__py
         case  1:
         if (likely((values[1] = __Pyx_PyDict_GetItemStr(__pyx_kwds, __pyx_n_s_brr)) != 0)) kw_args--;
         else {
-          __Pyx_RaiseArgtupleInvalid("rolling_3d", 1, 2, 2, 1); __PYX_ERR(0, 4, __pyx_L3_error)
+          __Pyx_RaiseArgtupleInvalid("rolling_3d", 1, 2, 2, 1); __PYX_ERR(0, 11, __pyx_L3_error)
         }
       }
       if (unlikely(kw_args > 0)) {
-        if (unlikely(__Pyx_ParseOptionalKeywords(__pyx_kwds, __pyx_pyargnames, 0, values, pos_args, "rolling_3d") < 0)) __PYX_ERR(0, 4, __pyx_L3_error)
+        if (unlikely(__Pyx_ParseOptionalKeywords(__pyx_kwds, __pyx_pyargnames, 0, values, pos_args, "rolling_3d") < 0)) __PYX_ERR(0, 11, __pyx_L3_error)
       }
     } else if (PyTuple_GET_SIZE(__pyx_args) != 2) {
       goto __pyx_L5_argtuple_error;
@@ -2118,25 +2136,25 @@ static PyObject *__pyx_pw_7roll_1rolling_3d(PyObject *__pyx_self, PyObject *__py
       values[0] = PyTuple_GET_ITEM(__pyx_args, 0);
       values[1] = PyTuple_GET_ITEM(__pyx_args, 1);
     }
-    __pyx_v_arr = __Pyx_PyObject_to_MemoryviewSlice_dsdsds_double(values[0], PyBUF_WRITABLE); if (unlikely(!__pyx_v_arr.memview)) __PYX_ERR(0, 4, __pyx_L3_error)
-    __pyx_v_brr = __Pyx_PyObject_to_MemoryviewSlice_dsdsds_double__const__(values[1], 0); if (unlikely(!__pyx_v_brr.memview)) __PYX_ERR(0, 4, __pyx_L3_error)
+    __pyx_v_arr = __Pyx_PyObject_to_MemoryviewSlice_dsdsds_double(values[0], PyBUF_WRITABLE); if (unlikely(!__pyx_v_arr.memview)) __PYX_ERR(0, 11, __pyx_L3_error)
+    __pyx_v_brr = __Pyx_PyObject_to_MemoryviewSlice_dsdsds_double__const__(values[1], 0); if (unlikely(!__pyx_v_brr.memview)) __PYX_ERR(0, 11, __pyx_L3_error)
   }
   goto __pyx_L4_argument_unpacking_done;
   __pyx_L5_argtuple_error:;
-  __Pyx_RaiseArgtupleInvalid("rolling_3d", 1, 2, 2, PyTuple_GET_SIZE(__pyx_args)); __PYX_ERR(0, 4, __pyx_L3_error)
+  __Pyx_RaiseArgtupleInvalid("rolling_3d", 1, 2, 2, PyTuple_GET_SIZE(__pyx_args)); __PYX_ERR(0, 11, __pyx_L3_error)
   __pyx_L3_error:;
   __Pyx_AddTraceback("roll.rolling_3d", __pyx_clineno, __pyx_lineno, __pyx_filename);
   __Pyx_RefNannyFinishContext();
   return NULL;
   __pyx_L4_argument_unpacking_done:;
-  __pyx_r = __pyx_pf_7roll_rolling_3d(__pyx_self, __pyx_v_arr, __pyx_v_brr);
+  __pyx_r = __pyx_pf_4roll_rolling_3d(__pyx_self, __pyx_v_arr, __pyx_v_brr);
 
   /* function exit code */
   __Pyx_RefNannyFinishContext();
   return __pyx_r;
 }
 
-static PyObject *__pyx_pf_7roll_rolling_3d(CYTHON_UNUSED PyObject *__pyx_self, __Pyx_memviewslice __pyx_v_arr, __Pyx_memviewslice __pyx_v_brr) {
+static PyObject *__pyx_pf_4roll_rolling_3d(CYTHON_UNUSED PyObject *__pyx_self, __Pyx_memviewslice __pyx_v_arr, __Pyx_memviewslice __pyx_v_brr) {
   PyObject *__pyx_r = NULL;
   __Pyx_RefNannyDeclarations
   PyObject *__pyx_t_1 = NULL;
@@ -2145,9 +2163,9 @@ static PyObject *__pyx_pf_7roll_rolling_3d(CYTHON_UNUSED PyObject *__pyx_self, _
   int __pyx_clineno = 0;
   __Pyx_RefNannySetupContext("rolling_3d", 0);
   __Pyx_XDECREF(__pyx_r);
-  if (unlikely(!__pyx_v_arr.memview)) { __Pyx_RaiseUnboundLocalError("arr"); __PYX_ERR(0, 4, __pyx_L1_error) }
-  if (unlikely(!__pyx_v_brr.memview)) { __Pyx_RaiseUnboundLocalError("brr"); __PYX_ERR(0, 4, __pyx_L1_error) }
-  __pyx_t_1 = __Pyx_void_to_None(__pyx_f_7roll_rolling_3d(__pyx_v_arr, __pyx_v_brr, 0)); if (unlikely(!__pyx_t_1)) __PYX_ERR(0, 4, __pyx_L1_error)
+  if (unlikely(!__pyx_v_arr.memview)) { __Pyx_RaiseUnboundLocalError("arr"); __PYX_ERR(0, 11, __pyx_L1_error) }
+  if (unlikely(!__pyx_v_brr.memview)) { __Pyx_RaiseUnboundLocalError("brr"); __PYX_ERR(0, 11, __pyx_L1_error) }
+  __pyx_t_1 = __Pyx_void_to_None(__pyx_f_4roll_rolling_3d(__pyx_v_arr, __pyx_v_brr, 0)); if (unlikely(!__pyx_t_1)) __PYX_ERR(0, 11, __pyx_L1_error)
   __Pyx_GOTREF(__pyx_t_1);
   __pyx_r = __pyx_t_1;
   __pyx_t_1 = 0;
@@ -2166,7 +2184,7 @@ static PyObject *__pyx_pf_7roll_rolling_3d(CYTHON_UNUSED PyObject *__pyx_self, _
   return __pyx_r;
 }
 
-/* "roll.pyx":9
+/* "roll.pyx":23
  * @cython.boundscheck(False) # turn off bounds-checking for entire function
  * @cython.wraparound(False)  # turn off negative index wrapping for entire function
  * cdef void rolling_3d_cy(double[:,:,:] arr, const double[:,:,:] brr) nogil:             # <<<<<<<<<<<<<<
@@ -2174,25 +2192,42 @@ static PyObject *__pyx_pf_7roll_rolling_3d(CYTHON_UNUSED PyObject *__pyx_self, _
  *     for i in range(arr.shape[0]):
  */
 
-static void __pyx_f_7roll_rolling_3d_cy(__Pyx_memviewslice __pyx_v_arr, __Pyx_memviewslice __pyx_v_brr) {
+static void __pyx_f_4roll_rolling_3d_cy(__Pyx_memviewslice __pyx_v_arr, __Pyx_memviewslice __pyx_v_brr) {
   int __pyx_v_i;
   int __pyx_v_j;
   int __pyx_v_k;
-  int __pyx_t_1;
-  int __pyx_t_4;
-  int __pyx_t_7;
+  Py_ssize_t __pyx_t_1;
+  Py_ssize_t __pyx_t_2;
+  int __pyx_t_3;
+  Py_ssize_t __pyx_t_4;
+  Py_ssize_t __pyx_t_5;
+  int __pyx_t_6;
+  Py_ssize_t __pyx_t_7;
+  Py_ssize_t __pyx_t_8;
+  int __pyx_t_9;
+  Py_ssize_t __pyx_t_10;
+  Py_ssize_t __pyx_t_11;
+  Py_ssize_t __pyx_t_12;
+  Py_ssize_t __pyx_t_13;
+  Py_ssize_t __pyx_t_14;
+  Py_ssize_t __pyx_t_15;
+  Py_ssize_t __pyx_t_16;
+  Py_ssize_t __pyx_t_17;
+  Py_ssize_t __pyx_t_18;
 
-  /* "roll.pyx":11
- * cdef void laplace_looping(double[:,:,:] arr, double[:,:,:] brr) nogil:
+  /* "roll.pyx":25
+ * cdef void rolling_3d_cy(double[:,:,:] arr, const double[:,:,:] brr) nogil:
  *     cdef int i, j, k
  *     for i in range(arr.shape[0]):             # <<<<<<<<<<<<<<
  *         for j in range(arr.shape[1]):
  *             for k in range(arr.shape[2]):
  */
   __pyx_t_1 = (__pyx_v_arr.shape[0]);
-  for (__pyx_v_i = 0; __pyx_v_i < __pyx_t_1; __pyx_v_i+=1) {
+  __pyx_t_2 = __pyx_t_1;
+  for (__pyx_t_3 = 0; __pyx_t_3 < __pyx_t_2; __pyx_t_3+=1) {
+    __pyx_v_i = __pyx_t_3;
 
-    /* "roll.pyx":12
+    /* "roll.pyx":26
  *     cdef int i, j, k
  *     for i in range(arr.shape[0]):
  *         for j in range(arr.shape[1]):             # <<<<<<<<<<<<<<
@@ -2200,28 +2235,44 @@ static void __pyx_f_7roll_rolling_3d_cy(__Pyx_memviewslice __pyx_v_arr, __Pyx_me
  *                 arr[i,j,k] = arr[i,j,k] +  brr[i,j,k]
  */
     __pyx_t_4 = (__pyx_v_arr.shape[1]);
-    for (__pyx_v_j = 0; __pyx_v_j < __pyx_t_4; __pyx_v_j+=1) {
+    __pyx_t_5 = __pyx_t_4;
+    for (__pyx_t_6 = 0; __pyx_t_6 < __pyx_t_5; __pyx_t_6+=1) {
+      __pyx_v_j = __pyx_t_6;
 
-      /* "roll.pyx":13
+      /* "roll.pyx":27
  *     for i in range(arr.shape[0]):
  *         for j in range(arr.shape[1]):
  *             for k in range(arr.shape[2]):             # <<<<<<<<<<<<<<
  *                 arr[i,j,k] = arr[i,j,k] +  brr[i,j,k]
+ * 
  */
       __pyx_t_7 = (__pyx_v_arr.shape[2]);
-      for (__pyx_v_k = 0; __pyx_v_k < __pyx_t_7; __pyx_v_k+=1) {
+      __pyx_t_8 = __pyx_t_7;
+      for (__pyx_t_9 = 0; __pyx_t_9 < __pyx_t_8; __pyx_t_9+=1) {
+        __pyx_v_k = __pyx_t_9;
 
-        /* "roll.pyx":14
+        /* "roll.pyx":28
  *         for j in range(arr.shape[1]):
  *             for k in range(arr.shape[2]):
  *                 arr[i,j,k] = arr[i,j,k] +  brr[i,j,k]             # <<<<<<<<<<<<<<
+ * 
+ * 
  */
-        *((double *) ( /* dim=2 */ (( /* dim=1 */ (( /* dim=0 */ (__pyx_v_arr.data + __pyx_v_i * __pyx_v_arr.strides[0]) ) + __pyx_v_j * __pyx_v_arr.strides[1]) ) + __pyx_v_k * __pyx_v_arr.strides[2]) )) = ((*((double *) ( /* dim=2 */ (( /* dim=1 */ (( /* dim=0 */ (__pyx_v_arr.data + __pyx_v_i * __pyx_v_arr.strides[0]) ) + __pyx_v_j * __pyx_v_arr.strides[1]) ) + __pyx_v_k * __pyx_v_arr.strides[2]) ))) + (*((double *) ( /* dim=2 */ (( /* dim=1 */ (( /* dim=0 */ (__pyx_v_brr.data + __pyx_v_i * __pyx_v_brr.strides[0]) ) + __pyx_v_j * __pyx_v_brr.strides[1]) ) + __pyx_v_k * __pyx_v_brr.strides[2]) ))));
+        __pyx_t_10 = __pyx_v_i;
+        __pyx_t_11 = __pyx_v_j;
+        __pyx_t_12 = __pyx_v_k;
+        __pyx_t_13 = __pyx_v_i;
+        __pyx_t_14 = __pyx_v_j;
+        __pyx_t_15 = __pyx_v_k;
+        __pyx_t_16 = __pyx_v_i;
+        __pyx_t_17 = __pyx_v_j;
+        __pyx_t_18 = __pyx_v_k;
+        *((double *) ( /* dim=2 */ (( /* dim=1 */ (( /* dim=0 */ (__pyx_v_arr.data + __pyx_t_16 * __pyx_v_arr.strides[0]) ) + __pyx_t_17 * __pyx_v_arr.strides[1]) ) + __pyx_t_18 * __pyx_v_arr.strides[2]) )) = ((*((double *) ( /* dim=2 */ (( /* dim=1 */ (( /* dim=0 */ (__pyx_v_arr.data + __pyx_t_10 * __pyx_v_arr.strides[0]) ) + __pyx_t_11 * __pyx_v_arr.strides[1]) ) + __pyx_t_12 * __pyx_v_arr.strides[2]) ))) + (*((double const  *) ( /* dim=2 */ (( /* dim=1 */ (( /* dim=0 */ (__pyx_v_brr.data + __pyx_t_13 * __pyx_v_brr.strides[0]) ) + __pyx_t_14 * __pyx_v_brr.strides[1]) ) + __pyx_t_15 * __pyx_v_brr.strides[2]) ))));
       }
     }
   }
 
-  /* "roll.pyx":9
+  /* "roll.pyx":23
  * @cython.boundscheck(False) # turn off bounds-checking for entire function
  * @cython.wraparound(False)  # turn off negative index wrapping for entire function
  * cdef void rolling_3d_cy(double[:,:,:] arr, const double[:,:,:] brr) nogil:             # <<<<<<<<<<<<<<
@@ -2232,34 +2283,34 @@ static void __pyx_f_7roll_rolling_3d_cy(__Pyx_memviewslice __pyx_v_arr, __Pyx_me
   /* function exit code */
 }
 
-/* "roll.pyx":18
+/* "roll.pyx":32
  * 
  * 
  * cpdef void rolling_2d(double[:,:] a, const double[:,:] b):             # <<<<<<<<<<<<<<
- *     rolling_2d_cy(a, b)
- * 
+ *     """
+ *     Analog of the np.roll for 2d arrays
  */
 
-static PyObject *__pyx_pw_7roll_3rolling_2d(PyObject *__pyx_self, PyObject *__pyx_args, PyObject *__pyx_kwds); /*proto*/
-static void __pyx_f_7roll_rolling_2d(__Pyx_memviewslice __pyx_v_a, __Pyx_memviewslice __pyx_v_b, CYTHON_UNUSED int __pyx_skip_dispatch) {
+static PyObject *__pyx_pw_4roll_3rolling_2d(PyObject *__pyx_self, PyObject *__pyx_args, PyObject *__pyx_kwds); /*proto*/
+static void __pyx_f_4roll_rolling_2d(__Pyx_memviewslice __pyx_v_a, __Pyx_memviewslice __pyx_v_b, CYTHON_UNUSED int __pyx_skip_dispatch) {
   __Pyx_RefNannyDeclarations
   __Pyx_RefNannySetupContext("rolling_2d", 0);
 
-  /* "roll.pyx":19
- * 
- * cpdef void rolling_2d(double[:,:] a, const double[:,:] b):
+  /* "roll.pyx":40
+ *     :return:
+ *     """
  *     rolling_2d_cy(a, b)             # <<<<<<<<<<<<<<
  * 
  * @cython.boundscheck(False) # turn off bounds-checking for entire function
  */
-  __pyx_f_7roll_rolling_2d_cy(__pyx_v_a, __pyx_v_b);
+  __pyx_f_4roll_rolling_2d_cy(__pyx_v_a, __pyx_v_b);
 
-  /* "roll.pyx":18
+  /* "roll.pyx":32
  * 
  * 
  * cpdef void rolling_2d(double[:,:] a, const double[:,:] b):             # <<<<<<<<<<<<<<
- *     rolling_2d_cy(a, b)
- * 
+ *     """
+ *     Analog of the np.roll for 2d arrays
  */
 
   /* function exit code */
@@ -2267,8 +2318,9 @@ static void __pyx_f_7roll_rolling_2d(__Pyx_memviewslice __pyx_v_a, __Pyx_memview
 }
 
 /* Python wrapper */
-static PyObject *__pyx_pw_7roll_3rolling_2d(PyObject *__pyx_self, PyObject *__pyx_args, PyObject *__pyx_kwds); /*proto*/
-static PyObject *__pyx_pw_7roll_3rolling_2d(PyObject *__pyx_self, PyObject *__pyx_args, PyObject *__pyx_kwds) {
+static PyObject *__pyx_pw_4roll_3rolling_2d(PyObject *__pyx_self, PyObject *__pyx_args, PyObject *__pyx_kwds); /*proto*/
+static char __pyx_doc_4roll_2rolling_2d[] = "\n    Analog of the np.roll for 2d arrays\n    :param arr: array to add to\n    :param brr: addition\n\n    :return: \n    ";
+static PyObject *__pyx_pw_4roll_3rolling_2d(PyObject *__pyx_self, PyObject *__pyx_args, PyObject *__pyx_kwds) {
   __Pyx_memviewslice __pyx_v_a = { 0, 0, { 0 }, { 0 }, { 0 } };
   __Pyx_memviewslice __pyx_v_b = { 0, 0, { 0 }, { 0 }, { 0 } };
   int __pyx_lineno = 0;
@@ -2300,11 +2352,11 @@ static PyObject *__pyx_pw_7roll_3rolling_2d(PyObject *__pyx_self, PyObject *__py
         case  1:
         if (likely((values[1] = __Pyx_PyDict_GetItemStr(__pyx_kwds, __pyx_n_s_b)) != 0)) kw_args--;
         else {
-          __Pyx_RaiseArgtupleInvalid("rolling_2d", 1, 2, 2, 1); __PYX_ERR(0, 18, __pyx_L3_error)
+          __Pyx_RaiseArgtupleInvalid("rolling_2d", 1, 2, 2, 1); __PYX_ERR(0, 32, __pyx_L3_error)
         }
       }
       if (unlikely(kw_args > 0)) {
-        if (unlikely(__Pyx_ParseOptionalKeywords(__pyx_kwds, __pyx_pyargnames, 0, values, pos_args, "rolling_2d") < 0)) __PYX_ERR(0, 18, __pyx_L3_error)
+        if (unlikely(__Pyx_ParseOptionalKeywords(__pyx_kwds, __pyx_pyargnames, 0, values, pos_args, "rolling_2d") < 0)) __PYX_ERR(0, 32, __pyx_L3_error)
       }
     } else if (PyTuple_GET_SIZE(__pyx_args) != 2) {
       goto __pyx_L5_argtuple_error;
@@ -2312,25 +2364,25 @@ static PyObject *__pyx_pw_7roll_3rolling_2d(PyObject *__pyx_self, PyObject *__py
       values[0] = PyTuple_GET_ITEM(__pyx_args, 0);
       values[1] = PyTuple_GET_ITEM(__pyx_args, 1);
     }
-    __pyx_v_a = __Pyx_PyObject_to_MemoryviewSlice_dsds_double(values[0], PyBUF_WRITABLE); if (unlikely(!__pyx_v_a.memview)) __PYX_ERR(0, 18, __pyx_L3_error)
-    __pyx_v_b = __Pyx_PyObject_to_MemoryviewSlice_dsds_double__const__(values[1], 0); if (unlikely(!__pyx_v_b.memview)) __PYX_ERR(0, 18, __pyx_L3_error)
+    __pyx_v_a = __Pyx_PyObject_to_MemoryviewSlice_dsds_double(values[0], PyBUF_WRITABLE); if (unlikely(!__pyx_v_a.memview)) __PYX_ERR(0, 32, __pyx_L3_error)
+    __pyx_v_b = __Pyx_PyObject_to_MemoryviewSlice_dsds_double__const__(values[1], 0); if (unlikely(!__pyx_v_b.memview)) __PYX_ERR(0, 32, __pyx_L3_error)
   }
   goto __pyx_L4_argument_unpacking_done;
   __pyx_L5_argtuple_error:;
-  __Pyx_RaiseArgtupleInvalid("rolling_2d", 1, 2, 2, PyTuple_GET_SIZE(__pyx_args)); __PYX_ERR(0, 18, __pyx_L3_error)
+  __Pyx_RaiseArgtupleInvalid("rolling_2d", 1, 2, 2, PyTuple_GET_SIZE(__pyx_args)); __PYX_ERR(0, 32, __pyx_L3_error)
   __pyx_L3_error:;
   __Pyx_AddTraceback("roll.rolling_2d", __pyx_clineno, __pyx_lineno, __pyx_filename);
   __Pyx_RefNannyFinishContext();
   return NULL;
   __pyx_L4_argument_unpacking_done:;
-  __pyx_r = __pyx_pf_7roll_2rolling_2d(__pyx_self, __pyx_v_a, __pyx_v_b);
+  __pyx_r = __pyx_pf_4roll_2rolling_2d(__pyx_self, __pyx_v_a, __pyx_v_b);
 
   /* function exit code */
   __Pyx_RefNannyFinishContext();
   return __pyx_r;
 }
 
-static PyObject *__pyx_pf_7roll_2rolling_2d(CYTHON_UNUSED PyObject *__pyx_self, __Pyx_memviewslice __pyx_v_a, __Pyx_memviewslice __pyx_v_b) {
+static PyObject *__pyx_pf_4roll_2rolling_2d(CYTHON_UNUSED PyObject *__pyx_self, __Pyx_memviewslice __pyx_v_a, __Pyx_memviewslice __pyx_v_b) {
   PyObject *__pyx_r = NULL;
   __Pyx_RefNannyDeclarations
   PyObject *__pyx_t_1 = NULL;
@@ -2339,9 +2391,9 @@ static PyObject *__pyx_pf_7roll_2rolling_2d(CYTHON_UNUSED PyObject *__pyx_self, 
   int __pyx_clineno = 0;
   __Pyx_RefNannySetupContext("rolling_2d", 0);
   __Pyx_XDECREF(__pyx_r);
-  if (unlikely(!__pyx_v_a.memview)) { __Pyx_RaiseUnboundLocalError("a"); __PYX_ERR(0, 18, __pyx_L1_error) }
-  if (unlikely(!__pyx_v_b.memview)) { __Pyx_RaiseUnboundLocalError("b"); __PYX_ERR(0, 18, __pyx_L1_error) }
-  __pyx_t_1 = __Pyx_void_to_None(__pyx_f_7roll_rolling_2d(__pyx_v_a, __pyx_v_b, 0)); if (unlikely(!__pyx_t_1)) __PYX_ERR(0, 18, __pyx_L1_error)
+  if (unlikely(!__pyx_v_a.memview)) { __Pyx_RaiseUnboundLocalError("a"); __PYX_ERR(0, 32, __pyx_L1_error) }
+  if (unlikely(!__pyx_v_b.memview)) { __Pyx_RaiseUnboundLocalError("b"); __PYX_ERR(0, 32, __pyx_L1_error) }
+  __pyx_t_1 = __Pyx_void_to_None(__pyx_f_4roll_rolling_2d(__pyx_v_a, __pyx_v_b, 0)); if (unlikely(!__pyx_t_1)) __PYX_ERR(0, 32, __pyx_L1_error)
   __Pyx_GOTREF(__pyx_t_1);
   __pyx_r = __pyx_t_1;
   __pyx_t_1 = 0;
@@ -2360,7 +2412,7 @@ static PyObject *__pyx_pf_7roll_2rolling_2d(CYTHON_UNUSED PyObject *__pyx_self, 
   return __pyx_r;
 }
 
-/* "roll.pyx":23
+/* "roll.pyx":44
  * @cython.boundscheck(False) # turn off bounds-checking for entire function
  * @cython.wraparound(False)  # turn off negative index wrapping for entire function
  * cdef void rolling_2d_cy(double[:,:] a, const double[:,:] b) nogil:             # <<<<<<<<<<<<<<
@@ -2368,13 +2420,23 @@ static PyObject *__pyx_pf_7roll_2rolling_2d(CYTHON_UNUSED PyObject *__pyx_self, 
  *     for i in range(a.shape[0]):
  */
 
-static void __pyx_f_7roll_rolling_2d_cy(__Pyx_memviewslice __pyx_v_a, __Pyx_memviewslice __pyx_v_b) {
+static void __pyx_f_4roll_rolling_2d_cy(__Pyx_memviewslice __pyx_v_a, __Pyx_memviewslice __pyx_v_b) {
   int __pyx_v_i;
   int __pyx_v_j;
-  int __pyx_t_1;
-  int __pyx_t_4;
+  Py_ssize_t __pyx_t_1;
+  Py_ssize_t __pyx_t_2;
+  int __pyx_t_3;
+  Py_ssize_t __pyx_t_4;
+  Py_ssize_t __pyx_t_5;
+  int __pyx_t_6;
+  Py_ssize_t __pyx_t_7;
+  Py_ssize_t __pyx_t_8;
+  Py_ssize_t __pyx_t_9;
+  Py_ssize_t __pyx_t_10;
+  Py_ssize_t __pyx_t_11;
+  Py_ssize_t __pyx_t_12;
 
-  /* "roll.pyx":25
+  /* "roll.pyx":46
  * cdef void rolling_2d_cy(double[:,:] a, const double[:,:] b) nogil:
  *     cdef int i, j
  *     for i in range(a.shape[0]):             # <<<<<<<<<<<<<<
@@ -2382,27 +2444,40 @@ static void __pyx_f_7roll_rolling_2d_cy(__Pyx_memviewslice __pyx_v_a, __Pyx_memv
  *                 a[i,j] = a[i,j] +  b[i,j]
  */
   __pyx_t_1 = (__pyx_v_a.shape[0]);
-  for (__pyx_v_i = 0; __pyx_v_i < __pyx_t_1; __pyx_v_i+=1) {
+  __pyx_t_2 = __pyx_t_1;
+  for (__pyx_t_3 = 0; __pyx_t_3 < __pyx_t_2; __pyx_t_3+=1) {
+    __pyx_v_i = __pyx_t_3;
 
-    /* "roll.pyx":26
+    /* "roll.pyx":47
  *     cdef int i, j
  *     for i in range(a.shape[0]):
  *         for j in range(a.shape[1]):             # <<<<<<<<<<<<<<
  *                 a[i,j] = a[i,j] +  b[i,j]
+ * 
  */
     __pyx_t_4 = (__pyx_v_a.shape[1]);
-    for (__pyx_v_j = 0; __pyx_v_j < __pyx_t_4; __pyx_v_j+=1) {
+    __pyx_t_5 = __pyx_t_4;
+    for (__pyx_t_6 = 0; __pyx_t_6 < __pyx_t_5; __pyx_t_6+=1) {
+      __pyx_v_j = __pyx_t_6;
 
-      /* "roll.pyx":27
+      /* "roll.pyx":48
  *     for i in range(a.shape[0]):
  *         for j in range(a.shape[1]):
  *                 a[i,j] = a[i,j] +  b[i,j]             # <<<<<<<<<<<<<<
+ * 
+ * 
  */
-      *((double *) ( /* dim=1 */ (( /* dim=0 */ (__pyx_v_a.data + __pyx_v_i * __pyx_v_a.strides[0]) ) + __pyx_v_j * __pyx_v_a.strides[1]) )) = ((*((double *) ( /* dim=1 */ (( /* dim=0 */ (__pyx_v_a.data + __pyx_v_i * __pyx_v_a.strides[0]) ) + __pyx_v_j * __pyx_v_a.strides[1]) ))) + (*((double const  *) ( /* dim=1 */ (( /* dim=0 */ (__pyx_v_b.data + __pyx_v_i * __pyx_v_b.strides[0]) ) + __pyx_v_j * __pyx_v_b.strides[1]) ))));
+      __pyx_t_7 = __pyx_v_i;
+      __pyx_t_8 = __pyx_v_j;
+      __pyx_t_9 = __pyx_v_i;
+      __pyx_t_10 = __pyx_v_j;
+      __pyx_t_11 = __pyx_v_i;
+      __pyx_t_12 = __pyx_v_j;
+      *((double *) ( /* dim=1 */ (( /* dim=0 */ (__pyx_v_a.data + __pyx_t_11 * __pyx_v_a.strides[0]) ) + __pyx_t_12 * __pyx_v_a.strides[1]) )) = ((*((double *) ( /* dim=1 */ (( /* dim=0 */ (__pyx_v_a.data + __pyx_t_7 * __pyx_v_a.strides[0]) ) + __pyx_t_8 * __pyx_v_a.strides[1]) ))) + (*((double const  *) ( /* dim=1 */ (( /* dim=0 */ (__pyx_v_b.data + __pyx_t_9 * __pyx_v_b.strides[0]) ) + __pyx_t_10 * __pyx_v_b.strides[1]) ))));
     }
   }
 
-  /* "roll.pyx":23
+  /* "roll.pyx":44
  * @cython.boundscheck(False) # turn off bounds-checking for entire function
  * @cython.wraparound(False)  # turn off negative index wrapping for entire function
  * cdef void rolling_2d_cy(double[:,:] a, const double[:,:] b) nogil:             # <<<<<<<<<<<<<<
@@ -2411,6 +2486,220 @@ static void __pyx_f_7roll_rolling_2d_cy(__Pyx_memviewslice __pyx_v_a, __Pyx_memv
  */
 
   /* function exit code */
+}
+
+/* "roll.pyx":53
+ * 
+ * 
+ * cpdef void rolling_1d(double[:] a, const double[:] b):             # <<<<<<<<<<<<<<
+ *     rolling_1d_cy(a,b)
+ * 
+ */
+
+static PyObject *__pyx_pw_4roll_5rolling_1d(PyObject *__pyx_self, PyObject *__pyx_args, PyObject *__pyx_kwds); /*proto*/
+static void __pyx_f_4roll_rolling_1d(__Pyx_memviewslice __pyx_v_a, __Pyx_memviewslice __pyx_v_b, CYTHON_UNUSED int __pyx_skip_dispatch) {
+  __Pyx_RefNannyDeclarations
+  __Pyx_RefNannySetupContext("rolling_1d", 0);
+
+  /* "roll.pyx":54
+ * 
+ * cpdef void rolling_1d(double[:] a, const double[:] b):
+ *     rolling_1d_cy(a,b)             # <<<<<<<<<<<<<<
+ * 
+ * @cython.boundscheck(False) # turn off bounds-checking for entire function
+ */
+  __pyx_f_4roll_rolling_1d_cy(__pyx_v_a, __pyx_v_b);
+
+  /* "roll.pyx":53
+ * 
+ * 
+ * cpdef void rolling_1d(double[:] a, const double[:] b):             # <<<<<<<<<<<<<<
+ *     rolling_1d_cy(a,b)
+ * 
+ */
+
+  /* function exit code */
+  __Pyx_RefNannyFinishContext();
+}
+
+/* Python wrapper */
+static PyObject *__pyx_pw_4roll_5rolling_1d(PyObject *__pyx_self, PyObject *__pyx_args, PyObject *__pyx_kwds); /*proto*/
+static PyObject *__pyx_pw_4roll_5rolling_1d(PyObject *__pyx_self, PyObject *__pyx_args, PyObject *__pyx_kwds) {
+  __Pyx_memviewslice __pyx_v_a = { 0, 0, { 0 }, { 0 }, { 0 } };
+  __Pyx_memviewslice __pyx_v_b = { 0, 0, { 0 }, { 0 }, { 0 } };
+  int __pyx_lineno = 0;
+  const char *__pyx_filename = NULL;
+  int __pyx_clineno = 0;
+  PyObject *__pyx_r = 0;
+  __Pyx_RefNannyDeclarations
+  __Pyx_RefNannySetupContext("rolling_1d (wrapper)", 0);
+  {
+    static PyObject **__pyx_pyargnames[] = {&__pyx_n_s_a,&__pyx_n_s_b,0};
+    PyObject* values[2] = {0,0};
+    if (unlikely(__pyx_kwds)) {
+      Py_ssize_t kw_args;
+      const Py_ssize_t pos_args = PyTuple_GET_SIZE(__pyx_args);
+      switch (pos_args) {
+        case  2: values[1] = PyTuple_GET_ITEM(__pyx_args, 1);
+        CYTHON_FALLTHROUGH;
+        case  1: values[0] = PyTuple_GET_ITEM(__pyx_args, 0);
+        CYTHON_FALLTHROUGH;
+        case  0: break;
+        default: goto __pyx_L5_argtuple_error;
+      }
+      kw_args = PyDict_Size(__pyx_kwds);
+      switch (pos_args) {
+        case  0:
+        if (likely((values[0] = __Pyx_PyDict_GetItemStr(__pyx_kwds, __pyx_n_s_a)) != 0)) kw_args--;
+        else goto __pyx_L5_argtuple_error;
+        CYTHON_FALLTHROUGH;
+        case  1:
+        if (likely((values[1] = __Pyx_PyDict_GetItemStr(__pyx_kwds, __pyx_n_s_b)) != 0)) kw_args--;
+        else {
+          __Pyx_RaiseArgtupleInvalid("rolling_1d", 1, 2, 2, 1); __PYX_ERR(0, 53, __pyx_L3_error)
+        }
+      }
+      if (unlikely(kw_args > 0)) {
+        if (unlikely(__Pyx_ParseOptionalKeywords(__pyx_kwds, __pyx_pyargnames, 0, values, pos_args, "rolling_1d") < 0)) __PYX_ERR(0, 53, __pyx_L3_error)
+      }
+    } else if (PyTuple_GET_SIZE(__pyx_args) != 2) {
+      goto __pyx_L5_argtuple_error;
+    } else {
+      values[0] = PyTuple_GET_ITEM(__pyx_args, 0);
+      values[1] = PyTuple_GET_ITEM(__pyx_args, 1);
+    }
+    __pyx_v_a = __Pyx_PyObject_to_MemoryviewSlice_ds_double(values[0], PyBUF_WRITABLE); if (unlikely(!__pyx_v_a.memview)) __PYX_ERR(0, 53, __pyx_L3_error)
+    __pyx_v_b = __Pyx_PyObject_to_MemoryviewSlice_ds_double__const__(values[1], 0); if (unlikely(!__pyx_v_b.memview)) __PYX_ERR(0, 53, __pyx_L3_error)
+  }
+  goto __pyx_L4_argument_unpacking_done;
+  __pyx_L5_argtuple_error:;
+  __Pyx_RaiseArgtupleInvalid("rolling_1d", 1, 2, 2, PyTuple_GET_SIZE(__pyx_args)); __PYX_ERR(0, 53, __pyx_L3_error)
+  __pyx_L3_error:;
+  __Pyx_AddTraceback("roll.rolling_1d", __pyx_clineno, __pyx_lineno, __pyx_filename);
+  __Pyx_RefNannyFinishContext();
+  return NULL;
+  __pyx_L4_argument_unpacking_done:;
+  __pyx_r = __pyx_pf_4roll_4rolling_1d(__pyx_self, __pyx_v_a, __pyx_v_b);
+
+  /* function exit code */
+  __Pyx_RefNannyFinishContext();
+  return __pyx_r;
+}
+
+static PyObject *__pyx_pf_4roll_4rolling_1d(CYTHON_UNUSED PyObject *__pyx_self, __Pyx_memviewslice __pyx_v_a, __Pyx_memviewslice __pyx_v_b) {
+  PyObject *__pyx_r = NULL;
+  __Pyx_RefNannyDeclarations
+  PyObject *__pyx_t_1 = NULL;
+  int __pyx_lineno = 0;
+  const char *__pyx_filename = NULL;
+  int __pyx_clineno = 0;
+  __Pyx_RefNannySetupContext("rolling_1d", 0);
+  __Pyx_XDECREF(__pyx_r);
+  if (unlikely(!__pyx_v_a.memview)) { __Pyx_RaiseUnboundLocalError("a"); __PYX_ERR(0, 53, __pyx_L1_error) }
+  if (unlikely(!__pyx_v_b.memview)) { __Pyx_RaiseUnboundLocalError("b"); __PYX_ERR(0, 53, __pyx_L1_error) }
+  __pyx_t_1 = __Pyx_void_to_None(__pyx_f_4roll_rolling_1d(__pyx_v_a, __pyx_v_b, 0)); if (unlikely(!__pyx_t_1)) __PYX_ERR(0, 53, __pyx_L1_error)
+  __Pyx_GOTREF(__pyx_t_1);
+  __pyx_r = __pyx_t_1;
+  __pyx_t_1 = 0;
+  goto __pyx_L0;
+
+  /* function exit code */
+  __pyx_L1_error:;
+  __Pyx_XDECREF(__pyx_t_1);
+  __Pyx_AddTraceback("roll.rolling_1d", __pyx_clineno, __pyx_lineno, __pyx_filename);
+  __pyx_r = NULL;
+  __pyx_L0:;
+  __PYX_XDEC_MEMVIEW(&__pyx_v_a, 1);
+  __PYX_XDEC_MEMVIEW(&__pyx_v_b, 1);
+  __Pyx_XGIVEREF(__pyx_r);
+  __Pyx_RefNannyFinishContext();
+  return __pyx_r;
+}
+
+/* "roll.pyx":58
+ * @cython.boundscheck(False) # turn off bounds-checking for entire function
+ * @cython.wraparound(False)  # turn off negative index wrapping for entire function
+ * cdef void rolling_1d_cy(double[:] a, const double[:] b) nogil:             # <<<<<<<<<<<<<<
+ *     cdef int i
+ *     for i in prange(a.shape[0]):
+ */
+
+static void __pyx_f_4roll_rolling_1d_cy(__Pyx_memviewslice __pyx_v_a, __Pyx_memviewslice __pyx_v_b) {
+  int __pyx_v_i;
+  Py_ssize_t __pyx_t_1;
+  Py_ssize_t __pyx_t_2;
+  Py_ssize_t __pyx_t_3;
+  Py_ssize_t __pyx_t_4;
+  Py_ssize_t __pyx_t_5;
+  Py_ssize_t __pyx_t_6;
+  int __pyx_lineno = 0;
+  const char *__pyx_filename = NULL;
+  int __pyx_clineno = 0;
+
+  /* "roll.pyx":60
+ * cdef void rolling_1d_cy(double[:] a, const double[:] b) nogil:
+ *     cdef int i
+ *     for i in prange(a.shape[0]):             # <<<<<<<<<<<<<<
+ *         a[i] = a[i] + b[i]
+ */
+  if (unlikely(!__pyx_v_a.memview)) { __Pyx_RaiseUnboundMemoryviewSliceNogil("a"); __PYX_ERR(0, 60, __pyx_L1_error) }
+  __pyx_t_1 = (__pyx_v_a.shape[0]);
+  if ((1 == 0)) abort();
+  {
+      #if ((defined(__APPLE__) || defined(__OSX__)) && (defined(__GNUC__) && (__GNUC__ > 2 || (__GNUC__ == 2 && (__GNUC_MINOR__ > 95)))))
+          #undef likely
+          #undef unlikely
+          #define likely(x)   (x)
+          #define unlikely(x) (x)
+      #endif
+      __pyx_t_3 = (__pyx_t_1 - 0 + 1 - 1/abs(1)) / 1;
+      if (__pyx_t_3 > 0)
+      {
+          #ifdef _OPENMP
+          #pragma omp parallel private(__pyx_t_4, __pyx_t_5, __pyx_t_6)
+          #endif /* _OPENMP */
+          {
+              #ifdef _OPENMP
+              #pragma omp for firstprivate(__pyx_v_i) lastprivate(__pyx_v_i)
+              #endif /* _OPENMP */
+              for (__pyx_t_2 = 0; __pyx_t_2 < __pyx_t_3; __pyx_t_2++){
+                  {
+                      __pyx_v_i = (int)(0 + 1 * __pyx_t_2);
+
+                      /* "roll.pyx":61
+ *     cdef int i
+ *     for i in prange(a.shape[0]):
+ *         a[i] = a[i] + b[i]             # <<<<<<<<<<<<<<
+ */
+                      __pyx_t_4 = __pyx_v_i;
+                      __pyx_t_5 = __pyx_v_i;
+                      __pyx_t_6 = __pyx_v_i;
+                      *((double *) ( /* dim=0 */ (__pyx_v_a.data + __pyx_t_6 * __pyx_v_a.strides[0]) )) = ((*((double *) ( /* dim=0 */ (__pyx_v_a.data + __pyx_t_4 * __pyx_v_a.strides[0]) ))) + (*((double const  *) ( /* dim=0 */ (__pyx_v_b.data + __pyx_t_5 * __pyx_v_b.strides[0]) ))));
+                  }
+              }
+          }
+      }
+  }
+  #if ((defined(__APPLE__) || defined(__OSX__)) && (defined(__GNUC__) && (__GNUC__ > 2 || (__GNUC__ == 2 && (__GNUC_MINOR__ > 95)))))
+      #undef likely
+      #undef unlikely
+      #define likely(x)   __builtin_expect(!!(x), 1)
+      #define unlikely(x) __builtin_expect(!!(x), 0)
+  #endif
+
+  /* "roll.pyx":58
+ * @cython.boundscheck(False) # turn off bounds-checking for entire function
+ * @cython.wraparound(False)  # turn off negative index wrapping for entire function
+ * cdef void rolling_1d_cy(double[:] a, const double[:] b) nogil:             # <<<<<<<<<<<<<<
+ *     cdef int i
+ *     for i in prange(a.shape[0]):
+ */
+
+  /* function exit code */
+  goto __pyx_L0;
+  __pyx_L1_error:;
+  __Pyx_WriteUnraisable("roll.rolling_1d_cy", __pyx_clineno, __pyx_lineno, __pyx_filename, 1, 1);
+  __pyx_L0:;
 }
 
 /* "View.MemoryView":122
@@ -16147,8 +16436,9 @@ static PyTypeObject __pyx_type___pyx_memoryviewslice = {
 };
 
 static PyMethodDef __pyx_methods[] = {
-  {"rolling_3d", (PyCFunction)(void*)(PyCFunctionWithKeywords)__pyx_pw_7roll_1rolling_3d, METH_VARARGS|METH_KEYWORDS, 0},
-  {"rolling_2d", (PyCFunction)(void*)(PyCFunctionWithKeywords)__pyx_pw_7roll_3rolling_2d, METH_VARARGS|METH_KEYWORDS, 0},
+  {"rolling_3d", (PyCFunction)(void*)(PyCFunctionWithKeywords)__pyx_pw_4roll_1rolling_3d, METH_VARARGS|METH_KEYWORDS, __pyx_doc_4roll_rolling_3d},
+  {"rolling_2d", (PyCFunction)(void*)(PyCFunctionWithKeywords)__pyx_pw_4roll_3rolling_2d, METH_VARARGS|METH_KEYWORDS, __pyx_doc_4roll_2rolling_2d},
+  {"rolling_1d", (PyCFunction)(void*)(PyCFunctionWithKeywords)__pyx_pw_4roll_5rolling_1d, METH_VARARGS|METH_KEYWORDS, 0},
   {0, 0, 0, 0}
 };
 
@@ -16287,7 +16577,7 @@ static __Pyx_StringTabEntry __pyx_string_tab[] = {
   {0, 0, 0, 0, 0, 0, 0}
 };
 static CYTHON_SMALL_CODE int __Pyx_InitCachedBuiltins(void) {
-  __pyx_builtin_range = __Pyx_GetBuiltinName(__pyx_n_s_range); if (!__pyx_builtin_range) __PYX_ERR(0, 11, __pyx_L1_error)
+  __pyx_builtin_range = __Pyx_GetBuiltinName(__pyx_n_s_range); if (!__pyx_builtin_range) __PYX_ERR(0, 25, __pyx_L1_error)
   __pyx_builtin_ValueError = __Pyx_GetBuiltinName(__pyx_n_s_ValueError); if (!__pyx_builtin_ValueError) __PYX_ERR(1, 133, __pyx_L1_error)
   __pyx_builtin_MemoryError = __Pyx_GetBuiltinName(__pyx_n_s_MemoryError); if (!__pyx_builtin_MemoryError) __PYX_ERR(1, 148, __pyx_L1_error)
   __pyx_builtin_enumerate = __Pyx_GetBuiltinName(__pyx_n_s_enumerate); if (!__pyx_builtin_enumerate) __PYX_ERR(1, 151, __pyx_L1_error)
@@ -16568,6 +16858,13 @@ static CYTHON_SMALL_CODE int __Pyx_InitCachedConstants(void) {
 }
 
 static CYTHON_SMALL_CODE int __Pyx_InitGlobals(void) {
+  /* InitThreads.init */
+  #if defined(WITH_THREAD) && PY_VERSION_HEX < 0x030700F0
+PyEval_InitThreads();
+#endif
+
+if (unlikely(PyErr_Occurred())) __PYX_ERR(0, 1, __pyx_L1_error)
+
   if (__Pyx_InitStrings(__pyx_string_tab) < 0) __PYX_ERR(0, 1, __pyx_L1_error);
   __pyx_int_0 = PyInt_FromLong(0); if (unlikely(!__pyx_int_0)) __PYX_ERR(0, 1, __pyx_L1_error)
   __pyx_int_1 = PyInt_FromLong(1); if (unlikely(!__pyx_int_1)) __PYX_ERR(0, 1, __pyx_L1_error)
@@ -16906,9 +17203,9 @@ if (!__Pyx_RefNanny) {
   #endif
 
   /* "roll.pyx":1
- * cimport cython             # <<<<<<<<<<<<<<
+ * #cython: language_level=3             # <<<<<<<<<<<<<<
  * 
- * 
+ * cimport cython
  */
   __pyx_t_1 = __Pyx_PyDict_NewPresized(0); if (unlikely(!__pyx_t_1)) __PYX_ERR(0, 1, __pyx_L1_error)
   __Pyx_GOTREF(__pyx_t_1);
@@ -17417,6 +17714,83 @@ static CYTHON_INLINE void __Pyx_XDEC_MEMVIEW(__Pyx_memviewslice *memslice,
     }
 }
 
+/* None */
+static void __Pyx_RaiseUnboundMemoryviewSliceNogil(const char *varname) {
+    #ifdef WITH_THREAD
+    PyGILState_STATE gilstate = PyGILState_Ensure();
+    #endif
+    __Pyx_RaiseUnboundLocalError(varname);
+    #ifdef WITH_THREAD
+    PyGILState_Release(gilstate);
+    #endif
+}
+
+/* PyErrFetchRestore */
+#if CYTHON_FAST_THREAD_STATE
+static CYTHON_INLINE void __Pyx_ErrRestoreInState(PyThreadState *tstate, PyObject *type, PyObject *value, PyObject *tb) {
+    PyObject *tmp_type, *tmp_value, *tmp_tb;
+    tmp_type = tstate->curexc_type;
+    tmp_value = tstate->curexc_value;
+    tmp_tb = tstate->curexc_traceback;
+    tstate->curexc_type = type;
+    tstate->curexc_value = value;
+    tstate->curexc_traceback = tb;
+    Py_XDECREF(tmp_type);
+    Py_XDECREF(tmp_value);
+    Py_XDECREF(tmp_tb);
+}
+static CYTHON_INLINE void __Pyx_ErrFetchInState(PyThreadState *tstate, PyObject **type, PyObject **value, PyObject **tb) {
+    *type = tstate->curexc_type;
+    *value = tstate->curexc_value;
+    *tb = tstate->curexc_traceback;
+    tstate->curexc_type = 0;
+    tstate->curexc_value = 0;
+    tstate->curexc_traceback = 0;
+}
+#endif
+
+/* WriteUnraisableException */
+static void __Pyx_WriteUnraisable(const char *name, CYTHON_UNUSED int clineno,
+                                  CYTHON_UNUSED int lineno, CYTHON_UNUSED const char *filename,
+                                  int full_traceback, CYTHON_UNUSED int nogil) {
+    PyObject *old_exc, *old_val, *old_tb;
+    PyObject *ctx;
+    __Pyx_PyThreadState_declare
+#ifdef WITH_THREAD
+    PyGILState_STATE state;
+    if (nogil)
+        state = PyGILState_Ensure();
+#ifdef _MSC_VER
+    else state = (PyGILState_STATE)-1;
+#endif
+#endif
+    __Pyx_PyThreadState_assign
+    __Pyx_ErrFetch(&old_exc, &old_val, &old_tb);
+    if (full_traceback) {
+        Py_XINCREF(old_exc);
+        Py_XINCREF(old_val);
+        Py_XINCREF(old_tb);
+        __Pyx_ErrRestore(old_exc, old_val, old_tb);
+        PyErr_PrintEx(1);
+    }
+    #if PY_MAJOR_VERSION < 3
+    ctx = PyString_FromString(name);
+    #else
+    ctx = PyUnicode_FromString(name);
+    #endif
+    __Pyx_ErrRestore(old_exc, old_val, old_tb);
+    if (!ctx) {
+        PyErr_WriteUnraisable(Py_None);
+    } else {
+        PyErr_WriteUnraisable(ctx);
+        Py_DECREF(ctx);
+    }
+#ifdef WITH_THREAD
+    if (nogil)
+        PyGILState_Release(state);
+#endif
+}
+
 /* ArgTypeTest */
 static int __Pyx__ArgTypeTest(PyObject *obj, PyTypeObject *type, const char *name, int exact)
 {
@@ -17455,30 +17829,6 @@ static CYTHON_INLINE PyObject* __Pyx_PyObject_Call(PyObject *func, PyObject *arg
             "NULL result without error in PyObject_Call");
     }
     return result;
-}
-#endif
-
-/* PyErrFetchRestore */
-#if CYTHON_FAST_THREAD_STATE
-static CYTHON_INLINE void __Pyx_ErrRestoreInState(PyThreadState *tstate, PyObject *type, PyObject *value, PyObject *tb) {
-    PyObject *tmp_type, *tmp_value, *tmp_tb;
-    tmp_type = tstate->curexc_type;
-    tmp_value = tstate->curexc_value;
-    tmp_tb = tstate->curexc_traceback;
-    tstate->curexc_type = type;
-    tstate->curexc_value = value;
-    tstate->curexc_traceback = tb;
-    Py_XDECREF(tmp_type);
-    Py_XDECREF(tmp_value);
-    Py_XDECREF(tmp_tb);
-}
-static CYTHON_INLINE void __Pyx_ErrFetchInState(PyThreadState *tstate, PyObject **type, PyObject **value, PyObject **tb) {
-    *type = tstate->curexc_type;
-    *value = tstate->curexc_value;
-    *tb = tstate->curexc_traceback;
-    tstate->curexc_type = 0;
-    tstate->curexc_value = 0;
-    tstate->curexc_traceback = 0;
 }
 #endif
 
@@ -20107,6 +20457,52 @@ __pyx_fail:
     }
     retcode = __Pyx_ValidateAndInit_memviewslice(axes_specs, 0,
                                                  PyBUF_RECORDS_RO | writable_flag, 2,
+                                                 &__Pyx_TypeInfo_double__const__, stack,
+                                                 &result, obj);
+    if (unlikely(retcode == -1))
+        goto __pyx_fail;
+    return result;
+__pyx_fail:
+    result.memview = NULL;
+    result.data = NULL;
+    return result;
+}
+
+/* ObjectToMemviewSlice */
+  static CYTHON_INLINE __Pyx_memviewslice __Pyx_PyObject_to_MemoryviewSlice_ds_double(PyObject *obj, int writable_flag) {
+    __Pyx_memviewslice result = { 0, 0, { 0 }, { 0 }, { 0 } };
+    __Pyx_BufFmt_StackElem stack[1];
+    int axes_specs[] = { (__Pyx_MEMVIEW_DIRECT | __Pyx_MEMVIEW_STRIDED) };
+    int retcode;
+    if (obj == Py_None) {
+        result.memview = (struct __pyx_memoryview_obj *) Py_None;
+        return result;
+    }
+    retcode = __Pyx_ValidateAndInit_memviewslice(axes_specs, 0,
+                                                 PyBUF_RECORDS_RO | writable_flag, 1,
+                                                 &__Pyx_TypeInfo_double, stack,
+                                                 &result, obj);
+    if (unlikely(retcode == -1))
+        goto __pyx_fail;
+    return result;
+__pyx_fail:
+    result.memview = NULL;
+    result.data = NULL;
+    return result;
+}
+
+/* ObjectToMemviewSlice */
+  static CYTHON_INLINE __Pyx_memviewslice __Pyx_PyObject_to_MemoryviewSlice_ds_double__const__(PyObject *obj, int writable_flag) {
+    __Pyx_memviewslice result = { 0, 0, { 0 }, { 0 }, { 0 } };
+    __Pyx_BufFmt_StackElem stack[1];
+    int axes_specs[] = { (__Pyx_MEMVIEW_DIRECT | __Pyx_MEMVIEW_STRIDED) };
+    int retcode;
+    if (obj == Py_None) {
+        result.memview = (struct __pyx_memoryview_obj *) Py_None;
+        return result;
+    }
+    retcode = __Pyx_ValidateAndInit_memviewslice(axes_specs, 0,
+                                                 PyBUF_RECORDS_RO | writable_flag, 1,
                                                  &__Pyx_TypeInfo_double__const__, stack,
                                                  &result, obj);
     if (unlikely(retcode == -1))

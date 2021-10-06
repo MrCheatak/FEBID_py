@@ -1,4 +1,7 @@
+#cython: language_level=3
+
 cimport cython
+from cython.parallel cimport prange
 
 
 # Cython performs 2-3 times faster than numpy when adding one
@@ -43,3 +46,14 @@ cdef void rolling_2d_cy(double[:,:] a, const double[:,:] b) nogil:
     for i in range(a.shape[0]):
         for j in range(a.shape[1]):
                 a[i,j] = a[i,j] +  b[i,j]
+
+
+cpdef void rolling_1d(double[:] a, const double[:] b):
+    rolling_1d_cy(a,b)
+
+@cython.boundscheck(False) # turn off bounds-checking for entire function
+@cython.wraparound(False)  # turn off negative index wrapping for entire function
+cdef void rolling_1d_cy(double[:] a, const double[:] b) nogil:
+    cdef int i
+    for i in prange(a.shape[0]):
+        a[i] = a[i] + b[i]
