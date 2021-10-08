@@ -25,6 +25,7 @@ from numexpr_mod import evaluate_cached, cache_expression
 from numpy import zeros, copy, s_
 from tqdm import tqdm
 
+from Structure import Structure
 import VTK_Rendering as vr
 import etraj3d
 from modified_libraries.rolling import roll
@@ -101,351 +102,60 @@ from modified_libraries.rolling import roll
 # Debug note: before introducing a new cached expression, that expression should be run with the default 'evaluate' function for fetching the signature list.
 # This is required, because variables in it must be in the same order as Numexpr fetches them, otherwise Numexpr compiler will throw an error
 # TODO: this has to go the Structure class
-expressions = dict(pe_flux=cache_expression("f*exp(-r*r/(2*beam_d*beam_d))", [('beam_d', np.int32), ('f', np.float64), ('r', np.float64)]),
-                   rk4=cache_expression("(k1+k4)/6 +(k2+k3)/3", [('k1', np.float64), ('k2', np.float64), ('k3', np.float64), ('k4', np.float64)]),
+expressions = dict(pe_flux=cache_expression("f*exp(-r*r/(2*beam_d*beam_d))", signature=[('beam_d', np.int32), ('f', np.float64), ('r', np.float64)]),
+                   rk4=cache_expression("(k1+k4)/6 +(k2+k3)/3", signature=[('k1', np.float64), ('k2', np.float64), ('k3', np.float64), ('k4', np.float64)]),
                    #precursor_density_=cache_expression("(F * (1 - (sub + addon) / n0) - (sub + addon) / tau - (sub + addon) * sigma * flux_matrix)*dt", [('F', np.int64), ('addon', np.float64), ('dt', np.float64), ('flux_matrix', np.int64), ('n0', np.float64), ('sigma',np.float64), ('sub', np.float64), ('tau', np.float64)]),
-                   precursor_density=cache_expression("F_dt - (sub + addon) * (F_dt_n0_1_tau_dt + sigma_dt * flux_matrix)", [('F_dt', np.float64), ('F_dt_n0_1_tau_dt', np.float64), ('addon', np.float64), ('flux_matrix', np.int64), ('sigma_dt',np.float64), ('sub', np.float64)]),
-                   laplace1=cache_expression("grid_out*dt_D", [('dt_D', np.float64), ('grid_out', np.float64)]),
-                   laplace2=cache_expression("grid_out*dt_D_div", [('dt_D_div', np.float64), ('grid_out', np.float64)]),
-                   flux_matrix=cache_expression("((index_xx-center)*(index_xx-center)+(index_yy-center)*(index_yy-center))**0.5", [('center', np.int32), ('index_xx', np.int32), ('index_yy', np.int32)]))
+                   precursor_density=cache_expression("F_dt - (sub + addon) * (F_dt_n0_1_tau_dt + sigma_dt * flux_matrix)", signature=[('F_dt', np.float64), ('F_dt_n0_1_tau_dt', np.float64), ('addon', np.float64), ('flux_matrix', np.int64), ('sigma_dt',np.float64), ('sub', np.float64)]),
+                   laplace1=cache_expression("grid_out*dt_D", signature=[('dt_D', np.float64), ('grid_out', np.float64)]),
+                   laplace2=cache_expression("grid_out*dt_D_div", signature=[('dt_D_div', np.float64), ('grid_out', np.float64)]),
+                   flux_matrix=cache_expression("((index_xx-center)*(index_xx-center)+(index_yy-center)*(index_yy-center))**0.5", signature=[('center', np.int32), ('index_xx', np.int32), ('index_yy', np.int32)]))
 # </editor-fold>
 
 
-class Structure():
-    """
-    Represents simulation chamber and holds grid parameters
-    """
-    def __init__(self):
-        pass
-
-    def load_from_vtk(self, vtk_obj: pv.UniformGrid):
-        """
-        Frame initializer. Either a vtk object should be specified or initial conditions given.
-
-        vtk object can either represent only a solid structure or a result of a deposition process with several parameters and arrays.
-        If parameters are specified despite being present in vtk file (i.e. cell dimension), newly specified values are taken.
-
-        :param cell_dim: size of a cell in nm
-        :param width: width of the simulation chamber (along X-axis)
-        :param length: length of the simulation chamber (along Y-axis)
-        :param height: height of the simulation chamber (along Z-axis)
-        :param substrate_height: thickness of the substrate in a number of cells along Z-axis
-        :param nr: initial precursor density
-        :param vtk_obj: a vtk object from file
-        :param volume_prefill: level of initial filling for every cell. This is used to artificially speed up the depositing process
-        """
-        self.cell_dimension = 1
-        if vtk_obj.spacing[0] != vtk_obj.spacing[1] or vtk_obj.spacing[0] != vtk_obj.spacing[2] or vtk_obj.spacing[1] != vtk_obj.spacing[2]:
-            choice = 'z'#input(f'Cell\'s dimensions must be equal and represent a cube. '
-                           # f'\nType x, y or z to specify dimension value that will be used for all three. '
-                           # f'\nx={vtk_obj.spacing[0]} \ny={vtk_obj.spacing[1]} \nz={vtk_obj.spacing[2]} '
-                           # f'\nThis may lead to a change of the structure\'s shape. Press any other key to exit.')
-            if choice == 'x':
-                self.cell_dimension = vtk_obj.spacing[0]
-            if choice == 'y':
-                self.cell_dimension = vtk_obj.spacing[1]
-            if choice == 'z':
-                self.cell_dimension = 5# vtk_obj.spacing[2]
-            if choice not in ['x','y','z']:
-                sys.exit("Exiting.")
-        else:
-            self.cell_dimension = vtk_obj.spacing[0]
-        self.cell_dimension = (self.cell_dimension)
-        self.zdim, self.ydim, self.xdim = vtk_obj.dimensions[2] - 1, vtk_obj.dimensions[1] - 1, vtk_obj.dimensions[0] - 1
-        self.shape = (self.zdim, self.ydim, self.xdim)
-        if 'surface_bool' in vtk_obj.array_names: # checking if it is a complete result of a deposition process
-            print(f'VTK file is FEBID file, reading arrays...')
-            self.deposit = np.asarray(vtk_obj.cell_arrays['deposit'].reshape((vtk_obj.dimensions[2]-1, vtk_obj.dimensions[1]-1, vtk_obj.dimensions[0]-1)))
-            self.precursor = np.asarray(vtk_obj.cell_arrays['precursor_density'].reshape((vtk_obj.dimensions[2]-1, vtk_obj.dimensions[1]-1, vtk_obj.dimensions[0]-1)))
-            self.surface_bool = np.asarray(vtk_obj.cell_arrays['surface_bool'].reshape((vtk_obj.dimensions[2] - 1, vtk_obj.dimensions[1] - 1, vtk_obj.dimensions[0] - 1)), dtype=bool)
-            self.semi_surface_bool= np.asarray(vtk_obj.cell_arrays['semi_surface_bool'].reshape((vtk_obj.dimensions[2] - 1, vtk_obj.dimensions[1] - 1, vtk_obj.dimensions[0] - 1)),dtype=bool)
-            self.ghosts_bool = np.asarray(vtk_obj.cell_arrays['ghosts_bool'].reshape((vtk_obj.dimensions[2] - 1, vtk_obj.dimensions[1] - 1, vtk_obj.dimensions[0] - 1)),dtype=bool)
-            # An attempt to attach new attributes to vtk object failed:
-            # self.substrate_height = vtk_obj['substrate_height']
-            # self.substrate_val = vtk_obj['substrate_val']
-            # self.deposit_val = vtk_obj['deposit_val']
-            # self.vol_prefill = vtk_obj['volume_prefill']
-            self.substrate_val = -2
-            self.deposit_val = -1
-            self.substrate_height = np.nonzero(self.deposit==self.substrate_val)[0].max()+1
-            # self.vol_prefill = self.deposit[-1,-1,-1]
-        else:
-            # TODO: if a sample structure would be provided, it will be necessary to create a substrate under it
-            self.deposit = np.asarray(vtk_obj.cell_arrays.active_scalars.reshape((vtk_obj.dimensions[2]-1, vtk_obj.dimensions[1]-1, vtk_obj.dimensions[0]-1)))
-            self.deposit[self.deposit != 0] = -1
-            self.precursor = np.zeros(self.shape, dtype=np.float64)
-            # self.substrate_height = substrate_height/self.cell_dimension
-            self.substrate_val = -2
-            self.deposit_val = -1
-            # self.vol_prefill = self.deposit[-1, -1, -1] # checking if there is a prefill by probing top corner cell
-            self.surface_bool = np.zeros(self.shape, dtype=bool)
-            self.semi_surface_bool = np.zeros(self.shape, dtype=bool)
-            self.ghosts_bool = np.zeros(self.shape, dtype=bool)
-            self.define_surface()
-            self.define_semi_surface()
-            self.define_ghosts()
-        self.substrate_height = 0
-
-
-    def create_from_parameters(self, cell_dim=5, width=50, length=50, height=100, substrate_height=4, nr=1):
-        self.cell_dimension = cell_dim
-        self.zdim, self.ydim, self.xdim = height, width, length
-        self.shape = (self.zdim, self.ydim, self.xdim)
-        self.deposit = np.zeros((self.zdim + substrate_height, self.ydim, self.xdim), dtype=np.float64)
-        self.precursor = np.zeros((self.zdim + substrate_height, self.ydim, self.xdim), dtype=np.float64)
-        self.substrate_val = -2
-        self.deposit_val = -1
-        self.substrate_height = substrate_height
-        # self.vol_prefill = volume_prefill
-        self.nr = nr
-        self.flush_structure()
-        self.surface_bool = np.zeros((self.zdim + substrate_height, self.ydim, self.xdim), dtype=bool)
-        self.semi_surface_bool = np.zeros((self.zdim + substrate_height, self.ydim, self.xdim), dtype=bool)
-        self.ghosts_bool = np.zeros((self.zdim + substrate_height, self.ydim, self.xdim), dtype=bool)
-        self.define_surface()
-        self.define_ghosts()
-        self.t = 0
-
-    def flush_structure(self):
-        """
-        Resets and prepares initial state of the grid
-
-        :param substrate: 3D precursor density array
-        :param deposit: 3D deposit array
-        :param init_density: initial precursor density on the surface
-        :param init_deposit: initial deposit on the surface, can be a 2D array with the same size as deposit array along 0 and 1 dimensions
-        :param volume_prefill: initial deposit in the volume, can be a predefined structure in an 3D array same size as deposit array (constant value is virtual and used for code development)
-        :return:
-        """
-        self.precursor[...] = 0
-        self.precursor[0:self.substrate_height, :, :] = 0  # substrate surface
-        self.precursor[self.substrate_height, :, :] = self.nr  # filling substrate surface with initial precursor density
-        # if self.vol_prefill == 0:
-        #     self.deposit[...] = 0
-        # else:
-        #     self.deposit[...] = self.vol_prefill  # partially filling cells with deposit
-            # if init_deposit != 0:
-            #     self.deposit[1, :, :] = init_deposit  # partially fills surface cells with deposit
-        self.deposit[0:self.substrate_height, :, :] = -2
-
-
-    def define_surface(self):
-        """
-        Determining surface of the initial structure
-
-        :return:
-        """
-
-        # The whole idea is to derive surface according to neighboring cells
-        # 1. Firstly, a boolean array marking non-solid cells is created (positive)
-        # 2. Then, an average of each cell+neighbors is calculated (convolution applied)
-        #   after this only cells that are on the surfaces(solid side and gas side) are gonna be changed
-        # 3. Surface cells now have changed values and have to be separated from surface on the solid side
-        #   it achieved by the intersection of 'positive' and convoluted arrays, as surface is ultimately not a solid
-
-        positive = np.full((self.deposit.shape), False, dtype=bool)
-        positive[self.deposit >= 0] = True  # gas cells
-        grid = np.copy(self.deposit)
-        # Applying convolution;  simple np.roll() does not work well, as it connects the edges(i.E rolls top layer to the bottom)
-        grid[:, :, :-1] += self.deposit[:, :, 1:]  # rolling forward (actually backwards)
-        grid[:, :, -1] += self.deposit[:, :, -1]  # taking care of edge values
-        grid[:, :, 1:] += self.deposit[:, :, :-1]  # rolling backwards
-        grid[:, :, 0] += self.deposit[:, :, 0]
-        grid[:, :-1, :] += self.deposit[:, 1:, :]
-        grid[:, -1, :] += self.deposit[:, -1, :]
-        grid[:, 1:, :] += self.deposit[:, :-1, :]
-        grid[:, 0, :] += self.deposit[:, 0, :]
-        grid[:-1, :, :] += self.deposit[1:, :, :]
-        grid[-1, :, :] += self.deposit[-1, :, :]
-        grid[1:, :, :] += self.deposit[:-1, :, :]
-        grid[0, :, :] += self.deposit[0, :, :]
-        grid /= 7  # six neighbors + cell itself
-        # Trimming unchanged cells:     using tolerance in case of inaccuracy
-        grid[abs(grid - self.deposit_val) < 0.0000001] = 0  # fully deposited cells
-        grid[abs(grid - self.substrate_val) < 0.0000001] = 0  # substrate
-        # grid[abs(grid - self.vol_prefill) < 0.000001] = 0  # prefilled cells
-        # Now making a boolean array of changed cells
-        combined = np.full((self.deposit.shape), False, dtype=bool)
-        combined[abs(grid) > 0] = True
-        grid[...] = 0
-        # Now, surface is intersection of these boolean arrays:
-        grid += positive
-        grid += combined
-        self.surface_bool[grid == 2] = True
-    
-    def define_semi_surface(self):
-        grid = np.zeros_like(self.deposit)
-        grid[:, :, :-1] += self.surface_bool[:, :, 1:]  # rolling forward (actually backwards)
-        grid[:, :, -1] += self.surface_bool[:, :, -1]  # taking care of edge values
-        grid[:, :, 1:] += self.surface_bool[:, :, :-1]  # rolling backwards
-        grid[:, :, 0] += self.surface_bool[:, :, 0]
-        grid[:, :-1, :] += self.surface_bool[:, 1:, :]
-        grid[:, -1, :] += self.surface_bool[:, -1, :]
-        grid[:, 1:, :] += self.surface_bool[:, :-1, :]
-        grid[:, 0, :] += self.surface_bool[:, 0, :]
-        grid[:-1, :, :] += self.surface_bool[1:, :, :]
-        grid[-1, :, :] += self.surface_bool[-1, :, :]
-        grid[1:, :, :] += self.surface_bool[:-1, :, :]
-        grid[0, :, :] += self.surface_bool[0, :, :]
-        grid[self.deposit != 0] = 0
-        grid[self.surface_bool] = 0
-        grid[grid < 2] = 0
-        self.semi_surface_bool[grid != 0] = True
-
-    def define_ghosts(self):
-        """
-        Determining ghost shell wrapping surface
-        This is crucial for the diffusion to work
-
-        :return:
-        """
-
-        # Rolling in all directions marks all the neighboring cells
-        # Subtracting surface from that selection results in a "shell" around the surface
-        roller = np.logical_or(self.surface_bool, self.semi_surface_bool)
-        self.ghosts_bool = np.copy(roller)
-        self.ghosts_bool[:, :, :-1] += roller[:, :, 1:]  # rolling forward (actually backwards)
-        self.ghosts_bool[:, :, -1] += roller[:, :, -1]  # taking care of edge values
-        self.ghosts_bool[:, :, 1:] += roller[:, :, :-1]  # rolling backwards
-        self.ghosts_bool[:, :, 0] += roller[:, :, 0]
-        self.ghosts_bool[:, :-1, :] += roller[:, 1:, :]
-        self.ghosts_bool[:, -1, :] += roller[:, -1, :]
-        self.ghosts_bool[:, 1:, :] += roller[:, :-1, :]
-        self.ghosts_bool[:, 0, :] += roller[:, 0, :]
-        self.ghosts_bool[:-1, :, :] += roller[1:, :, :]
-        self.ghosts_bool[-1, :, :] += roller[-1, :, :]
-        self.ghosts_bool[1:, :, :] += roller[:-1, :, :]
-        self.ghosts_bool[0, :, :] += roller[0, :, :]
-        self.ghosts_bool[roller] = False
-
-    def max_z(self):
-        return self.deposit.nonzero()[0].max()
-
-    def save_to_vtk(self):
-        import time
-        grid = pv.UniformGrid()
-        grid.dimensions = np.asarray([self.deposit.shape[2], self.deposit.shape[1], self.deposit.shape[0]]) + 1  # creating grid with the size of the array
-        grid.spacing = (self.cell_dimension, self.cell_dimension, self.cell_dimension)  # assigning dimensions of a cell
-        grid.cell_arrays["deposit"] = self.deposit.flatten()
-        grid.save('Deposit_'+time.strftime("%H:%M:%S", time.localtime()))
-
-class Material:
-    """
-    Represents a material object, that stores some physical properties
-    """
-    def __init__(self, name='noname', Z=1, A=1, rho=1, e=1, lambda_escape=1):
-        self.name = name
-        self.rho = rho
-        self.Z = Z
-        self.A = A
-        self.e = e
-        self.lambda_escape = lambda_escape
 
 def open_stream_file(offset=1.5):
+    """
+    Open stream file and define enclosing array bounds
+
+    STUB: just not ready yet
+
+    :param offset:
+    :return:
+    """
     file = fd.askopenfilename()
     data = None
 
-    :param substrate: 3D precursor density array
-    :param deposit: 3D deposit array
-    :param init_density: initial precursor density on the surface
-    :param init_deposit: initial deposit on the surface, can be a 2D array with the same size as deposit array along 0 and 1 dimensions
-    :param volume_prefill: initial deposit in the volume, can be a predefined structure in an 3D array same size as deposit array (constant value is virtual and used for code development)
-    :return:
-    """
-    substrate[...] = 0
-    substrate[0:4, :, :] = 0  # substrate surface
-    substrate[4, :, :] = init_density  # filling substrate surface with initial precursor density
-    if volume_prefill == 0:
-        deposit[...] = 0
-    else:
-        deposit[...] = volume_prefill # partially filling cells with deposit
-        if init_deposit != 0:
-            deposit[1, :, :] = init_deposit # partially fills surface cells with deposit
-    deposit[0:4, :, :] = -2
+    # Opening file and parsing text
+    with open(file, encoding='utf-8', errors='ignore') as f:
+        text = f.readlines(hint=10)
+        if text[0] != 's16':
+            raise Exception('Not a valid stream file!')
+            return 0
+        delim = ' ' # delimiter between the columns
+        header = 2 # number of lines to skip in the beginning
+        columns = (0,1,2) # numbers of columns to get
+        # Defult columns:
+        # 0 – Dwell time
+        # 1 – x-position
+        # 2 – y-position
+        data = np.genfromtxt(f, dtype=np.float64, comments='#', delimiter=delim, skip_header=header, usecols=columns, invalid_raise=False)
 
+    # Determing chamber dimensions
+    x_max, x_min = data[1].max(), data[1].min()
+    x_dim = x_max - x_min
+    x_min -= x_dim * offset
+    x_max += x_dim * offset
+    y_max, y_min = data[2].max(), data[2].min()
+    y_dim = y_max - y_min
+    y_min -= y_dim * offset
+    y_max += y_dim * offset
+    z_dim = max(x_dim, y_dim)
 
-def define_surface(surf, deposit):
-    """
-    Determining surface of the initial structure
+    # Getting local coordinates
+    data[1] -= x_min
+    data[2] -= y_min
 
-    :param surf: boolean array
-    :param deposit: deposit array
-    :return:
-    """
-
-    # The whole idea is to derive surface according to neighboring cells
-    # 1. Firstly, a boolean array marking non-solid cells is created (positive)
-    # 2. Then, an average of each cell+neighbors is calculated (convolution applied)
-    #   after this only cells that are on the surfaces(solid side and gas side) are gonna be changed
-    # 3. Surface cells now have changed values and have to be separated from surface on the solid side
-    #   it achieved by the intersection of 'positive' and convoluted arrays, as surface is ultimately not a solid
-
-    surf[...]=False
-    positive = np.full((deposit.shape), False, dtype=bool)
-    positive[deposit >= 0] = True # gas cells
-    grid = np.copy(deposit)
-    # grid +=np.roll(deposit, 1, 0)
-    # grid += np.roll(deposit, -1,0)
-    # grid += np.roll(deposit, 1, 1)
-    # grid += np.roll(deposit, -1, 1)
-    # grid += np.roll(deposit, 1, 2)
-    # grid += np.roll(deposit, -1, 2)
-    # Applying convolution
-    grid[:, :, :-1] += deposit[:, :, 1:]  # rolling forward (actually backwards)
-    grid[:, :, -1] += deposit[:, :, -1]  # taking care of edge values
-    grid[:, :, 1:] += deposit[:, :, :-1]  # rolling backwards
-    grid[:, :, 0] += deposit[:, :, 0]
-    grid[:, :-1, :] += deposit[:, 1:, :]
-    grid[:, -1, :] += deposit[:, -1, :]
-    grid[:, 1:, :] += deposit[:, :-1, :]
-    grid[:, 0, :] += deposit[:, 0, :]
-    grid[:-1, :, :] += deposit[1:, :, :]
-    grid[-1, :, :] += deposit[-1, :, :]
-    grid[1:, :, :] += deposit[:-1, :, :]
-    grid[0, :, :] += deposit[0, :, :]
-    grid /= 7 # six neighbors + cell itself
-    # Trimming unchanged cells:
-    grid[abs(grid + 1)<0.0000001] = 0 # fully deposited cells
-    grid[abs(grid + 2)<0.0000001] = 0 # substrate
-    grid[abs(grid - deposit[deposit.shape[0] - 1,deposit.shape[1] - 1,deposit.shape[2] - 1])<0.000001] = 0 # prefilled cells
-    # Now making a boolean array marking changed cells
-    combined = np.full((deposit.shape), False, dtype=bool)
-    combined[abs(grid)>0] = True
-    grid[...] = 0
-    # Now, surface is intersection of these boolean arrays:
-    grid += positive
-    grid += combined
-    surf[grid == 2] = True
-    # for i in range(deposit.shape[0]-1):
-    #     for j in range(deposit.shape[1]-1):
-    #         for k in range(deposit.shape[2]-1):
-    #             if deposit[i, j, k] < 1:
-    #                 kernel = [[i + 1, i - 1, i, i, i, i], [j, j, j - 1, j + 1, j, j], [k, k, k, k, k - 1, k + 1]]
-    #                 # try:
-    #                     # if (deposit[i+1,j,k] or deposit[i-1,j,k] or deposit[i,j-1,k] or deposit[i,j+1,k] or deposit[i,j,k-1] or deposit[i,j,k+1])>=1:
-    #                 if np.any(deposit[kernel]>=1):
-    #                     surf[i,j,k] = True
-    #                 # except:
-    #                 #     if i==deposit.shape[0]:
-    #                 #         i
-
-
-def define_ghosts_2(surface):
-    grid = np.copy(surface)
-    grid[:, :, :-1] += surface[:, :, 1:]  # rolling forward (actually backwards)
-    grid[:, :, -1] += surface[:, :, -1]  # taking care of edge values
-    grid[:, :, 1:] += surface[:, :, :-1]  # rolling backwards
-    grid[:, :, 0] += surface[:, :, 0]
-    grid[:, :-1, :] += surface[:, 1:, :]
-    grid[:, -1, :] += surface[:, -1, :]
-    grid[:, 1:, :] += surface[:, :-1, :]
-    grid[:, 0, :] += surface[:, 0, :]
-    grid[:-1, :, :] += surface[1:, :, :]
-    grid[-1, :, :] += surface[-1, :, :]
-    grid[1:, :, :] += surface[:-1, :, :]
-    grid[0, :, :] += surface[0, :, :]
-    grid[surface] = False
-    return grid
+    return data, z_dim, y_dim, x_dim
 
 
 # @jit(nopython=True, parallel=True)
@@ -1013,7 +723,7 @@ def printing(loops=1, dwell_time=1):
     irradiated_area_3D = None
 
     flag = True
-    precursor[sub_h, 30, 30] = 0.01
+    # precursor[sub_h, 30, 30] = 0.01
     render = vr.Render(structure.cell_dimension)
     render._add_3Darray(precursor, 0.00001, 1, opacity=1, nan_opacity=1, scalar_name='Precursor',
                        button_name='precursor', cmap='plasma')
@@ -1068,7 +778,7 @@ def printing(loops=1, dwell_time=1):
             # structure.precursor = precursor
             # structure.ghosts_bool = ghosts_bool
             # structure.surface_bool = surface_bool
-            # vr.save_deposited_structure(structure, f'{l/1000}k_of_{loops/1000}_loops_k_gr16 ')
+            # vr.save_deposited_structure(structure, f'{l/1000}k_of_{loops/1000}_loops_k_gr4 ')
             time_stamp += time_step
             start_time += time_step
             print(f'Time passed: {time_stamp}, Av.speed: {l/time_stamp}')

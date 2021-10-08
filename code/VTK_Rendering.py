@@ -7,7 +7,7 @@ import pylab as p
 from matplotlib import cm
 import pyvista as pv
 import pyvistaqt as pvqt
-# from Process import Structure
+from Structure import Structure
 from tqdm import tqdm
 import os, sys, time
 from datetime import datetime
@@ -46,7 +46,7 @@ class Render:
         def __call__(self, state):
             self.actor.SetVisibility(state)
 
-    def show_full_structure(self, structure, struct=True, deposit=True, precursor=True, surface=True, semi_surface=True, ghosts=True):
+    def show_full_structure(self, structure:Structure, struct=True, deposit=True, precursor=True, surface=True, semi_surface=True, ghosts=True):
         """
         Render and plot all the structure components
 
@@ -97,7 +97,7 @@ class Render:
                    (-0.27787912231751677, -0.1411181984824172, 0.950194110399093)]
         return self.show(cam_pos=cam_pos)
 
-    def _add_trajectory(self, traj, energies=[], radius=0.7, step=1, scalar_name='scalars_t', button_name='1', color='', cmap='plasma'):
+    def _add_trajectory(self, traj, energies=None, radius=0.7, step=1, scalar_name='scalars_t', button_name='1', color='', cmap='plasma'):
         """
         Adds trajectories to the Pyvista plot
 
@@ -111,6 +111,8 @@ class Render:
         :param cmap: colormap for the trajectories
         :return: adds PolyData() to Plotter()
         """
+        if energies is None:
+            energies = []
         obj = self._render_trajectories(traj=traj, energies=energies, radius=radius, step=step, name=scalar_name)
         self.__prepare_obj(obj, button_name, cmap, color)
 
@@ -172,7 +174,7 @@ class Render:
         return grid
 
 
-    def _render_trajectories(self, traj, energies=[], radius=0.7, step=1, name='scalars_t'):
+    def _render_trajectories(self, traj, energies, radius=0.7, step=1, name='scalars_t'):
         """
         Renders mapped trajectories as splines with the given thickness
 
@@ -281,11 +283,12 @@ def save_deposited_structure(structure, filename=None):
     :return:
     """
 
-    vtk_obj = numpy_to_vtk(structure.deposit, structure.cell_dimension, 'deposit')
-    vtk_obj = numpy_to_vtk(structure.precursor, data_name='precursor_density', grid=vtk_obj)
-    vtk_obj = numpy_to_vtk(structure.surface_bool, data_name='surface_bool', grid=vtk_obj)
-    vtk_obj = numpy_to_vtk(structure.semi_surface_bool, data_name='semi_surface_bool', grid=vtk_obj)
-    vtk_obj = numpy_to_vtk(structure.ghosts_bool, data_name='ghosts_bool', grid=vtk_obj)
+    cell_dim = structure.cell_dimension
+    vtk_obj = numpy_to_vtk(structure.deposit, cell_dim, 'deposit')
+    vtk_obj = numpy_to_vtk(structure.precursor, cell_dim, data_name='precursor_density', grid=vtk_obj)
+    vtk_obj = numpy_to_vtk(structure.surface_bool, cell_dim, data_name='surface_bool', grid=vtk_obj)
+    vtk_obj = numpy_to_vtk(structure.semi_surface_bool, cell_dim, data_name='semi_surface_bool', grid=vtk_obj)
+    vtk_obj = numpy_to_vtk(structure.ghosts_bool, cell_dim, data_name='ghosts_bool', grid=vtk_obj)
     vtk_obj.__setattr__('features', True) # Availability of this parameter will show if vtk file is either just a structure or a simulation result
     vtk_obj.__setattr__('substrate_val', structure.substrate_val)
     vtk_obj.__setattr__('substrate_height', structure.substrate_height)
@@ -301,17 +304,17 @@ def save_deposited_structure(structure, filename=None):
     # Eventually, vtk does not save those new attributes
     vtk_obj.save((f'{sys.path[0]}{os.sep}{filename}{time.strftime("%H:%M:%S", time.localtime())}.vtk'))
 
-# def open_deposited_structure(filename=None):
-#     vtk_obj = pv.read(filename)
-#     structure = Structure()
-#     cell_dimension = vtk_obj.spacing[0]
-#     deposit = np.asarray(vtk_obj.cell_data['deposit'].reshape((vtk_obj.dimensions[2] - 1, vtk_obj.dimensions[1] - 1, vtk_obj.dimensions[0] - 1)))
-#     substrate = np.asarray(vtk_obj.cell_data['precursor_density'].reshape((vtk_obj.dimensions[2] - 1, vtk_obj.dimensions[1] - 1, vtk_obj.dimensions[0] - 1)))
-#     surface_bool = np.asarray(vtk_obj.cell_data['surface_bool'].reshape((vtk_obj.dimensions[2] - 1, vtk_obj.dimensions[1] - 1, vtk_obj.dimensions[0] - 1)))
-#     semi_surface_bool = np.asarray(vtk_obj.cell_data['semi_surface_bool'].reshape((vtk_obj.dimensions[2] - 1, vtk_obj.dimensions[1] - 1, vtk_obj.dimensions[0] - 1)))
-#     ghosts_bool = np.asarray(vtk_obj.cell_data['ghosts_bool'].reshape((vtk_obj.dimensions[2] - 1, vtk_obj.dimensions[1] - 1, vtk_obj.dimensions[0] - 1)))
-#
-#     return (cell_dimension, deposit, substrate, surface_bool, semi_surface_bool, ghosts_bool)
+def open_deposited_structure(filename=None):
+    vtk_obj = pv.read(filename)
+    structure = Structure()
+    cell_dimension = vtk_obj.spacing[0]
+    deposit = np.asarray(vtk_obj.cell_data['deposit'].reshape((vtk_obj.dimensions[2] - 1, vtk_obj.dimensions[1] - 1, vtk_obj.dimensions[0] - 1)))
+    substrate = np.asarray(vtk_obj.cell_data['precursor_density'].reshape((vtk_obj.dimensions[2] - 1, vtk_obj.dimensions[1] - 1, vtk_obj.dimensions[0] - 1)))
+    surface_bool = np.asarray(vtk_obj.cell_data['surface_bool'].reshape((vtk_obj.dimensions[2] - 1, vtk_obj.dimensions[1] - 1, vtk_obj.dimensions[0] - 1)))
+    semi_surface_bool = np.asarray(vtk_obj.cell_data['semi_surface_bool'].reshape((vtk_obj.dimensions[2] - 1, vtk_obj.dimensions[1] - 1, vtk_obj.dimensions[0] - 1)))
+    ghosts_bool = np.asarray(vtk_obj.cell_data['ghosts_bool'].reshape((vtk_obj.dimensions[2] - 1, vtk_obj.dimensions[1] - 1, vtk_obj.dimensions[0] - 1)))
+
+    return (cell_dimension, deposit, substrate, surface_bool, semi_surface_bool, ghosts_bool)
 
 
 def show_animation(directory=''):
@@ -328,9 +331,9 @@ def show_animation(directory=''):
     font_size = 12
     files, times = open_file(directory)
     cell_dim, deposit, substrate, surface_bool, semi_surface_bool, ghosts_bool = open_deposited_structure(pv.read(os.path.join(directory, files[0])))
-    render = Render()
+    render = Render(cell_dim)
     substrate[np.isnan(substrate)] = 0 # setting all NAN values to 0
-    render.add_3Darray(substrate, cell_dim, 0.0001, 1, opacity=1, nan_opacity=1, clim=[0, 1], scalar_name='Precursor',button_name='Precursor', cmap='plasma')
+    render._add_3Darray(substrate, 0.0001, 1, opacity=1, nan_opacity=1, clim=[0, 1], scalar_name='Precursor',button_name='Precursor', cmap='plasma')
     render.show(interactive_update=True, cam_pos=[(206.34055818793468, 197.6510638707941, 100.47106597548205),
                                                   (0.0, 0.0, 0.0),
                                                   (-0.23307751464125356, -0.236197909312718, 0.9433373838690787)])
@@ -351,32 +354,32 @@ def show_animation(directory=''):
         substrate[np.isnan(substrate)] = 0
         # if i == 0:
         # render.p.clear()
-        render.add_3Darray(substrate, cell_dim, 0.0001, 1, opacity=1, nan_opacity=1, clim=[0,1], scalar_name='Precursor', button_name='Precursor', cmap='plasma') # adding structure
+        render._add_3Darray(substrate, 0.0001, 1, opacity=1, nan_opacity=1, clim=[0,1], scalar_name='Precursor', button_name='Precursor', cmap='plasma') # adding structure
         render.p.add_text(str(times[i]-times[0])) # showing time passed
-        render.p.add_text(str(f'Cells: {total_dep_cells[i]}'), position='upper_right', font_size=font_size) # showing total number of deposited cells
-        render.p.add_text((str(f'Height: {int(np.nonzero(deposit)[0].max()*cell_dim)} nm')), position=(0.85,0.92), viewport=True, font_size=font_size) # showing current height of the structure
-        render.p.add_text((str(f'Growth rate: {int(np.asarray(growth_rate).mean())} cell/h')), position=(0, 0.9), viewport=True, font_size=font_size) # showing average growth rate
-        render.p.add_text(f'Frame {i}/{len(files)}', position=(0, 0.85), viewport=True, font_size=font_size)
+        render.p.add_text(f'Cells: {total_dep_cells[i]}' # showing total number of deposited cells
+                          f'Height: {int(np.nonzero(deposit)[0].max()*cell_dim)} nm'# showing current height of the structure
+                          f'Growth rate: {int(np.asarray(growth_rate).mean())} cell/h' # showing average growth rate
+                          f'Frame {i}/{len(files)}', position='upper_right', font_size=font_size)
         # else:
         #     render.p.update_scalars(substrate.ravel(), render=True)
-        render.update(500, force_redraw=True) # redrawing scene
+        render.update(force_redraw=True) # redrawing scene
         # input()
 
 
 
-def export_excel(name='gr1'):
-    n=10
-    wb = openpyxl.Workbook()
-    ws = wb.active
-    ws.title = name
-    # Creating column headers
-    for i in range(n):
-        ws.cell(1, n).value = i
-    # Inserting data
-    for i in range(n):
-        j = i - 2
-        k = 1
-        ws.cell(i, k).value = i
+# def export_excel(name='gr1'):
+#     n=10
+#     wb = openpyxl.Workbook()
+#     ws = wb.active
+#     ws.title = name
+#     # Creating column headers
+#     for i in range(n):
+#         ws.cell(1, n).value = i
+#     # Inserting data
+#     for i in range(n):
+#         j = i - 2
+#         k = 1
+#         ws.cell(i, k).value = i
 
 def open_file(directory=''):
     """

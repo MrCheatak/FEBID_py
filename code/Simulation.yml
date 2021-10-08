@@ -1,0 +1,7 @@
+# parameters of the simulation
+time_step: 0.00000005 # s
+cell_dimension: 2 # nm
+width: 30 # number of cells along x axis
+length: 30 # number of cells along y axis
+height: 70 # number of cells along z axis
+substrate_height: 7 # height of the initial substrate, cells (is not added to the height)
