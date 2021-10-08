@@ -1,3 +1,12 @@
+##############################################
+
+####### Utility library of functions #########
+#### that use AABB ray-box intersection ######
+
+##############################################
+
+
+
 #cython: language_level=3
 #cython: cdivision=True
 #in particular enables special integer division
@@ -5,7 +14,7 @@
 import cython
 import numpy as np
 from libc.stdlib cimport malloc, realloc, free
-from libc.math cimport sqrt
+from libc.math cimport sqrt, log, cos, sin
 from cpython.mem cimport PyMem_Malloc, PyMem_Realloc, PyMem_Free
 from cpython.array cimport array, clone
 
@@ -17,7 +26,50 @@ from cpython.array cimport array, clone
 # 2. Memoryview creation has bigger overhead than creating C-arrays or using malloc() due to a call to Python function
 # 3. Classes are created as Python objects, thus their usage is not possible without GIL
 # 4. Cython does not yet support VLAs(Variable Length Arrays), which were introduced in C99. That would be a preferred way instead of malloc()
+cpdef double get_Eloss(double E, int Z, double rho, double A, double J, double step):
+    return get_Eloss_c(E, Z, rho, A, J) * step
 
+cpdef (float, float) get_alpha_and_lambda(double E, int Z, double rho, double A):
+    cdef float a = get_alpha(E, Z)
+    cdef float lambda_el = get_lambda_el(E, Z, rho, A, a)
+    return (a, lambda_el)
+
+cpdef (float, float, float) get_direction(double ctheta, double stheta, double psi, double cz, double cy, double cx):
+    return get_direction_c(ctheta, stheta, psi, cz, cy, cx)
+
+cpdef unsigned char get_surface_solid_crossing(unsigned char[:,:,:] surface, double[:,:,:] grid, int cell_dim, double[:] p0, double[:] pn, double[:] direction, double[:] t, double[:] step_t, signed char[:] sign, double[:] coord, double[:] coord1):
+    cdef unsigned char flag = 0
+    flag = get_surface_crossing_c(surface, cell_dim, p0, pn, direction, t, step_t, sign, coord)
+    if flag:
+        return 2
+    flag = get_solid_crossing_c(grid, cell_dim, p0, direction, t, step_t, sign, coord1)
+    return flag
+
+cpdef unsigned char get_solid_crossing(double[:,:,:] grid, int cell_dim, double[:] p0, double[:] direction, double[:] t, double[:] step_t, signed char[:] sign, double[:] coord):
+    return get_solid_crossing_c(grid, cell_dim, p0, direction, t, step_t, sign, coord)
+
+cpdef void get_surface_crossing(unsigned char[:,:,:] surface, int cell_dim, double[:] p0, double[:] pn, double[:] direction, double[:] t, double[:] step_t, signed char[:] sign, double[:] coord):
+    get_surface_crossing_c(surface, cell_dim, p0, pn, direction, t, step_t, sign, coord)
+
+cpdef double generate_flux(double[:,:,:] flux, unsigned char[:,:,:] surface, int cell_dim, double[:,:] p0, double[:,:] pn, double[:,:] direction, signed char[:,:] index_corr, double[:,:] t, double[:,:] step_t, double[:] n_se, int max_count):
+    """
+    Wrapper for Cython function.
+    Generate surface SE flux. 
+
+    :param flux: array to accumulate SEs
+    :param surface: array describing surface
+    :param cell_dim: size of a grid cell
+    :param p0: starting points
+    :param pn: end-points
+    :param direction: pointing directions(vectors)
+    :param t: arbitrary values to detect crossing
+    :param step_t: increments of t value
+    :param n_se: number of SEs emitted 
+    :param max_count: maximum number of crossing events per emission
+    :return: total SE yield
+    """
+
+    return generate_flux_c(flux, surface, cell_dim, p0, pn, direction, index_corr, t, step_t, n_se, n_se.shape[0], max_count)
 
 cpdef double traverse_segment(double[:,:,:] energies, double[:,:,:] grid, int cell_dim, double[:,:] p0, double[:,:] pn, double[:,:] direction, double[:,:] t, double[:,:] step_t, double[:] dEs, int max_count):
     """
@@ -39,7 +91,6 @@ cpdef double traverse_segment(double[:,:,:] energies, double[:,:,:] grid, int ce
     """
 
     return traverse_segment_c(energies, grid, cell_dim, p0, pn, direction, t, step_t, dEs, dEs.shape[0], max_count)
-
 
 # cpdef float[:,:] traverse_cells(double[:] p0, double[:] pn, double[:] direction, double[:] t, double[:] step_t, int N):
 #     """
@@ -64,25 +115,7 @@ cpdef double traverse_segment(double[:,:,:] energies, double[:,:,:] grid, int ce
 #
 #     return crossings
 
-cpdef double generate_flux(double[:,:,:] flux, unsigned char[:,:,:] surface, int cell_dim, double[:,:] p0, double[:,:] pn, double[:,:] direction, double[:,:] t, double[:,:] step_t, double[:] n_se, int max_count):
-    """
-    Wrapper for Cython function.
-    Generate surface SE flux. 
-    
-    :param flux: array to accumulate SEs
-    :param surface: array describing surface
-    :param cell_dim: size of a grid cell
-    :param p0: starting points
-    :param pn: end-points
-    :param direction: pointing directions(vectors)
-    :param t: arbitrary values to detect crossing
-    :param step_t: increments of t value
-    :param n_se: number of SEs emitted 
-    :param max_count: maximum number of crossing events per emission
-    :return: total SE yield
-    """
 
-    return generate_flux_c(flux, surface, cell_dim, p0, pn, direction, t, step_t, n_se, n_se.shape[0], max_count)
 
 cpdef double det_1d(double[:] vector):
     """
@@ -116,12 +149,113 @@ cpdef void det_2d(double[:,:] arr_of_vectors, double[:] out):
 #         out[i] = det_c_debug(arr_of_vectors[i])
 #     return out
 
+"""f"""
+
 ################ Cython Functions #################
-## For internal use only
+### For internal use only
+
+
+cdef (float, float, float) get_direction_c(double ctheta, double stheta, double psi, double cz, double cy, double cx):
+    cdef float cc, cb, ca, AM, AN, V1, V2, V3, V4
+    # if cz == 0.0: cz = 0.00001
+    # Coefficients for calculating direction cosines
+    AM =  - cx / cz
+    AN = 1.0 / sqrt(1.0 + AM ** 2)
+    V1 = AN * stheta
+    V2 = AN * AM * stheta
+    V3 = cos(psi)
+    V4 = sin(psi)
+    # New direction cosines
+    # On every step a sum of squares of the direction cosines is always a unity
+    ca = cx * ctheta + V1 * V3 + cy * V2 * V4
+    cb = cy * ctheta + V4 * (cz * V1 - cx * V2)
+    cc = cz * ctheta + V2 * V3 - cy * V1 * V4
+    if ca == 0:
+        ca = 0.0000001
+    if cb == 0:
+        cb = 0.0000001
+    if cc == 0:
+        cc = 0.0000001
+    return cc, cb, ca
+
+cdef float get_alpha(double E, int Z):
+    return 3.4E-3*Z**0.67/E
+    
+cdef inline float get_sigma(double E, int Z, double a):
+    return 5.21E-7 * Z ** 2 / E ** 2 * 4.0 * 3.14159 / (a * (1.0 + a)) * (
+                (E + 511.0) / (E + 1022.0)) ** 2
+
+cdef inline float get_lambda_el(double E, int Z, double rho, double A, double a):
+    cdef float sigma = get_sigma(E, Z, a)
+    return A / (6.022141E23 * rho * 1.0E-21 * sigma)
+
+cdef inline double get_Eloss_c(double E, int Z, double rho, double A, double J):
+    return -7.85E-3 * rho * Z / (A * E) * log(
+        1.166 * (E / J + 0.85))
 
 @cython.boundscheck(False) # turn off bounds-checking for entire function
 @cython.wraparound(False)  # turn off negative index wrapping for entire function
-cdef double generate_flux_c(double[:,:,:] flux, unsigned char[:,:,:] surface, int cell_dim, double[:,:] p0, double[:,:] pn, double[:,:] direction, double[:,:] t, double[:,:] step_t, double[:] n_se, int N, int max_count) nogil:
+cdef unsigned char get_solid_crossing_c(double[:,:,:] grid, int cell_dim, double[:] p0, double[:] direction, double[:] t, double[:] step_t, signed char[:] sign, double[:] coord):
+    cdef:
+        char ind
+        int i
+        double next_t
+        int index[3]
+    while True:  # iterating until all the cells are traversed by the ray
+        next_t, ind = arr_min(t)  # minimal t-value corresponds to the box wall crossed
+        if next_t > 1:  # finish if trajectory ends inside a cell (t>1)
+            # for i in range(3):
+            #     coord[i] = p0[i] + next_t * direction[i]
+            #     index[i] = <int> (coord[i] / cell_dim)
+            # index[ind] = index[ind] + sign[ind]
+            # if grid[index[0], index[1], index[2]] <= -1:
+            #     return False
+            return True
+        for i in range(3):
+            coord[i] = p0[i] + next_t * direction[i]
+            index[i] = <unsigned int>(coord[i]/cell_dim)
+        # index[ind] = index[ind] + sign[ind]
+        if grid[index[0], index[1], index[2]]<=-1:
+            if coord[1] ==0 or coord[2] == 0:
+                print(f'Coords: {coord[0], coord[1], coord[2]}')
+                print(f'Index: {index[0], index[1], index[2]}')
+                print(f'Grid: {grid[index[0], index[1], index[2]]}')
+            return False
+        t[ind] = t[ind] + step_t[ind]  # going to the next wall
+
+
+@cython.boundscheck(False) # turn off bounds-checking for entire function
+@cython.wraparound(False)  # turn off negative index wrapping for entire function
+cdef unsigned char get_surface_crossing_c(unsigned char[:,:,:] surface, int cell_dim, double[:] p0, double[:] pn, double[:] direction, double[:] t, double[:] step_t, signed char[:] sign, double[:] coord):
+    cdef:
+        char ind
+        int i
+        double next_t
+        int index[3]
+    while True:  # iterating until all the cells are traversed by the ray
+        next_t, ind = arr_min(t)  # minimal t-value corresponds to the box wall crossed
+        if next_t > 1:  # finish if trajectory ends inside a cell (t>1)
+            # for i in range(3):
+            #     coord[i] = pn[i]
+            #     index[i] = <int> (p0[i] / cell_dim)
+            # # print(f'Coord: {[coord[0], coord[1], coord[2]]} , Index: {index}, Sign: {[sign[0], sign[1], sign[2]]}')
+            # if surface[index[0], index[1], index[2]]:
+            #     return False
+            return True
+        for i in range(3):
+            coord[i] = p0[i] + next_t * direction[i]
+            index[i] = <int> (coord[i]/cell_dim)
+        index[ind] = index[ind] + sign[ind]
+        # print(f'Coord: {[coord[0], coord[1], coord[2]]} , Index: {index}, Sign: {sign[ind]}, T, ind: {next_t, ind}')
+        if surface[index[0], index[1], index[2]]:
+            # print('')
+            return False
+        t[ind] = t[ind] + step_t[ind]  # going to the next wall
+
+
+@cython.boundscheck(False) # turn off bounds-checking for entire function
+@cython.wraparound(False)  # turn off negative index wrapping for entire function
+cdef double generate_flux_c(double[:,:,:] flux, unsigned char[:,:,:] surface, int cell_dim, double[:,:] p0, double[:,:] pn, double[:,:] direction, signed char[:,:] index_corr, double[:,:] t, double[:,:] step_t, double[:] n_se, int N, int max_count) nogil:
     cdef:
         char ind
         int i, q, r, cond = 0, count = 0
@@ -129,7 +263,9 @@ cdef double generate_flux_c(double[:,:,:] flux, unsigned char[:,:,:] surface, in
         # Allocating memory, the size corresponds to the length of SE trajectory
         float ** crossings = <float**> malloc(max_count * sizeof(float *))
         int ** coords = <int**> malloc(max_count * sizeof(int *))
-
+        int zdim_abs = surface.shape[0] * cell_dim
+        int  ydim_abs = surface.shape[0] * cell_dim
+        int xdim_abs = surface.shape[0] * cell_dim
     for i in range(max_count):
         crossings[i] = <float *> malloc(3 * sizeof(float))
         coords[i] = <int *> malloc(3 * sizeof(int))
@@ -139,23 +275,24 @@ cdef double generate_flux_c(double[:,:,:] flux, unsigned char[:,:,:] surface, in
         count = traverse_cells_c(p0[q], pn[q], direction[q], t[q], step_t[q], crossings, max_count)
         if count>max_count:
             with gil:
-                print(f'FL Length: {det_c_debug(direction[q])}, \n'
-                          f'Direction: {direction[q,0],direction[q,1],direction[q,2]} \n'
-                          f'p0: {p0[q,0],p0[q,1],p0[q,2]} \n'
-                          f'pn: {pn[q,0],pn[q,1],pn[q,2]} \n'
-                          f't: {t[q,0],t[q,1],t[q,2]} \n'
-                          f'step_t: {step_t[q,0],step_t[q,1],step_t[q,2]} \n'
-                          f'Count, max: {count}, {max_count}')
+                print(f'Overflow in generate_flux_c: \n'
+                      f'Length: {det_c_debug(direction[q])}, \n'
+                      f'Direction: {direction[q,0],direction[q,1],direction[q,2]} \n'
+                      f'p0: {p0[q,0],p0[q,1],p0[q,2]} \n'
+                      f'pn: {pn[q,0],pn[q,1],pn[q,2]} \n'
+                      f't: {t[q,0],t[q,1],t[q,2]} \n'
+                      f'step_t: {step_t[q,0],step_t[q,1],step_t[q,2]} \n'
+                      f'Count, max: {count}, {max_count}')
         # Getting coordinates
         for i in range(count):
             for r in range(3):
-                coords[i][r] = (<int> crossings[i][r]) / cell_dim
+                coords[i][r] = (<int> crossings[i][r]) / cell_dim + index_corr[q,i]
         # Yielding SEs
         for i in range(count):
             #Bounds check
-            cond = cond + (coords[i][0]<145)
-            cond = cond + (coords[i][1]<70)
-            cond = cond + (coords[i][2]<70)
+            cond = cond + (coords[i][0]<zdim_abs)
+            cond = cond + (coords[i][1]<ydim_abs)
+            cond = cond + (coords[i][2]<xdim_abs)
             cond = cond + (coords[i][0]>=0)
             cond = cond + (coords[i][1]>=0)
             cond = cond + (coords[i][2]>=0)
@@ -213,7 +350,8 @@ cdef double traverse_segment_c(double[:,:,:] energies, double[:,:,:] grid, int c
         with gil:
             if count>0:
                 if count>max_count:
-                    print(f'SEG Length: {det_c_debug(direction[q])}, \n'
+                    print(f'Overflow in traverse_segment_c \n'
+                          f'Length: {det_c_debug(direction[q])}, \n'
                           f'Direction: {direction[q,0],direction[q,1],direction[q,2]} \n'
                           f'p0: {p0[q,0],p0[q,1],p0[q,2]} \n'
                           f'pn: {pn[q,0],pn[q,1],pn[q,2]} \n'
