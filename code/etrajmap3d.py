@@ -10,16 +10,8 @@ from math import *
 import numpy as np
 import pyvista as pv
 from numpy.random import default_rng
-import os, sys
-from tqdm import tqdm
-import multiprocessing
-import logging
-import line_profiler
-# import sandbox.HelloWorld as hw
-from functools import total_ordering
-import numba as nb
-from modified_libraries.ray_traversal import traversal
 
+from modified_libraries.ray_traversal import traversal
 
 
 @total_ordering # realises all comparison operations without having to define them explicitly
@@ -32,7 +24,7 @@ class ETrajMap3d(object):
         self.surface = surface
         self.cell_dim = sim.cell_dim # absolute dimension of a cell, nm
         self.nz, self.ny, self.nx = np.asarray(self.grid.shape)- 1 # simulation chamber dimensions
-        self.zdim_abs, self.ydim_abs, self.xdim_abs = [x*self.cell_dim for x in [self.nz, self.ny, self.nx]]
+        self.zdim_abs, self.ydim_abs, self.xdim_abs = [x*self.cell_dim for x in self.grid.shape]
         self.DE = np.zeros((self.nz+1, self.ny+1, self.nx+1)) # array for storing of deposited energies
         self.flux = np.zeros((self.nz+1, self.ny+1, self.nx+1)) # array for storing SE fluxes
         self.amplifying_factor = 10000 # artificially increases SE yield to preserve accuracy
@@ -119,7 +111,8 @@ class ETrajMap3d(object):
             L = np.empty_like(dEs)
             traversal.det_2d(direction, L)
             des = dEs/L
-            step = np.sign(direction) * self.cell_dim # distance traveled by a ray along each axis in the ray direction, when crossing a cell
+            sign = np.int8(np.sign(direction))
+            step = sign * self.cell_dim # distance traveled by a ray along each axis in the ray direction, when crossing a cell
             step_t = step / direction # iteration step of the t-values
             delta = -(points[:, 0] % self.cell_dim) # positions of the ray origin relative to its enclosing cell position
             t = np.abs((delta + (step == self.cell_dim) * self.cell_dim + (delta == 0) * step) / direction) # initial t-value

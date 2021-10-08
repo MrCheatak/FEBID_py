@@ -12,7 +12,6 @@ from tqdm import tqdm
 import pickle
 import line_profiler
 import VTK_Rendering as vr
-from timebudget import timebudget
 
 # TODO: implement a global flag for collecting data(Se trajes) for plotting
 
