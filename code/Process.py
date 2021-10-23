@@ -7,7 +7,6 @@
 ####################################################################
 # Default packages
 import os, sys, datetime
-from datetime import datetime
 import copy, math
 from contextlib import suppress
 
@@ -883,7 +882,7 @@ def laplace_term_rolling(grid, surface, ghosts_bool, D, dt, add = 0, div: int = 
     # be assigned to the previous(first) layer, which was not processed by numpy.roll() when it rolled backwards.
     # Thus, borders(planes) that are not taking part in rolling(shifting) are cut off by using views to an array
     grid = grid + add
-    grid_out = copy(grid)
+    grid_out = copy.copy(grid)
     grid_out *= -6
     gs = np.logical_or(ghosts_bool, surface)
 
@@ -1120,7 +1119,7 @@ def printing(loops=1, dwell_time=1):
     render.show(interactive_update=True, cam_pos=[(206.34055818793468, 197.6510638707941, 100.47106597548205),
                                                   (0.0, 0.0, 0.0),
                                                   (-0.23307751464125356, -0.236197909312718, 0.9433373838690787)])
-    frame_rate = 0.3
+    frame_rate = 3
     frame = 0
     time_step = 60 # s
     time_stamp = 0# 2*24*60*60 + 16*60*60 + 0*60 # s
