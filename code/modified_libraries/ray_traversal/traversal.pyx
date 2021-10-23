@@ -51,6 +51,10 @@ cpdef unsigned char get_solid_crossing(double[:,:,:] grid, int cell_dim, double[
 cpdef void get_surface_crossing(unsigned char[:,:,:] surface, int cell_dim, double[:] p0, double[:] pn, double[:] direction, double[:] t, double[:] step_t, signed char[:] sign, double[:] coord):
     get_surface_crossing_c(surface, cell_dim, p0, pn, direction, t, step_t, sign, coord)
 
+cpdef void divide_segments(double[:] dEs, double[:,:] coords, int[:] num, double[:,:] delta, double[:,:] pieces, double[:] energies):
+    divide_segments_c(dEs, coords, num, delta, pieces, energies)
+
+
 cpdef double generate_flux(double[:,:,:] flux, unsigned char[:,:,:] surface, int cell_dim, double[:,:] p0, double[:,:] pn, double[:,:] direction, signed char[:,:] index_corr, double[:,:] t, double[:,:] step_t, double[:] n_se, int max_count):
     """
     Wrapper for Cython function.
@@ -203,7 +207,7 @@ cdef unsigned char get_solid_crossing_c(double[:,:,:] grid, int cell_dim, double
         int index[3]
     while True:  # iterating until all the cells are traversed by the ray
         next_t, ind = arr_min(t)  # minimal t-value corresponds to the box wall crossed
-        if next_t > 1:  # finish if trajectory ends inside a cell (t>1)
+        if next_t > 1:  # finish if trajectory ends inside a cell (t>1); this essentially means that even if next point is exactly at the next boundary, it finishes the loop
             # for i in range(3):
             #     coord[i] = p0[i] + next_t * direction[i]
             #     index[i] = <int> (coord[i] / cell_dim)
@@ -213,8 +217,8 @@ cdef unsigned char get_solid_crossing_c(double[:,:,:] grid, int cell_dim, double
             return True
         for i in range(3):
             coord[i] = p0[i] + next_t * direction[i]
-            index[i] = <unsigned int>(coord[i]/cell_dim)
-        # index[ind] = index[ind] + sign[ind]
+            index[i] = <unsigned int> (coord[i]/cell_dim)
+        # index[ind] = <unsigned int> (index[ind] + sign[ind])
         if grid[index[0], index[1], index[2]]<=-1:
             if coord[1] ==0 or coord[2] == 0:
                 print(f'Coords: {coord[0], coord[1], coord[2]}')
@@ -244,13 +248,24 @@ cdef unsigned char get_surface_crossing_c(unsigned char[:,:,:] surface, int cell
             return True
         for i in range(3):
             coord[i] = p0[i] + next_t * direction[i]
-            index[i] = <int> (coord[i]/cell_dim)
-        index[ind] = index[ind] + sign[ind]
+            index[i] = <unsigned int> (coord[i]/cell_dim)
+        # index[ind] = <unsigned int> (index[ind] + sign[ind])
         # print(f'Coord: {[coord[0], coord[1], coord[2]]} , Index: {index}, Sign: {sign[ind]}, T, ind: {next_t, ind}')
         if surface[index[0], index[1], index[2]]:
             # print('')
             return False
         t[ind] = t[ind] + step_t[ind]  # going to the next wall
+
+
+cdef void divide_segments_c(double[:] dEs, double[:,:] coords, int[:] num, double[:,:] delta, double[:,:] pieces, double[:] energies):
+    cdef int i, j, k,  count=0
+    for i in range(dEs.shape[0]):
+        de = dEs[i]/num[i]
+        for j in range(num[i]):
+            energies[count] = de
+            for k in range(3):
+                pieces[count, k] = coords[i, k] + delta[i, k]*j
+            count += 1
 
 
 @cython.boundscheck(False) # turn off bounds-checking for entire function
