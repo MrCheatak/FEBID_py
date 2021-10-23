@@ -3,16 +3,21 @@
 #       Primary electron trajectory simulator         #
 #                                                     #
 #######################################################
-import math
-import multiprocessing
-import os
+# Default packages
+import os, sys
 import random as rnd
 from math import *
+import multiprocessing
 
-import line_profiler
-import matplotlib.pyplot as plt
+# Core packages
 import numpy as np
 
+# Axillary packeges
+import pickle
+import timeit
+import line_profiler
+
+# Local packages
 from modified_libraries.ray_traversal import traversal
 
 
@@ -103,14 +108,14 @@ class ETrajectory(object):
 
             :return:
             """
-            sign = np.sign(self.direction)
+            sign = np.sign(self.point)
             sign[sign==1] = 0
             delta = self.point%self.cell_dim
             return np.int64((delta==0)*sign)
 
         def check_boundaries(self, z=0, y=0, x=0):
             """
-            Checks is the given (z,y,x) position is inside the simulation chamber
+            Check if the given (z,y,x) position is inside the simulation chamber
 
             :param z:
             :param y:
@@ -181,8 +186,9 @@ class ETrajectory(object):
 
         def __get_next_point(self, step):
             """
-            Calculate next point coordinates
-            :param step:
+            Calculate coordinates of the next point from previous point and direction cosines.
+            Does boundary check.
+            :param step: current electron free path
             :return:
             """
             self.x_prev = self.point_prev[2] = self.x
@@ -212,31 +218,22 @@ class ETrajectory(object):
         def get_direction(self, ctheta=None, stheta=None, psi=None):
             return self.__get_direction(ctheta, stheta, psi)
 
-    def setParameters(self, params, deposit, surface, stat=100000):
+    def setParameters(self, params, deposit, surface, stat=1000):
         #TODO: material tracking can be more universal
         # instead of using deponat and substrate variables, there can be a dictionary, where substrate is always last
         self.E0 = params['E0']
-        self.Z = params['Z']
-        self.A = params['A']
-        self.rho = params['rho']
-        self.e = params['e'] # fitting parameter related to energy required to initiate a SE cascade, material specific, eV
-        self.lambda_escape = params['l'] # mean free escape path, material specific, nm
+        self.Emin = params['Emin'] # cut-off energy for PE, keV
         self.grid = deposit
         self.surface = surface
         self.cell_dim = params['cell_dim']
-        self.J = self._getJ()
         self.sigma = params['sigma']
         self.N = stat
         self.norm_factor = params['N'] / self.N
 
-        self.PEL = 0
-        self.SE_passes = []
         self.deponat = Element(params['name'], params['Z'], params['A'], params['rho'], params['e'], params['l'], -1)
         self.substrate = substrates[params['sub']]
         self.substrate.mark = -2
         self.material = None
-        # self.dt = dt
-        self.Emin = params['Emin'] # cut-off energy for PE, keV
 
         self.__calculate_attributes()
 
@@ -336,7 +333,7 @@ class ETrajectory(object):
         #     self.passes.append(f.result())
         # self.prep_plot_traj() # view trajectories
 
-    def map_wrapper(self, x0, y0, N=0):
+    def map_wrapper(self, y0, x0, N=0):
         passes = []
         if N == 0:
             N = self.N
@@ -351,6 +348,7 @@ class ETrajectory(object):
         passes = self.map_trajectory(x0, y0)
         # for x,y in zip(x0,y0):
         #     passes.append(self.map_trajectory(x,y))
+        # self.__inspect_passes(True, True)
         return passes
 
     def map_trajectory(self, x0, y0):
@@ -429,14 +427,15 @@ class ETrajectory(object):
                     if flag == 2: # if electron escapes chamber without crossing surface (should not happen ideally!)
                         mask.append(0)
                     if flag < 2: # if electron crossed the surface
-                        # mask.append(1)
+                        mask.append(1)
                         coords.coordinates = crossing1
                         trajectories.append(coords.coordinates)  # saving current point
                         energies.append(coords.E)  # saving electron energy at this point
-                        if flag == 1: # if electron escapes after crossing surface and traversing void
-                            mask.append(0)
-                        else: # if electron meets a solid cell
-                            mask.append(1)
+                        mask.append(0)
+                        # if flag == 1: # if electron escapes after crossing surface and traversing void
+                        #     mask.append(0)
+                        # else: # if electron meets a solid cell
+                        #     mask.append(1)
 
                 # <editor-fold desc="Accurate tracking of material">
                 ############ Enable this snippet instead of the code after getting index,
@@ -469,11 +468,11 @@ class ETrajectory(object):
                     flag = False
                     break
             self.passes.append((trajectories, energies, mask))  # collecting mapped trajectories and energies
-
         return self.passes
 
     def get_crossing_point(self, coords, curr_material):
-        # Misses corresponding Cython function!
+        # STUB: this function is a part of precise solid material tracking
+        #  Misses corresponding Cython function!
         p0 = np.asarray(coords.coordinates_prev)
         pn = np.asarray(coords.coordinates)
         direction = pn - p0  #
@@ -491,7 +490,7 @@ class ETrajectory(object):
 
     def get_next_crossing(self, coords):
         """
-        Get next two crossing points and a flag showing if boundaries are met
+        Get next two crossing points and a flag showing if volume boundaries are met
 
         :param coords:
         :return:
@@ -505,9 +504,11 @@ class ETrajectory(object):
         t = np.abs((-p0 + (sign == 1) * self.chamber_dim)/direction)
         pn = p0 + np.min(t) * direction
         pn[pn>=self.chamber_dim] = self.chamber_dim[pn>=self.chamber_dim]-0.000001 # reducing coordinate if it is beyond the boundary
+        pn[pn<=0] = 0.000001
         direction[0] *= -1 # recovering original sign
 
         direction = pn - p0
+        direction[direction==0] = rnd.choice((0.000001, -0.000001)) # sometimes next point is so close to the previous, that their subtraction evaluates to 0
         step = sign * self.cell_dim
         step_t = step / direction
         delta = -(p0 % self.cell_dim)
@@ -523,19 +524,129 @@ class ETrajectory(object):
                 crossing1 = pn
         return flag, crossing, crossing1
 
-    def savePasses(self, fname):
+    def save_passes(self, fname, type):
+        """
+        Save passes to a text file or by pickling
+
+        :param fname: name of the file
+        :param type: saving type: accepts 'pickle' or 'text'
+        :return:
+        """
+
+        if type not in ['pickle', 'text']:
+            raise Warning(f"No type option named {type}. Type argument accepts either \'text\' or \'pickle\'")
+        try:
+            if type == 'pickle':
+                self.__save_passes_obj(fname)
+            if type == 'text':
+                self.__save_passes_text(fname)
+        except Exception as e:
+            print(f'Something went wrong, was unable to write the file. Error raised:{e.args}')
+            return
+
+    def __save_passes_text(self, fname):
+        """
+        Save electron trajectories to individual text files.
+        Mask is an axillary value 0 or 1, that helps to filter segments, that are outside of the solid material
+        Formatting:
+        x/nm  y/nm   z/nm   E/keV   mask
+        x1     y1     z1     E1      mask1
+        x2     y2     z2     E2      mask2
+        ...
+
+        :param fname: name of the file
+        :return:
+        """
         i = 0
         for p in self.passes:
             points = p[0]
             energies = p[1]
             f = open(fname + '_{:05d}'.format(i), 'w')
             f.write('# ' + self.name + '\n')
-            f.write('# x/nm y/nm z/nm E/keV\n')
+            f.write('# x/nm\t y/nm\t z/nm\t E/keV\n')
             for pt, e in zip(points, energies):
                 f.write('{:f}\t'.format(pt[0]) + '{:f}\t'.format(pt[1]) +
                   '{:f}\t'.format(pt[2]) + '{:f}\t'.format(e) + '\n')
             f.close()
             i += 1
+
+    def __save_passes_obj(self, fname):
+        """
+        Pickle electron trajectories.
+
+        :param fname: name of the file
+        :return:
+        """
+        file = open(f'{sys.path[0]}{os.sep}Electron_trajectories_{len(self.passes)}_{self.E0}keV.txt', 'wb')
+        pickle.dump(self.passes, file)
+        file.close()
+
+    def __inspect_passes(self, short=True, exclude_first = False):
+        """
+        Inspect generated trajectories for duplicate points, points with identical values in at least on
+        of the components, negative components, negative energies and unmarked segments that are significantly
+        longer that the actual electron free path.
+
+        :param short: exclude empty reports
+        :param exclude_first: the first point is always at the top of the simulation volume and always projected down to the surface
+        :return:
+        """
+        def print_results(message, index, color_code = 30, *args):
+            if short:
+                if index.shape[0] == 0: return
+                print(f'\033[0;{color_code};48m')
+            print(f' {message}')
+            print(f'T    S  \t\t\t\t p0 \t\t\t\t\t\t\t\t\t pn') # trajectory and segment number
+            str = ''
+            for j in range(len(args[0])):
+                str = f'{i}  {index[j]}\t'
+                for arg in args:
+                    str += f'{arg}\t'
+                print(str+'\n')
+            if str == '':
+                print(f'None\n')
+        for i, traj in enumerate(self.passes):
+            points = np.asarray(traj[0])
+            energies = np.asarray(traj[1])
+            mask = np.asarray(traj[2])
+            if points.shape[0] != energies.shape[0] or points.shape[0] - mask.shape[0] != 1:
+                print(f'Incorrect number of points/energies/masks: '
+                      f'Points: {points.shape[0]}'
+                      f'Energies: {energies.shape[0]}'
+                      f'Masks: {mask.shape[0]}')
+            if exclude_first:
+                points = points[1:]
+                energies =energies[1:]
+                mask = mask[1:]
+            p0 = points[:-1]
+            pn = points[1:]
+            direction = pn-p0
+            L = np.linalg.norm(direction, axis=1)
+            zero_dir = np.nonzero(direction==0)[0] # segments with 0 in at least one component
+            zero_dir = np.unique(zero_dir)
+            zero_length = np.nonzero(L==0)[0] # segments with zero length
+            negative_E = np.nonzero(energies<0)[0] # points with negative energies
+            negative_positions = np.nonzero(points<0)[0] # points with at least on negative component
+            _, max_step = traversal.get_alpha_and_lambda(self.E0, self.deponat.Z, self.deponat.rho, self.deponat.A)
+            max_step *= -log(0.00001) # longest step possible in the deposited material
+            long_segments = (L > max_step) # segments, that are longer than the maximum step length
+            long_unmasked = np.logical_and(long_segments, mask!=0) # the latter, but also unmasked
+            long_segments = long_segments.nonzero()[0]
+            long_unmasked = long_unmasked.nonzero()[0]
+
+            message = 'Points with zero difference in at least one component:'
+            print_results(message, zero_dir, 36, p0[zero_dir], pn[zero_dir])
+            message = 'Points with zero difference (zero length):'
+            print_results(message, zero_length, 31, p0[zero_length], pn[zero_length])
+            message = 'Negative coordinates:'
+            print_results(message, negative_positions, 31, points[negative_positions])
+            message = 'Segments longer than maximum step:'
+            print_results(message, long_segments, 33, p0[long_segments], pn[long_segments], L[long_segments])
+            message = 'The latter unmasked:'
+            print_results(message, long_unmasked, 31, p0[long_unmasked], pn[long_unmasked], L[long_unmasked])
+
+            print('\033[0;30;48m ', end='')
+            a=0
 
     def _get_alpha_and_step(self, coords):
         """
@@ -545,7 +656,9 @@ class ETrajectory(object):
         :return:
         """
         a, step = traversal.get_alpha_and_lambda(coords.E, self.material.Z, self.material.rho, self.material.A)
-        step *= -log( rnd.uniform(0.00001, 1))
+        # NOTE: excluding unity to prevent segments with zero length (log(1)=0).
+        #  Not only they are practically useless, but also cause bugs due to division by zero
+        step *= -log(rnd.uniform(0.00001, 0.99999))
         return a, step
 
     def _getJ(self, Z=0):
@@ -630,22 +743,6 @@ class ETrajectory(object):
         if E == 0:
             E = coords.E
         return -7.85E-3*self.material.rho*self.material.Z/(self.material.A*E)*log(1.166*(E/self.material.J + 0.85))
-
-    def show(self, dir_name):
-        fig = plt.figure(figsize=(16,8))
-        ax_t = fig.add_subplot(121)
-        ax_e = fig.add_subplot(122)
-        files = os.listdir(dir_name + '.')
-        for f in files:
-            if f.find('.dat') == -1: continue
-            x, y, z, E = np.loadtxt(dir_name + f, unpack=True)
-            ax_t.plot(x, -z, '-')
-            ax_e.plot(E, '*')
-        ax_t.set_xlabel('x (nm)')
-        ax_t.set_ylabel('z (nm)')
-        ax_e.set_xlabel('# elastic event')
-        ax_e.set_ylabel('residual energy (eV)')
-        plt.show()
 
 
 class Element:
