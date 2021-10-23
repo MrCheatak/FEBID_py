@@ -1,5 +1,5 @@
-# FEBID_py
-Simulation of the FEBID witten in Python.
+# FEBID
+Simulation of the FEBID process witten in Python.
 
 ## Installation
 1. Clone the repository and choose virtual environment.
