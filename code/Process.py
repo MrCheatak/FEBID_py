@@ -5,32 +5,32 @@
 #  Version 0.9
 #
 ####################################################################
-import datetime
-import math
-import os
-import sys
-import timeit
+# Default packages
+import os, sys, datetime
+from datetime import datetime
+import copy, math
 from contextlib import suppress
-from tkinter import filedialog as fd
 
-import line_profiler
+# Core packages
 import numpy as np
-# import matplotlib.pyplot as plt
-# from matplotlib import cm
-import pyvista as pv
-import scipy.constants as scpc
-import yaml
-# import ipyvolume as ipv
 from numexpr_mod import evaluate_cached, cache_expression
-from numpy import zeros, copy, s_
-from tqdm import tqdm
 
+# Axillary packeges
+import scipy.constants as scpc
+from tqdm import tqdm
+from tkinter import filedialog as fd
+import pyvista as pv
+import pickle
+import yaml
+import timeit
+import line_profiler
+
+# Local packages
 from Structure import Structure
 import VTK_Rendering as vr
 import etraj3d
 from modified_libraries.rolling import roll
 
-# from timebudget import timebudget
 # TODO: look into k-d trees
 # TODO: add a benchmark to determine optimal threads number for current machine
 
@@ -111,6 +111,388 @@ expressions = dict(pe_flux=cache_expression("f*exp(-r*r/(2*beam_d*beam_d))", sig
                    flux_matrix=cache_expression("((index_xx-center)*(index_xx-center)+(index_yy-center)*(index_yy-center))**0.5", signature=[('center', np.int32), ('index_xx', np.int32), ('index_yy', np.int32)]))
 # </editor-fold>
 
+class Process():
+    def __init__(self, structure, mc_config, equation_values, timings, time_spent=datetime.datetime.now()):
+        self.time_spent = time_spent
+        self.set_structure(structure)
+        self.set_constants(equation_values)
+        self.setup_MC_module(mc_config)
+        self.get_timings(timings)
+
+    def set_structure(self, structure:Structure):
+        self.structure = structure
+        self.deposit = self.structure.deposit
+        self.precursor = self.structure.precursor
+        self.surface = self.surface.bool
+        self.semi_surface = self.structure.semi_surface_bool
+        self.ghosts = self.structure.ghosts_bool
+        self.beam_matrix = np.empty_like(structure.deposit)
+
+    def set_constants(self, params):
+        self.F = params['F']
+        self.n0 = params['n0']
+        self.V = params['V']
+        self.sigma = params['sigma']
+        self.tau = params['tau']
+        self.D = params['D']
+
+    def get_timings(self, timings):
+        # Stability time steps
+        self.t_diffusion = timings['t_diff']
+        self.t_dissociation = timings['t_flux']
+        self.t_desorption = timings['t_desorption']
+        self.dt = min(self.t_desorption, self.t_diffusion, self.t_dissociation)
+        self.t = 0
+
+    def setup_MC_module(self, params):
+        mc_sim = etraj3d.cache_params(params, self.deposit, self.surface)
+
+    def deposition(self, reduce=True, gr=1):
+
+        """
+        Calculates deposition on the surface for a given time step dt (outer loop)
+
+        :param deposit: 3D deposit array
+        :param precursor: 3D precursor density array
+        :param flux_matrix: matrix of electron flux distribution
+        :param dt: time step
+        :return: writes back to deposit array
+        """
+        # Instead of processing cell by cell and on the whole surface, it is implemented to process only (effectively) irradiated area and array-wise(thanks to Numpy)
+        # Math here cannot be efficiently simplified, because multiplication of constant variables here produces a value below np.float32 accuracy
+        # np.float32 — ~1E-7, produced value — ~1E-10
+        if reduce:
+            deposit=self.deposit[self.irradiated_area_3D]
+            surface=self.surface[self.irradiated_area_3D]
+            precursor=self.precursor[self.irradiated_area_3D]
+            flux_matrix=self.beam_matrix[self.irradiated_area_3D]
+        else:
+            deposit=self.deposit
+            surface=self.surface
+            precursor=self.precursor
+            flux_matrix=self.beam_matrix
+        deposit[surface] += precursor[surface] * flux_matrix[surface] * self.sigma * self.V * self.dt * gr
+
+    def update_surface(self):
+        """
+        Evolves surface upon a full deposition of a cell. This method holds has the vast majority of logic
+
+        :param deposit: 3D deposit array
+        :param precursor: 3D precursor density array
+        :param surface_bool: array representing surface cells
+        :param semi_surf_bool: array representing semi-surface cells
+        :param ghosts_bool: array representing ghost cells
+        :return: changes surface, semi-surface and ghosts arrays
+        """
+
+        new_deposits = np.argwhere(self.deposit >= 1)  # looking for new deposits
+        if new_deposits.any():
+            for cell in new_deposits:
+                # deposit[cell[0]+1, cell[1], cell[2]] += deposit[cell[0], cell[1], cell[2]] - 1  # if the cell was filled above unity, transferring that surplus to the cell above
+                self.deposit[cell[0], cell[1], cell[2]] = -1  # a fully deposited cell is always a minus unity
+                self.precursor[cell[0], cell[1], cell[2]] = -1
+                self.ghosts[cell[0], cell[1], cell[2]] = True  # deposited cell belongs to ghost shell
+                self.surface[cell[0], cell[1], cell[2]] = False  # rising the surface one cell up (new cell)
+
+                # Instead of using classical conditions, boolean arrays are used to select elements
+                # First, a condition array is created, that picks only elements that satisfy conditions
+                # Then this array is used as index
+
+                neibs_sides, neibs_edges = None, None
+
+                # Creating a view with the 1st nearest neighbors to the deposited cell
+                z_min, z_max, y_min, y_max, x_min, x_max = 0, 0, 0, 0, 0, 0
+                if cell[0] - 1 < 0:
+                    z_min = 0
+                    neibs_sides = self.neibs_sides[1:, :, :]
+                    neibs_edges = self.neibs_edges[1:, :, :]
+                else:
+                    z_min = cell[0] - 1
+                if cell[0] + 2 > self.deposit.shape[0]:
+                    z_max = self.deposit.shape[0]
+                    neibs_sides = self.neibs_sides[:1, :, :]
+                    neibs_edges = self.neibs_edges[:1, :, :]
+                else:
+                    z_max = cell[0] + 2
+                if cell[1] - 1 < 0:
+                    y_min = 0
+                    neibs_sides = self.neibs_sides[:, 1:, :]
+                    neibs_edges = self.neibs_edges[:, 1:, :]
+                else:
+                    y_min = cell[1] - 1
+                if cell[1] + 2 > self.deposit.shape[1]:
+                    y_max = self.deposit.shape[1]
+                    neibs_sides = self.neibs_sides[:, :1, :]
+                    neibs_edges = self.neibs_edges[:, :1, :]
+                else:
+                    y_max = cell[1] + 2
+                if cell[2] - 1 < 0:
+                    x_min = 0
+                    neibs_sides = self.neibs_sides[:, :, 1:]
+                    neibs_edges = self.neibs_edges[:, :, 1:]
+                else:
+                    x_min = cell[2] - 1
+                if cell[2] + 2 > self.deposit.shape[2]:
+                    x_max = self.deposit.shape[2]
+                    neibs_sides = self.neibs_sides[:, :, :1]
+                    neibs_edges = self.neibs_edges[:, :, :1]
+                else:
+                    x_max = cell[2] + 2
+                # neighbors_1st = s_[cell[0]-1:cell[0]+2, cell[1]-1:cell[1]+2, cell[2]-1:cell[2]+2]
+                neighbors_1st = np.s_[z_min:z_max, y_min:y_max, x_min:x_max]
+                # Creating a view with the 2nd nearest neighbors to the deposited cell
+                if cell[0] - 2 < 0:
+                    z_min = 0
+                else:
+                    z_min = cell[0] - 2
+                if cell[0] + 3 > self.deposit.shape[0]:
+                    z_max = self.deposit.shape[0]
+                else:
+                    z_max = cell[0] + 3
+                if cell[1] - 2 < 0:
+                    y_min = 0
+                else:
+                    y_min = cell[1] - 2
+                if cell[1] + 3 > self.deposit.shape[1]:
+                    y_max = self.deposit.shape[1]
+                else:
+                    y_max = cell[1] + 3
+                if cell[2] - 2 < 0:
+                    x_min = 0
+                else:
+                    x_min = cell[2] - 2
+                if cell[2] + 3 > self.deposit.shape[2]:
+                    x_max = self.deposit.shape[2]
+                else:
+                    x_max = cell[2] + 3
+                # neighbors_2nd = s_[cell[0]-2:cell[0]+3, cell[1]-2:cell[1]+3, cell[2]-2:cell[2]+3]
+                neighbors_2nd = np.s_[z_min:z_max, y_min:y_max, x_min:x_max]
+
+                deposit_kern = self.deposit[neighbors_1st]
+                semi_s_kern = self.semi_surface[neighbors_1st]
+                surf_kern = self.surface[neighbors_1st]
+                # Creating condition array
+                condition = np.logical_and(deposit_kern == 0,
+                                           neibs_sides)  # True for elements that are not deposited and are side neighbors
+                semi_s_kern[condition] = False
+                surf_kern[condition] = True
+                condition = np.logical_and(np.logical_and(deposit_kern == 0, surf_kern == 0),
+                                           neibs_edges)  # True for elements that are not deposited, not surface cells and are edge neighbors
+                semi_s_kern[condition] = True
+                ghosts_kern = self.ghosts[neighbors_1st]
+                ghosts_kern[...] = False
+
+                surf_kern = self.surface[neighbors_2nd]
+                semi_s_kern = self.semi_surface[neighbors_2nd]
+                ghosts_kern = self.ghosts[neighbors_2nd]
+                condition = np.logical_and(surf_kern == 0,
+                                           semi_s_kern == 0)  # True for elements that are neither surface nor semi-surface cells
+                ghosts_kern[condition] = True
+
+            else:
+                return True
+
+        return False
+
+    def precursor_density(self, reduce=True):
+        """
+        Recalculates precursor density on the whole surface
+
+        :param flux_matrix: matrix of electron flux distribution
+        :param precursor: 3D precursor density array
+        :param surface_bool: array representing surface cells
+        :param semi_surf_bool: array representing semi-surface cells
+        :param ghosts_bool: array representing ghost cells
+        :param dt: time step
+        :return: changes precursor array
+        """
+        if reduce:
+            precursor=self.precursor[self.irradiated_area_3D[0]]
+            beam_matrix=self.beam_matrix[self.irradiated_area_3D[0]]
+            surface=self.surface[self.irradiated_area_3D[0]]
+        else:
+            precursor=self.precursor
+            beam_matrix=self.beam_matrix
+            surface=self.surface
+        # profiled_func(precursor, surface_bool, ghosts_bool, D, dt)
+        diffusion_matrix = self._laplace_term_rolling(precursor)  # Diffusion term is calculated separately and added in the end
+        precursor[surface] += self._rk4(precursor[surface], beam_matrix[surface] )  # An increment is calculated through Runge-Kutta method without the diffusion term
+        # precursor[semi_surf_bool] += rk4(dt, precursor[semi_surf_bool])  # same process for semi-cells, but without dissociation term
+        precursor += diffusion_matrix  # finally adding diffusion term
+
+    def _rk4(self, precursor, beam_matrix):
+        """
+        Calculates increment of precursor density by Runge-Kutta method
+
+        :param dt: time step
+        :param sub: array of surface cells
+        :param flux_matrix: matrix of electron flux distribution
+        :return:
+        """
+        k1 = self.__precursor_density_increment(precursor, beam_matrix, self.dt)  # this is actually an array of k1 coefficients
+        k2 = self.__precursor_density_increment(precursor, beam_matrix, self.dt / 2, k1 / 2)
+        k3 = self.__precursor_density_increment(precursor, beam_matrix, self.dt / 2, k2 / 2)
+        k4 = self.__precursor_density_increment(precursor, beam_matrix, self.dt, k3)
+        # numexpr: 1 core performs better
+        # numexpr.set_num_threads(nn)
+        return evaluate_cached(self.expressions["rk4"], casting='same_kind')
+
+    def __precursor_density_increment(self, precursor, beam_matrix, dt, addon=0):
+        """
+        Calculates increment of the precursor density without a diffusion term
+
+        :param dt: time step
+        :param sub: array of surface cells (2D for surface cells, 1D dor semi-surface cells)
+        :param flux_matrix: matrix of electron flux distribution
+        :param addon: Runge Kutta term
+        :return: to sub array
+        """
+        # numexpr: 1 core performs better
+        # numexpr.set_num_threads(nn)
+        return evaluate_cached(self.expressions["precursor_density"],
+                               local_dict={'F_dt': self.F * dt, 'F_dt_n0_1_tau_dt': (self.F * dt * self.tau + self.n0 * dt) / (self.tau * self.n0),
+                                           'addon': addon, 'flux_matrix': beam_matrix, 'sigma_dt': self.sigma * dt,
+                                           'sub': precursor}, casting='same_kind')
+
+    def _laplace_term_rolling(self, grid, ghosts=None, add=0, div: int = 0):
+        """
+        Calculates diffusion term for all surface cells using rolling
+
+
+        :param grid: 3D precursor density array
+        :param ghosts: array representing ghost cells
+        :param D: diffusion coefficient
+        :param dt: time step
+        :param add: Runge-Kutta intermediate member
+        :param div:
+        :return: to grid array
+        """
+
+        # Debugging note: it would be more elegant to just use numpy.roll() on the ghosts_bool to assign neighboring values
+        # to ghost cells. But Numpy doesn't retain array structure when utilizing boolean index streaming. It rather extracts all the cells
+        # (that correspond to True in our case) and processes them as a flat array. It caused the shifted values for ghost cells to
+        # be assigned to the previous(first) layer, which was not processed by numpy.roll() when it rolled backwards.
+        # Thus, borders(planes) that are not taking part in rolling(shifting) are cut off by using views to an array
+        if ghosts is None:
+            ghosts = self.ghosts
+        grid = grid + add
+        grid_out = copy(grid)
+        grid_out *= -6
+
+        # X axis:
+        # No need to have a separate array of values, when whe can conveniently call them from the original data
+        shore = grid[:, :, 1:]
+        wave = grid[:, :, :-1]
+        shore[ghosts[:, :, 1:]] = wave[
+            ghosts[:, :, 1:]]  # assigning values to ghost cells forward along X-axis
+        # grid_out[:,:, :-1]+=grid[:,:, 1:] #rolling forward (actually backwards)
+        roll.rolling_3d(grid_out[:, :, :-1], grid[:, :, 1:])
+        index = ghosts.reshape(-1).nonzero()
+        # grid_out[:,:,-1] += grid[:,:,-1] #taking care of edge values
+        roll.rolling_2d(grid_out[:, :, -1], grid[:, :, -1])
+        # grid[ghosts_bool] = 0 # flushing ghost cells
+        grid.reshape(-1)[index] = 0
+        # Doing the same, but in reverse
+        shore = grid[:, :, :-1]
+        wave = grid[:, :, 1:]
+        shore[ghosts[:, :, :-1]] = wave[ghosts[:, :, :-1]]
+        # grid_out[:,:,1:] += grid[:,:,:-1] #rolling backwards
+        roll.rolling_3d(grid_out[:, :, 1:], grid[:, :, :-1])
+        # grid_out[:, :, 0] += grid[:, :, 0]
+        roll.rolling_2d(grid_out[:, :, 0], grid[:, :, 0])
+        # grid[ghosts_bool] = 0
+        grid.reshape(-1)[index] = 0
+
+        # Y axis:
+        shore = grid[:, 1:, :]
+        wave = grid[:, :-1, :]
+        shore[ghosts[:, 1:, :]] = wave[ghosts[:, 1:, :]]
+        # grid_out[:, :-1, :] += grid[:, 1:, :]
+        roll.rolling_3d(grid_out[:, :-1, :], grid[:, 1:, :])
+        # grid_out[:, -1, :] += grid[:, -1, :]
+        roll.rolling_2d(grid_out[:, -1, :], grid[:, -1, :])
+        # grid[ghosts_bool] = 0
+        grid.reshape(-1)[index] = 0
+        shore = grid[:, :-1, :]
+        wave = grid[:, 1:, :]
+        shore[ghosts[:, :-1, :]] = wave[ghosts[:, :-1, :]]
+        # grid_out[:, 1:, :] += grid[:, :-1, :]
+        roll.rolling_3d(grid_out[:, 1:, :], grid[:, :-1, :])
+        # grid_out[:, 0, :] += grid[:, 0, :]
+        roll.rolling_2d(grid_out[:, 0, :], grid[:, 0, :])
+        # grid[ghosts_bool] = 0
+        grid.reshape(-1)[index] = 0
+
+        # Z axis:
+        shore = grid[1:, :, :]
+        wave = grid[:-1, :, :]
+        shore[ghosts[1:, :, :]] = wave[ghosts[1:, :, :]]
+        # c
+        roll.rolling_3d(grid_out[:-1, :, :], grid[1:, :, :])
+        # grid_out[-1, :, :] += grid[-1, :, :]
+        roll.rolling_2d(grid_out[-1, :, :], grid[-1, :, :])
+        # grid[ghosts_bool] = 0
+        grid.reshape(-1)[index] = 0
+        shore = grid[:-1, :, :]
+        wave = grid[1:, :, :]
+        shore[ghosts[:-1, :, :]] = wave[ghosts[:-1, :, :]]
+        # grid_out[1:, :, :] += grid[:-1, :, :]
+        roll.rolling_3d(grid_out[1:, :, :], grid[:-1, :, :])
+        # grid_out[0, :, :] += grid[0, :, :]
+        roll.rolling_2d(grid_out[0, :, :], grid[0, :, :])
+        # grid[ghosts_bool] = 0
+        grid.reshape(-1)[index] = 0
+        # grid_out[ghosts_bool]=0
+        grid_out.reshape(-1)[index] = 0  # result also has to be cleaned as it contains redundant values in ghost cells
+        # numexpr: 1 core performs better
+        # numexpr.set_num_threads(nn)
+        return evaluate_cached(self.expressions["laplace1"], local_dict={'dt_D': self.dt * self.D, 'grid_out': grid_out},
+                               casting='same_kind')
+        # else:
+        #     return evaluate_cached(expressions["laplace2"], local_dict={'dt_D_div': dt*D/div, 'grid_out':grid_out}, casting='same_kind')
+
+    def __get_utils(self):
+        # Kernels for choosing cells
+        self.neibs_sides = np.array([[[0, 0, 0],  # chooses side neighbors
+                                 [0, 1, 0],
+                                 [0, 0, 0]],
+                                [[0, 1, 0],
+                                 [1, 0, 1],
+                                 [0, 1, 0]],
+                                [[0, 0, 0],
+                                 [0, 1, 0],
+                                 [0, 0, 0]]])
+        self.neibs_edges = np.array([[[0, 1, 0],  # chooses edge neighbors
+                                 [1, 0, 1],
+                                 [0, 1, 0]],
+                                [[1, 0, 1],
+                                 [0, 0, 0],
+                                 [1, 0, 1]],
+                                [[0, 1, 0],
+                                 [1, 0, 1],
+                                 [0, 1, 0]]])
+
+    def __expressions(self):
+        self.expressions = dict(rk4=cache_expression("(k1+k4)/6 +(k2+k3)/3", [('k1', np.float64), ('k2', np.float64), ('k3', np.float64), ('k4', np.float64)]),
+                           # precursor_density_=cache_expression("(F * (1 - (sub + addon) / n0) - (sub + addon) / tau - (sub + addon) * sigma * flux_matrix)*dt", [('F', np.int64), ('addon', np.float64), ('dt', np.float64), ('flux_matrix', np.int64), ('n0', np.float64), ('sigma',np.float64), ('sub', np.float64), ('tau', np.float64)]),
+                           precursor_density=cache_expression("F_dt - (sub + addon) * (F_dt_n0_1_tau_dt + sigma_dt * flux_matrix)", [('F_dt', np.float64), ('F_dt_n0_1_tau_dt', np.float64), ('addon', np.float64), ('flux_matrix', np.int64), ('sigma_dt', np.float64), ('sub', np.float64)]),
+                           laplace1=cache_expression("grid_out*dt_D", [('dt_D', np.float64), ('grid_out', np.float64)]),
+                           laplace2=cache_expression("grid_out*dt_D_div",[('dt_D_div', np.float64), ('grid_out', np.float64)]))
+
+
+    def __define_irr_area(self,beam_matrix):
+        """
+        Get boundaries of the irradiated area in XY plane
+
+        :param beam_matrix: SE surface flux
+        :return:
+        """
+        indices = np.nonzero(beam_matrix)
+        y_start, y_end, x_start, x_end = indices[1].min(), indices[1].max(), indices[2].min(), indices[2].max()
+        self.irradiated_area_3D = np.s_[self.structure.substrate_height:self.height, y_start:y_end, x_start:x_end]  # a slice of the currently irradiated area
+
+    def generate_surface_electron_flux(self):
+        pass
 
 
 def open_stream_file(offset=1.5):
@@ -120,7 +502,7 @@ def open_stream_file(offset=1.5):
     STUB: just not ready yet
 
     :param offset:
-    :return:
+    :return: normalized directives, dimensions of the enclosing volume
     """
     file = fd.askopenfilename()
     data = None
@@ -140,7 +522,7 @@ def open_stream_file(offset=1.5):
         # 2 – y-position
         data = np.genfromtxt(f, dtype=np.float64, comments='#', delimiter=delim, skip_header=header, usecols=columns, invalid_raise=False)
 
-    # Determing chamber dimensions
+    # Determining chamber dimensions
     x_max, x_min = data[1].max(), data[1].min()
     x_dim = x_max - x_min
     x_min -= x_dim * offset
@@ -149,13 +531,13 @@ def open_stream_file(offset=1.5):
     y_dim = y_max - y_min
     y_min -= y_dim * offset
     y_max += y_dim * offset
-    z_dim = max(x_dim, y_dim)
+    z_dim = max(x_dim, y_dim)*2
 
     # Getting local coordinates
     data[1] -= x_min
     data[2] -= y_min
 
-    return data, z_dim, y_dim, x_dim
+    return data, (z_dim, y_dim, x_dim)
 
 
 # @jit(nopython=True, parallel=True)
@@ -261,7 +643,7 @@ def update_surface(deposit, precursor, surface_bool, semi_surf_bool, ghosts_bool
             else:
                 x_max = cell[2] + 2
             # neighbors_1st = s_[cell[0]-1:cell[0]+2, cell[1]-1:cell[1]+2, cell[2]-1:cell[2]+2]
-            neighbors_1st = s_[z_min:z_max, y_min:y_max, x_min:x_max]
+            neighbors_1st = np.s_[z_min:z_max, y_min:y_max, x_min:x_max]
             # Creating a view with the 2nd nearest neighbors to the deposited cell
             if cell[0]-2 < 0:
                 z_min = 0
@@ -288,7 +670,7 @@ def update_surface(deposit, precursor, surface_bool, semi_surf_bool, ghosts_bool
             else:
                 x_max = cell[2] + 3
             # neighbors_2nd = s_[cell[0]-2:cell[0]+3, cell[1]-2:cell[1]+3, cell[2]-2:cell[2]+3]
-            neighbors_2nd = s_[z_min:z_max, y_min:y_max, x_min:x_max]
+            neighbors_2nd = np.s_[z_min:z_max, y_min:y_max, x_min:x_max]
 
 
             deposit_kern = deposit[neighbors_1st]
@@ -481,7 +863,7 @@ def rk4_diffusion(grid, ghosts_bool, D, dt):
 
 
 # @jit(nopython=True, parallel=True, forceobj=False)
-def laplace_term_rolling(grid, ghosts_bool, D, dt, add = 0, div: int = 0):
+def laplace_term_rolling(grid, surface, ghosts_bool, D, dt, add = 0, div: int = 0):
     """
     Calculates diffusion term for all surface cells using rolling
 
@@ -503,12 +885,20 @@ def laplace_term_rolling(grid, ghosts_bool, D, dt, add = 0, div: int = 0):
     grid = grid + add
     grid_out = copy(grid)
     grid_out *= -6
+    gs = np.logical_or(ghosts_bool, surface)
 
     # X axis:
     # No need to have a separate array of values, when whe can conveniently call them from the original data
     shore = grid[:, :, 1:]
     wave = grid[:, :, :-1]
     shore[ghosts_bool[:, :, 1:]] = wave[ghosts_bool[:, :, 1:]] # assigning values to ghost cells forward along X-axis
+    # outcome = grid_out[:,:, :-1]
+    # income = grid[:,:, 1:]
+    # gs_out = gs[:,:,:-1].reshape(-1).nonzero()
+    # gs_in = gs[:,:,1:].reshape(-1).nonzero()
+    # outcome.reshape(-1)[gs_out] += income.reshape(-1)[gs_in]
+    # outcome.reshape(-1)[...] += income.reshape(-1)[...]
+    # roll.rolling_1d(outcome.reshape(-1), income.reshape(-1))
     # grid_out[:,:, :-1]+=grid[:,:, 1:] #rolling forward (actually backwards)
     roll.rolling_3d(grid_out[:,:,:-1], grid[:,:,1:])
     index = ghosts_bool.reshape(-1).nonzero()
@@ -706,7 +1096,7 @@ def printing(loops=1, dwell_time=1):
     t+=dt
     refresh_dt = dt*2 # dt for precursor density recalculation
 
-    beam_matrix = zeros(structure.shape, dtype=int)  # matrix for electron beam flux distribution
+    beam_matrix = np.zeros(structure.shape, dtype=int)  # matrix for electron beam flux distribution
 
     surface_bool = structure.surface_bool
     semi_surface_bool = structure.semi_surface_bool
@@ -816,10 +1206,11 @@ def printing(loops=1, dwell_time=1):
             start = timeit.default_timer()
             beam_matrix = etraj3d.rerun_simulation(y, x, deposit, surface_bool, sim, dt)
             print(f'Took total {timeit.default_timer() - start}')
+            beam_matrix[beam_matrix<0] = 0
             y_start, y_end, x_start, x_end = define_irr_area(beam_matrix[sub_h:max_z])
             max_z = int(sub_h + np.nonzero(surface_bool)[0].max() + 3)
             flag = False
-            irradiated_area_3D = s_[sub_h:max_z, y_start:y_end,x_start:x_end]  # a slice of the currently irradiated area
+            irradiated_area_3D = np.s_[sub_h:max_z, y_start:y_end,x_start:x_end]  # a slice of the currently irradiated area
         deposition(deposit[irradiated_area_3D],
                    precursor[irradiated_area_3D],
                    beam_matrix[irradiated_area_3D],
@@ -837,24 +1228,7 @@ def printing(loops=1, dwell_time=1):
                           precursor[sub_h:max_z, :, :],
                           surface_bool[sub_h:max_z, :, :],
                           ghosts_bool[sub_h:max_z, :, :], F, n0, tau, sigma, D, dt)
-            # if l==3:
-            #     profiler = line_profiler.LineProfiler()
-            #     profiled_func = profiler(precursor_density)
-            #     try:
-            #         profiled_func(beam_matrix, precursor[:surface.max()+3,:,:], surface, ghosts_index, refresh_dt)
-            #     finally:
-            #         profiler.print_stats()
-            # beam_exposure[:max_z, y_offset-effective_radius_relative:y_limit+effective_radius_relative,x_offset-effective_radius_relative:x_limit+effective_radius_relative] = 0 # flushing accumulated radiation
-            # beam_exposure[...] =  0
         t += dt
-        # beam_matrix[irradiated_area_3D] = 0
-        # if flag:
-        #     beam_matrix[irradiated_area_3D] = 0
-        #     except Exception as e:
-        #         logging.exception('Caught an Error:')
-        # except Exception as e:
-        #     e = sys.exc_info()[0]
-        #     print("<p>Error: %s</p>" % e)
     a=0
     b=0
 
@@ -872,6 +1246,8 @@ def open_params():
     sim_cfg = fd.askopenfilename()
     return precursor_cfg, tech_cfg, sim_cfg
 
+# profiler = line_profiler.LineProfiler()
+# profiled_func = profiler(laplace_term_rolling)
 
 if __name__ == '__main__':
     # precursor_cfg, tech_cfg, sim_cfg = open_params()
