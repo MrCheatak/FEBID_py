@@ -10,13 +10,13 @@ from math import *
 import numpy as np
 import pyvista as pv
 from numpy.random import default_rng
+import line_profiler
 
 from modified_libraries.ray_traversal import traversal
 
 
-@total_ordering # realises all comparison operations without having to define them explicitly
 class ETrajMap3d(object):
-    def __init__(self, deposit, surface, sim, segment_min_length = 1):
+    def __init__(self, deposit, surface, sim, segment_min_length =0.3):
         #TODO: ETrajMap3d class should probably be merged with Etrajectory
         # These classes
         self.grid = deposit
@@ -38,12 +38,6 @@ class ETrajMap3d(object):
         self.x0, self.y0, self.z0 = 0, 0, 0  # origin of 3d grid
         rnd.seed()
         self.segment_min_length = segment_min_length
-
-    def __lt__(self, x):
-        return x < self.xdim_abs
-
-    def __eq__(self, x):
-        return x == self.xdim_abs
 
     # @nb.jit(nopython=True)
     def __arr_min(self, x):
@@ -85,7 +79,7 @@ class ETrajMap3d(object):
             crossings.append(crossing_point)  # saving crossing point
         return crossings
 
-    def follow_segment(self, points_all, dEs_all):  #(self, points: np.ndarray, dEs):
+    def follow_segment(self, points, dEs):  #(self, points: np.ndarray, dEs):
         """
         Calculates distances traversed by a trajectory segment inside cells
         and gets energy losses corresponding to the distances.
@@ -99,32 +93,41 @@ class ETrajMap3d(object):
         # Electron trajectory segments are treated as rays
 
         # Algorithm is vectorized, thus following calculations are done for all segments in a trajectory
-        # cells = []
-        # profiler = line_profiler.LineProfiler()
-        # profiled_func = profiler(self.generate_se)
-        for points, dEs in zip(points_all, dEs_all):
+        # for points, dEs in zip(points_all, dEs_all):
             # points, dEs = self.__setup_trajectory(one_pass[0][1:], one_pass[1][1:], one_pass[2][1:])  # Adding distance from the beam origin to surface to all the points (shifting trajectories down) and getting energy losses
-            if not dEs.any():
-                continue
-            direction = points[:, 1, :] - points[:, 0, :] # vector of a ray
-            # L = np.linalg.norm(direction, axis=1) # length of a rays
-            L = np.empty_like(dEs)
-            traversal.det_2d(direction, L)
-            des = dEs/L
-            sign = np.int8(np.sign(direction))
-            step = sign * self.cell_dim # distance traveled by a ray along each axis in the ray direction, when crossing a cell
-            step_t = step / direction # iteration step of the t-values
-            delta = -(points[:, 0] % self.cell_dim) # positions of the ray origin relative to its enclosing cell position
-            t = np.abs((delta + (step == self.cell_dim) * self.cell_dim + (delta == 0) * step) / direction) # initial t-value
-            p0, pn = points[:, 0], points[:, 1]  # ray origin and end
-            max_traversed_cells = int(L.max()/self.cell_dim*2)+10 # maximum number of cells traversed by a segment in the a trajectory;
-            # this is essential to allocate enough memory for the traversal algorithm
-            # TODO: produced NaN at gr=4
-            # max_traversed_cells = ceil(np.sum(1/step_t, axis=1).max())+5
-            traversal.traverse_segment(self.DE, self.grid, self.cell_dim, p0, pn, direction, t, step_t, des, max_traversed_cells)
+            # if not dEs.any():
+            #     continue
+        p0, pn = points[:, 0], points[:, 1]  # ray origin and end
+        direction = points[:, 1, :] - points[:, 0, :] # vector of a ray
 
+        # L = np.linalg.norm(direction, axis=1) # length of a rays
+        L = np.empty_like(dEs)
+        traversal.det_2d(direction, L)
+        des = dEs/L
+        sign = np.int8(np.sign(direction))
+        step = sign * self.cell_dim # distance traveled by a ray along each axis in the ray direction, when crossing a cell
+        # step_t = step / direction  # iteration step of the t-values
+        step_t = None
+        # Catching 'Division by zero' error
+        try:
+            with np.errstate(divide='raise', invalid='raise'):
+                step_t = step / direction # iteration step of the t-values
+        except Exception as e:
+            print(e.args)
+            zeros = np.nonzero(direction==0)[0]
+            for i in range(len(zeros)):
+                print(f'p0: {p0[zeros[i]]}, pn: {pn[zeros[i]]}, direction: {direction[zeros[i]]}, L: {L[zeros[i]]}')
+            step_t = step / direction
 
-    def prep_se_emission(self, points_all, dEs_all):
+        delta = -(points[:, 0] % self.cell_dim) # positions of the ray origin relative to its enclosing cell position
+        t = np.abs((delta + (step == self.cell_dim) * self.cell_dim + (delta == 0) * step) / direction) # initial t-value
+        max_traversed_cells = int(L.max()/self.cell_dim*2)+10 # maximum number of cells traversed by a segment in the a trajectory;
+        # this is essential to allocate enough memory for the traversal algorithm
+        # TODO: produced NaN at gr=4
+        # max_traversed_cells = ceil(np.sum(1/step_t, axis=1).max())+5
+        traversal.traverse_segment(self.DE, self.grid, self.cell_dim, p0, pn, direction, t, step_t, des, max_traversed_cells)
+
+    def prep_se_emission(self, points, dEs, ends):
         """
         The idea behind this method is to divide trajectory segments into pieces
         and emit SEs from every piece based on the energy lost on it.
@@ -132,71 +135,61 @@ class ETrajMap3d(object):
         :param passes:
         :return:
         """
+
+        # Segments are divided into even parts, that become SE emission centers.
+        # Although, it has been observed, that segments are often smaller than the cell (~0.5nm average)
+        # Thus, firstly, short segments are separated from longer ones and are left as it is.
+        # Long segments are divided into even parts based on the 'segment_min_length' attribute of the ETrajMap3d class
+        # All SE segments or vectors are collected in a single array
+        # NOTE: because SE 'vectors' are 'emitted' from the first point of the segment, the last point
+        #  at the exit point has no emitted SE. This may significantly reduce SE surface yield at the exit points
+        #  in grids with bigger cell size.
+        #  A one additional emitted SE vector is added at the end of each trajectory in order to mitigate the problem.
+        #  It is assigned the vector and energy of the last vector in the list.
+        #  While major PEs do not re-enter solid on a simple structure, they might re-enter in more complex structures,
+        #  that are not effectively taken into account.
         energies_all = []
         coords_all = []
-        for points, dEs in zip(points_all, dEs_all):  # go through trajectories
-            # points, dEs = self.__setup_trajectory(passes[i][0][1:], passes[i][1][1:], passes[i][2][1:])  # Adding distance from the beam origin to surface to all the points (shifting trajectories down) and getting energy losses
-            # direction = points[:, 1, :] - points[:, 0, :] # vector of a ray
-            # L = np.linalg.norm(direction, axis=1)
-            L = np.empty(dEs.shape, dtype=np.float64)
-            traversal.det_2d(points[:, 1, :] - points[:, 0, :], L)
-            # Segments are divided into even parts, that become SE emission centers.
-            # It has been observed, that segments are often smaller than the cell (~0.5nm average)
-            # Thus there is no point in dividing all segments and going through every piece in a loop.
-            # Instead of that, short segments are separated from longer ones
-            # and considered as emitting pieces.
-            # Emission proceeds from the segment starting point!
-            # All SE segments or vectors are collected in a single array
+        # for points, dEs in zip(points_all, dEs_all):  # go through trajectories
+        L = np.empty(dEs.shape, dtype=np.float64)
+        traversal.det_2d(points[:, 1, :] - points[:, 0, :], L)
+        # Collecting short segments that have energy loss
+        # short = np.logical_and(L <= self.segment_min_length, dEs != 0).nonzero() # If the energy loss is 0, it means that electron escaped solid should be discarded
+        short = (L <= self.segment_min_length).nonzero()[0]
+        if short.shape[0]>0:
+            coords_all.append(points[short,0].reshape(short.shape[0], 3))
+            energies_all.append(dEs[short])
 
-            # Collecting short segments that have energy loss
-            short = np.logical_and(L <= self.segment_min_length, dEs != 0).nonzero() # If the energy loss is 0, it means that electron escaped solid should be discarded
-            # short = np.nonzero(L <= 1.5 and dEs>0)
-            # coords_all.append(np.asarray((points[short], points[np.asarray(short[0])+1])))
-            if short[0].shape[0]>0:
-                coords_all.append(points[short,0].reshape(short[0].shape[0], 3))
-                energies_all.append(dEs[short])
-
-            # Collecting long segments
-            long = np.logical_and(L > self.segment_min_length, dEs != 0).nonzero()
-            if long[0].any():
-                coords = []
-                # [coords.append([points[index,0], points[index,1]]) for index in long[0]]
-                coords_long = np.take(points, long[0], axis=0)
-                # coords_long = np.asarray(coords)
-                # coords_long = np.asarray([points[long], points[np.asarray(long[0]) + 1]]) # creating coordinates pairs for all long segments
-                shorts = []
-                energies_l = []
-                vector = coords_long[:, 1, :] - coords_long[:, 0, :]
-                # BUG: np.ceil refuses to cast to integer even with 'casting=unsafe'
-                num = np.intp(np.ceil(L[long[0]] / self.segment_min_length)) # np.ceil r
-                delta = vector / np.broadcast_to(num, (3, num.shape[0])).T
-                pieces = np.zeros((np.sum(num, dtype=int), 3))
-                energies = np.zeros(np.sum(num, dtype=int))
-                count = 0
-                for i in range(len(long[0])):
-                    # delta = np.fabs(coords_long[i, 1] - coords_long[i,0])
-                    # num = int(delta.max()/1.5)
-                    # num = ceil(L[long[0][i]] / self.segment_min_length) # number of pieces
-                    # delta = vector[i]/num
-
-                    # Evenly dividing segment into pieces
-                    energies[count:count+num[i]] = np.repeat(dEs[long[0][i]] / (num[i]), num[i])
-                    for j in range(num[i]):
-                        pieces[count] = coords_long[i,0]+delta[i]*j
-                        count += 1
-                    # shorts.append(pieces)
-
-                    # shorts.append(np.asarray((np.linspace(coords_long[i, 0, 0], coords_long[i, 1, 0], num, False), np.linspace(coords_long[i, 0, 1], coords_long[i, 1, 1], num, False),np.linspace(coords_long[i, 0, 2], coords_long[i, 1, 2], num, False))).T)
-                    # energies_l.append(np.repeat(dEs[long[0][i]] / (num), num))
-                # longs = np.concatenate((shorts), axis=0)
-                # coords_all.append(np.asarray((longs[:-1], longs[1:])))
-                coords_all.append(pieces)
-                # e_l = np.concatenate((energies_l), axis=0)
-                energies_all.append(energies)
-            coords_all.append(points[points.shape[0]-1,1].reshape(1,3))
-            l= len(energies_all)-1
-            energies_all.append(energies_all[l][energies_all[l].shape[0]-1].reshape(1))
-
+        # Collecting long segments
+        # long = np.logical_and(L > self.segment_min_length, dEs != 0).nonzero()
+        long = (L > self.segment_min_length).nonzero()[0]
+        if long.shape[0]>0:
+            coords_long = np.take(points, long, axis=0)
+            vector = coords_long[:, 1, :] - coords_long[:, 0, :]
+            # BUG: np.ceil refuses to cast to integer even with 'casting=unsafe'
+            num = np.intc(np.ceil(L[long] / self.segment_min_length)) # np.ceil r
+            # delta = vector / np.broadcast_to(num, (3, num.shape[0])).T
+            delta = vector/num.reshape(num.shape[0],1)
+            N = num.sum(dtype=int)
+            pieces = np.empty((N, 3))
+            energies = np.empty(N)
+            count = 0
+            # for i in range(len(long)):
+            #     # Evenly dividing segment into pieces
+            #     energies[count:count+num[i]] = np.repeat(dEs[long[i]] / (num[i]), num[i])
+            #     for j in range(num[i]):
+            #         pieces[count] = coords_long[i,0]+delta[i]*j
+            #         count += 1
+            traversal.divide_segments(dEs[long], coords_long[:,0], num, delta, pieces, energies)
+            coords_all.append(pieces)
+            energies_all.append(energies)
+        coords_all.append(points[points.shape[0]-1,1].reshape(1,3))
+        l= len(energies_all)-1
+        energies_all.append(energies_all[l][energies_all[l].shape[0]-1].reshape(1))
+        traj_ends = points[ends, 1,:]
+        energies_ens = self.segment_min_length / L[ends] * dEs[ends]
+        coords_all.append(traj_ends)
+        energies_all.append(energies_ens)
         # Combining all the collected segments into one array
         coords_all = np.concatenate((coords_all), axis=0)
         energies_all = np.concatenate((energies_all), axis=0)
@@ -263,15 +256,23 @@ class ETrajMap3d(object):
         # This reduces the unnecessary analysis of trajectory segments that lie in void(geometry features or backscattered electrons)
         mask = np.asarray(mask)
         pnp = np.array(points[0:len(points)]) # to get easy access to x, y, z coordinates of points
-        p0, pn = pnp[:-1], pnp[1:]
-        pairs = np.stack((p0,pn))
+        pairs = np.empty((pnp.shape[0]-1, 2, 3))
+        pairs[:,0,:] = pnp[:-1]
+        pairs[:,1,:] = pnp[1:]
+        pairs = pairs[mask.nonzero()]
+        # Workaround against duplicate points
+        p0=pairs[:,0,:]
+        pn = pairs[:,1,:]
+        pn[pn==p0] += rnd.choice((0.000001, -0.000001))
+        # p0, pn = pnp[:-1], pnp[1:]
+        # pairs = np.stack((p0,pn))
         # TODO: Thrown 'axis don't match array' exception :
-        pairs = np.transpose(pairs, axes=(1,0,2))[mask.nonzero()]
+        # pairs = np.transpose(pairs, axes=(1,0,2))[mask.nonzero()]
         # np.delete(pairs, (mask==0), axis=0)
         # result = pairs[mask.nonzero()]
         dE = np.asarray(energies)
-        dE -= np.roll(dE, -1)
-        # dE.resize(len(dE)-1, refcheck=False)
+        # dE -= np.roll(dE, -1)
+        dE[:-1] -= dE[1:]
         dE = dE[:-1] # last element is discarded
         dE = dE[mask.nonzero()]*1000
         # dE *=1000
@@ -301,40 +302,44 @@ class ETrajMap3d(object):
         :return:
         """
         if switch:
-            # for one_pass in tqdm(passes):
-            # for one_pass in passes:
-            #     pts, dEs = self.__setup_trajectory(one_pass[0][1:], one_pass[1][1:])  # Adding distance from the beam origin to surface to all the points (shifting trajectories down) and getting energy losses
-            #     self.follow_segment(pts, dEs)
-
-
-            # profiled_func = profiler(hw.follow_trajectory_vec)
-            # try:
-            #     profiled_func(passes, self.grid, self.cell_dim)
-            # finally:
-            #     profiler.print_stats()
             start = timeit.default_timer()
             points = []
             dEs = []
+            traj_lengths = []
+            traj_len = 0
+            # profiler = line_profiler.LineProfiler()
+            # profiled_func = profiler(self.__setup_trajectory)
             for one_pass in passes:
                 if len(one_pass[1][:])<3:
                     continue
+                # profiled_func(one_pass[0][1:], one_pass[1][1:], one_pass[2][1:])
                 pairs, energies = self.__setup_trajectory(one_pass[0][1:], one_pass[1][1:], one_pass[2][1:])
                 if pairs.shape[0]:
                     points.append(pairs)
-                    dEs.append((energies))
+                    dEs.append(energies)
+                    traj_len += pairs.shape[0]
+                    traj_lengths.append(traj_len)
+            # profiler.print_stats()
+            traj_lengths = np.asarray(traj_lengths)
+            segments_all = np.concatenate(points, axis=0)
+            dEs_all = np.concatenate(dEs, axis=0)
             # profiler = line_profiler.LineProfiler()
             # profiled_func = profiler(self.follow_segment)
             # try:
-            #     profiled_func(points, dEs)
+            #     profiled_func(segments_all, dEs_all)
             # finally:
             #     profiler.print_stats()
-            self.follow_segment(points, dEs)
+            self.follow_segment(segments_all, dEs_all)
             print(f'{timeit.default_timer()-start}', end='\t\t')
-            # cell = self.DE.nonzero()
-            # for i in range(len(cell[0])):
-            #     self.generate_se(self.DE[cell[0][i], cell[1][i], cell[2][i]], cell[0][i], cell[1][i], cell[2][i], np.asarray([cell[0][i]*self.cell_dim+self.cell_dim/2, cell[1][i]*self.cell_dim, cell[2][i]*self.cell_dim]))
+
+            # profiler = line_profiler.LineProfiler()
+            # profiled_func = profiler(self.prep_se_emission)
+            # try:
+            #     profiled_func(segments_all, dEs_all)
+            # finally:
+            #     profiler.print_stats()
             start = timeit.default_timer()
-            self.prep_se_emission(points, dEs)
+            self.prep_se_emission(segments_all, dEs_all, traj_lengths-1)
             print(f'{timeit.default_timer()-start}', end='\t\t')
             start = timeit.default_timer()
             # profiler = line_profiler.LineProfiler()
