@@ -1,19 +1,21 @@
-import copy
-
-import numpy as np
-import random as rnd
-import matplotlib.pyplot as plt
-import pylab as p
-from matplotlib import cm
-import pyvista as pv
-import pyvistaqt as pvqt
-from Structure import Structure
-from tqdm import tqdm
+# Default packages
 import os, sys, time
 from datetime import datetime
-import openpyxl
+import copy
+
+# Core packages
+import numpy as np
+import pyvista as pv
+
+# Axillary packeges
+from tqdm import tqdm
 from tkinter import filedialog as fd
 import pickle
+
+# Local packages
+from Structure import Structure
+
+
 
 
 #### Some colormap(cmap) names: viridis, inferno, plasma, coolwarm, cool, Spectral
@@ -84,7 +86,7 @@ class Render:
         if pe_traj is not None:
             self._add_trajectory(pe_traj[:,0], pe_traj[:,1], 0.2, step=1, scalar_name='PE Energy, keV', button_name='PEs', cmap='viridis')
         if deposited_E is not None:
-            self._add_3Darray(deposited_E, 1, exclude_zeros=False, opacity=1, show_edges=False, scalar_name='Deposited energy, eV', button_name="Deposited energy", cmap='coolwarm', log_scale=True)
+            self._add_3Darray(deposited_E, 1, exclude_zeros=False, opacity=0.7, show_edges=False, scalar_name='Deposited energy, eV', button_name="Deposited energy", cmap='coolwarm', log_scale=True)
         if surface_flux is not None:
             self._add_3Darray(surface_flux, 1, exclude_zeros=False, opacity=1, show_edges=False, scalar_name='SE Flux, 1/(nm^2*s)', button_name="SE surface flux", cmap='plasma', log_scale=True)
         if se_traj is not None:
@@ -366,21 +368,6 @@ def show_animation(directory=''):
         # input()
 
 
-
-# def export_excel(name='gr1'):
-#     n=10
-#     wb = openpyxl.Workbook()
-#     ws = wb.active
-#     ws.title = name
-#     # Creating column headers
-#     for i in range(n):
-#         ws.cell(1, n).value = i
-#     # Inserting data
-#     for i in range(n):
-#         j = i - 2
-#         k = 1
-#         ws.cell(i, k).value = i
-
 def open_file(directory=''):
     """
     Gather files and timestamps sorted in the order of creation
@@ -392,7 +379,7 @@ def open_file(directory=''):
     # Getting creation dates of the files
     # Zipping them together and sorting by the creation date
     # Unzipping and returning in the order sorted
-    directory = '/Users/sandrik1742/Documents/PycharmProjects/FEBID/code/Experiment runs/gr=0'
+    # directory = '/Users/sandrik1742/Documents/PycharmProjects/FEBID/code/Experiment runs/gr=0'
     files = sorted(os.listdir(directory))[1:]
     ctimes = [time.ctime(os.path.getmtime(os.path.join(directory, file))) for file in files]
     times = [datetime.strptime(t, '%a %b %d %H:%M:%S %Y') for t in ctimes]
@@ -405,3 +392,8 @@ def open_file(directory=''):
     # times = [re.findall("\d\d:\d\d:\d\d",file) for file in files]
 
     return files, times
+
+
+if __name__ == '__main__':
+    dir = fd.askdirectory()
+    show_animation(dir)
