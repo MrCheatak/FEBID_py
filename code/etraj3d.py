@@ -1,97 +1,29 @@
-import copy
-import sys, os
-import time
+# Default packages
+import os, sys
 import random as rnd
-import timeit
-from math import *
+import math
+
+# Core packages
 import numpy as np
-import pyvista as pv
+
+# Axillary packeges
+from tkinter import filedialog as fd
+import pickle
+import timeit
+import line_profiler
+
+# Local packages
+import VTK_Rendering as vr
 import etrajectory as et
 import etrajmap3d as map3d
-from tqdm import tqdm
-import pickle
-import line_profiler
-import VTK_Rendering as vr
 
 # TODO: implement a global flag for collecting data(Se trajes) for plotting
 
-
-def rnd_gauss_xy(sigma, n):
-    '''Gauss-distributed (x, y) positions.
-       sigma: standard deviation 
-       n: number of positions
-       Returns lists of n x and y coordinates which are gauss-distributed.
-    '''
-    x, y = [], []
-    rnd.seed()
-    for i in range(n):
-        r = rnd.gauss(0.0, sigma)
-        phi = rnd.uniform(0, 2*pi - np.finfo(float).tiny)
-        x.append(r*cos(phi))
-        y.append(r*sin(phi))
-    return (x, y)
-
-def read_cfg(fname):
-    '''Read configuration file.
-       fname: name of configuration file containing key:value pairs
-       Returns dictionary of parameter values.
-    '''
-    f = open(fname, 'r')
-    params = {}
-    for line in f:
-        if line.find('#') == 0:
-            continue
-        l = line.strip('\n').split(':')
-        k = l[0].strip(' ')
-        v = l[1].strip(' ')
-        if k == 'N':
-            params[k] = int(v)
-        elif k == 'name':
-            params[k] = v
-        else:
-            params[k] = float(v)
-    f.close()
-    return params
-
-
-def plot(m3d:map3d.ETrajMap3d, sim:et.ETrajectory=nan): # plot energy loss and all trajectories
+def plot(m3d:map3d.ETrajMap3d, sim:et.ETrajectory=math.nan): # plot energy loss and all trajectories
 
     render = vr.Render(sim.cell_dim)
     pe_trajectories = np.asarray(sim.passes)
     render.show_mc_result(sim.grid, pe_trajectories, m3d.DE, m3d.flux, m3d.coords_all)
-
-
-    # struct = m3d.grid
-    # trajs = m3d.trajectories
-    # pe_energies = 0
-    # if sim:
-    #     pe_energies = np.asarray(sim.passes)[:, 1]
-    #     trajs = np.asarray(sim.passes)[:, 0]
-    # energies = m3d.DE
-    # se_trajes = m3d.coords_all
-    # init_cells = np.count_nonzero(sim.grid[sim.grid == -2]) # substrate layer
-    # total_dep_cells = np.count_nonzero(sim.grid[sim.grid < 0]) - init_cells
-    # height = sim.grid.nonzero()[0].max()
-    # render = vr.Render(sim.cell_dim)
-    # # Deposited structure
-    # render._add_3Darray(m3d.grid, -3, -0.0001, 1, show_edges=True, button_name="Structure", color='white', invert=False)
-    # # Deposited energies
-    # # render.add_3Darray(m3d.DE, m3d.cell_dim, 1, opacity=1, scalar_name='Deposited energy, eV', button_name="Deposited energy", cmap='coolwarm', log_scale=True)
-    # # SE flux at the surface
-    # render._add_3Darray(m3d.flux,1, scalar_name='SE Flux, 1/(nm^2*s)', button_name='SE surface flux', cmap='plasma', log_scale=False)
-    # # PE trajectories
-    # render._add_trajectory(trajs, pe_energies, 0.2, step=1, scalar_name='PE Energy, keV', button_name='PEs', cmap='viridis')
-    # # SEs
-    # # render.add_trajectory(se_trajes, radius=0.05, step=20, button_name='SEs', color='red')
-    # render.p.add_text(f'Cells: {total_dep_cells} \n'  # showing total number of deposited cells
-    #                   f'Height: {height} nm \n', position='upper_right',
-    #                   font_size=9)  # showing current height of the structure
-    #
-    # render.p.camera_position = [(463.14450307610286, 271.1171723376318, 156.56895424388603),
-    #                             (225.90027381807235, 164.9577775224395, 71.42188811921902),
-    #                             (-0.27787912231751677, -0.1411181984824172, 0.950194110399093)]
-    # camera_pos = render.show()
-
 
 def cache_params(params, deposit, surface):
     """
@@ -110,76 +42,38 @@ def cache_params(params, deposit, surface):
     return sim
 
 
-
-def run_simulation(sim: et.ETrajectory, deposit:np.ndarray, surface: np.ndarray, i0=25, j0=25):
+def rerun_simulation(y0, x0, deposit, surface, sim:et.ETrajectory, dt):
     """
-    Run simulation
+    Rerun simulation using existing MC simulation instance
 
-    :param sim: Instance of the class implementing simulation
-    :param deposit: initial structure
-    :param surface: array pointing to surface cells
-    :param i0: X beam position in array coordinates
-    :param j0: Y beam position in array coordinates
+    :param y0: beam y-position
+    :param x0: beam x-position
+    :param deposit: array representing solid structure
+    :param surface: array representing surface shape
+    :param sim: MC simulation instance
     :return:
     """
-
-    # sim.test_run(i0,j0)
-    sim.run(i0, j0)
-    m3d = map3d.ETrajMap3d()
-    m3d.get_structure(deposit, surface, sim.cell_dim)
-    m3d.map_follow(sim.passes,1) # mapping all cached MC trajectories for every generated point[x0, y0]
-    m3d.flux /= ((sim.dt*sim.cell_dim*sim.cell_dim)/sim.norm_factor)
-    plot(m3d, sim)
-    return sim
-
-
-def rerun_simulation(y0, x0, deposit, surface, sim, dt):
-    """
-    Rerun simulation using existing instance
-
-    :param y0:
-    :param x0:
-    :param deposit:
-    :param surface:
-    :param sim:
-    :return:
-    """
-    # picks = []
     start = timeit.default_timer()
-    # sim.run(y0, x0, 3000)
-    # t = timeit.default_timer()-start
-    # picks.append(copy.deepcopy(sim.passes))
-    # file = open(f'{sys.path[0]}{os.sep}Trajes_3000.txt', 'wb')
-    # pickle.dump(picks, file)
-    # file.close()
     sim.map_wrapper(y0, x0)
+    # sim.save_passes(f'{sim.N} passes', 'pickle')
     t = timeit.default_timer() - start
     print(f'\n{sim.N} trajectories took {t} s')
     print(f'Energy deposition took: \t SE preparation took: \t Flux counting took:')
     m3d = map3d.ETrajMap3d(deposit, surface, sim)
     start = timeit.default_timer()
+    # profiler = line_profiler.LineProfiler()
+    # profiled_func = profiler(m3d.map_follow)
+    # try:
+    #     profiled_func(sim.passes, 1)
+    # finally:
+    #     profiler.print_stats()
     m3d.map_follow(sim.passes, 1)
     t = timeit.default_timer() - start
     print(f' =  {t} s')
-
-
-    # print("Loading trajectories file...")
-    # file = open(f'{sys.path[0]}{os.sep}Trajes_200-4900.txt', 'rb')
-    # passes = pickle.load(file)
-    # file.close()
-    # print("Done.")
-    # file = open(f'{sys.path[0]}{os.sep}Test_map_follow{time.ctime()}.txt', 'w')
-    # file.write("Initial version\n")
-    # for pas in passes:
-    #     with timebudget(f'Simulation:{i}'):
-    #     start = timeit.default_timer()
-    #     m3d.map_trajectory(pas)
-    #     t = timeit.default_timer()-start
-    #     file.write(f'{len(pas)}\t{t}\n')
-    #     print(f'Run {len(pas)/100} with {len(pas)} iters took {t}')
-    # file.close()
     # plot(m3d, sim)
     return np.int32(m3d.flux/m3d.amplifying_factor*sim.norm_factor/(dt*sim.cell_dim*sim.cell_dim))
+
+
 
 
 if __name__ == '__main__':
