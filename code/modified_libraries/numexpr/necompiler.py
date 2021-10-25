@@ -863,12 +863,39 @@ def re_evaluate(local_dict=None):
 def evaluate_from_cache(cached_expr, out=None, casting='safe', order='K', local_dict=None):
     """Re-evaluate the previous executed array expression without any check.
 
-    This is meant for accelerating loops that are re-evaluating the same
+    This is meant for accelerating functions that are re-evaluating the same
     expression repeatedly without changing anything else than the operands.
     If unsure, use evaluate() which is safer.
 
     Parameters
     ----------
+    cached_expr : NumExpr instance
+
+    out : NumPy array, optional
+        An existing array where the outcome is going to be stored.  Care is
+        required so that this array has the same shape and type than the
+        actual outcome of the computation.  Useful for avoiding unnecessary
+        new array allocations.
+
+    casting : {'no', 'equiv', 'safe', 'same_kind', 'unsafe'}, optional
+        Controls what kind of data casting may occur when making a copy or
+        buffering.  Setting this to 'unsafe' is not recommended, as it can
+        adversely affect accumulations.
+
+      * 'no' means the data types should not be cast at all.
+      * 'equiv' means only byte-order changes are allowed.
+      * 'safe' means only casts which can preserve values are allowed.
+      * 'same_kind' means only safe casts or casts within a kind,
+        like float64 to float32, are allowed.
+      * 'unsafe' means any data conversions may be done.
+
+    order : {'C', 'F', 'A', or 'K'}, optional
+        Controls the iteration order for operands. 'C' means C order, 'F'
+        means Fortran order, 'A' means 'F' order if all the arrays are
+        Fortran contiguous, 'C' order otherwise, and 'K' means as close to
+        the order the array elements appear in memory as possible.  For
+        efficient computations, typically 'K'eep order (the default) is
+        desired.
 
     local_dict : dictionary, optional
         A dictionary that replaces the local operands in current frame.
@@ -885,10 +912,26 @@ def evaluate_from_cache(cached_expr, out=None, casting='safe', order='K', local_
     with evaluate_lock:
         return compiled_ex(*args, **kwargs)
 
-def cache_expression(ex, signature=(), local_dict=None, global_dict=None, out=None, order='K', casting='safe', **kwargs):
+def cache_expression(ex, signature=(), local_dict=None, global_dict=None, **kwargs):
+    """ Precompiles expressions for continious use
+
+    ex is a string forming an expression, like "2*a+3*b". The values for "a"
+    and "b" will by default be taken from the calling function's frame
+    (through use of sys._getframe()). Alternatively, they can be specifed
+    using the 'local_dict' or 'global_dict' arguments.
+
+    signature : list
+        Defines types of the variables used in the expression
+    local_dict : dictionary, optional
+        A dictionary that replaces the local operands in current frame.
+
+    global_dict : dictionary, optional
+        A dictionary that replaces the global operands in current frame.
+    :return:
+    """
     context = getContext({}, frame_depth=1)
     names,ex_uses_vml  = getExprNames(ex, context)
-    kwargs = {'out': out, 'order': order, 'casting': casting,
-              'ex_uses_vml': ex_uses_vml}
+    kwargs = {'out': None, 'order': None, 'casting': None,
+              'ex_uses_vml': None}
     compiled_ex = NumExpr(ex, signature, **context)
-    return dict(ex=compiled_ex, argnames=names, kwargs=kwargs)
+    return dict(ex=compiled_ex, argnames=names, local_dict=local_dict, kwargs=kwargs)

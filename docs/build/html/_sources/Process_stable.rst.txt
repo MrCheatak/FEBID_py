@@ -1,0 +1,7 @@
+Process\_stable module
+======================
+
+.. automodule:: Process_stable
+   :members:
+   :undoc-members:
+   :show-inheritance:

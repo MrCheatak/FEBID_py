@@ -3,6 +3,7 @@ import matplotlib.pyplot as plt
 import cProfile
 import numexpr
 from line_profiler import LineProfiler
+import ipyvolume as ipv
 
 D = 10000
 dt = 0.000001
@@ -234,3 +235,5 @@ if __name__ == '__main__':
     g = np.copy(grid[500, :, :])
     plot_it(g)
     qq=0
+    ipv.scatter()
+    ipv.f
