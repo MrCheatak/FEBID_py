@@ -1,17 +1,0 @@
-
-Bpython:S125"Remove this commented out code.(¬ä°óüÿÿÿÿ8¯Ç‘ì/
-Cpython:S125™"Remove this commented out code.(©á˜şÿÿÿÿ8¯Ç‘ì/
-Bpython:S125R"Remove this commented out code.(¬‰³ÿÿÿÿÿ8Àö†úü.
-=python:S125C"Remove this commented out code.(“ÊÄ8Ç¿ÒÇı.
-=python:S125l"Remove this commented out code.(¢•ºº8Àö†úü.
-Kpython:S1481"&Remove the unused local variable "im".(Œ¨ÖÎûÿÿÿÿ8Ç¿ÒÇı.
-Bpython:S125g"Remove this commented out code.(íÃøôıÿÿÿÿ8Ç¿ÒÇı.
-Bpython:S125"Remove this commented out code.(å§—‹ıÿÿÿÿ8¯Ç‘ì/
-=python:S125Z"Remove this commented out code.(ğÇÙ8Ç¿ÒÇı.
-Jpython:S1481ƒ"%Remove the unused local variable "b".(„Ç¬–şÿÿÿÿ8¯Ç‘ì/
-Opython:S5806"+Rename this variable; it shadows a builtin.(§Öºşüÿÿÿÿ8Ç¿ÒÇı.
-=python:S125L"Remove this commented out code.(À³óë8¿¹©”ÿ.
-=python:S125P"Remove this commented out code.(ÚÕ8Ç¿ÒÇı.
-Bpython:S125d"Remove this commented out code.(Ğıüÿÿÿÿ8¯Ç‘ì/
-Epython:S1481\"&Remove the unused local variable "pp".(ğµ«ı8Ç¿ÒÇı.
-Bpython:S125]"Remove this commented out code.(¼Ä–•ûÿÿÿÿ8Àö†úü.

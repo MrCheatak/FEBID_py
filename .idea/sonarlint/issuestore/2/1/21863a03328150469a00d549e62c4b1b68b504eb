@@ -1,12 +1,0 @@
-
-dpython:S117"MRename this parameter "T" to match the regular expression ^[_a-z][a-z0-9_]*$.(ƒ³Ζξ
-qpython:S117ΐ"YRename this local variable "Tmon_new" to match the regular expression ^[_a-z][a-z0-9_]*$.(‰ΉΚ
-lpython:S3776"TRefactor this function to reduce its Cognitive Complexity from 83 to the 15 allowed.(ƒ³Ζξ
-`python:S1854ƒ"GRemove this assignment to local variable 'dT'; the value is never used.(ή‰‰Χ
-kpython:S117ƒ"SRename this local variable "dT" to match the regular expression ^[_a-z][a-z0-9_]*$.(ή‰‰Χ
-ppython:S117"SRename this local variable "fT" to match the regular expression ^[_a-z][a-z0-9_]*$.(ρχάψÿÿÿÿ
-lpython:S3776h"TRefactor this function to reduce its Cognitive Complexity from 16 to the 15 allowed.(π“ρ
-7python:S125Έ"Remove this commented out code.(Λ§Ν
-epython:S117"NRename this parameter "T0" to match the regular expression ^[_a-z][a-z0-9_]*$.(ƒ³Ζξ
-rpython:S117"URename this local variable "Tmon" to match the regular expression ^[_a-z][a-z0-9_]*$.(‰σΞΖώÿÿÿÿ
-<python:S125χ"Remove this commented out code.(π ρ’ύÿÿÿÿ

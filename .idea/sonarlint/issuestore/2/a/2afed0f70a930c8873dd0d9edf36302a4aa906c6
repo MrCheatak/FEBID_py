@@ -1,41 +1,0 @@
-
-ypython:S3776›"TRefactor this function to reduce its Cognitive Complexity from 64 to the 15 allowed.(¸¸ÆÍøÿÿÿÿ8™º‡‚/
-tpython:S3776‹"TRefactor this function to reduce its Cognitive Complexity from 20 to the 15 allowed.(¢‡†º8ìıÇŒ‚/
-‚python:S117©"cRename this local variable "irradiated_area_2D" to match the regular expression ^[_a-z][a-z0-9_]*$.(æ…£ñ8­Ç‘ì/
-lpython:S117Æ"MRename this parameter "D" to match the regular expression ^[_a-z][a-z0-9_]*$.(«¯ÛÔ8™º‡‚/
-Bpython:S125_"Remove this commented out code.(ÕòŠåÿÿÿÿÿ8¯Úøˆ‚/
-Cpython:S125å"Remove this commented out code.(ÌŸ‰–üÿÿÿÿ8™º‡‚/
-Bpython:S125T"Remove this commented out code.(´§‹¥úÿÿÿÿ8­Ç‘ì/
->python:S125´"Remove this commented out code.(Çøœ8ìıÇŒ‚/
-Kpython:S1481®"+Remove the unused local variable "section".(¤Í‚•8ìıÇŒ‚/
->python:S125»"Remove this commented out code.(ÃûÍ·8ìıÇŒ‚/
-Mpython:S1481™"(Remove the unused local variable "surf".(Õø½Ëıÿÿÿÿ8­Ç‘ì/
->python:S125Ú"Remove this commented out code.(ÚäÅİ8ìıÇŒ‚/
-Cpython:S125"Remove this commented out code.(ºÇ¿²ıÿÿÿÿ8Ú‡ùŠ‚/
-5python:S125"Remove this commented out code.(ƒùG
->python:S125²"Remove this commented out code.(ÿÉ‘â8ìıÇŒ‚/
->python:S125¿"Remove this commented out code.(˜™ú¤8ìıÇŒ‚/
->python:S125‘"Remove this commented out code.(™ò˜¡8™º‡‚/
-Vpython:S1481”"1Remove the unused local variable "beam_exposure".(ÍØ¢¥ùÿÿÿÿ8ìıÇŒ‚/
-‡python:S117ª"cRename this local variable "irradiated_area_3D" to match the regular expression ^[_a-z][a-z0-9_]*$.(¾ÄË“ùÿÿÿÿ8ìıÇŒ‚/
-ppython:S1226ƒ"KIntroduce a new variable or use its initial value before reassigning 'res'.(ü®ˆ£ÿÿÿÿÿ8ìıÇŒ‚/
->python:S125«"Remove this commented out code.(Ç°ÃÑ8ìıÇŒ‚/
->python:S125Æ"Remove this commented out code.(ÈğÕã8ìıÇŒ‚/
-lpython:S1226‘"LIntroduce a new variable or use its initial value before reassigning 'surf'.(š®ìÄ8­Ç‘ì/
-Cpython:S125Á"Remove this commented out code.(¶ˆç¨øÿÿÿÿ8ìıÇŒ‚/
-Cpython:S125 "Remove this commented out code.(¢åÂÚùÿÿÿÿ8ÛÓ‚‹‚/
-Qpython:S1481µ"1Remove the unused local variable "beam_exposure".(´§ï8ìıÇŒ‚/
-Cpython:S125®"Remove this commented out code.(£ˆˆÜùÿÿÿÿ8ìıÇŒ‚/
-Fpython:S1481±"&Remove the unused local variable "k4".(ĞÉÒş8™º‡‚/
->python:S125É"Remove this commented out code.(‡¥¡·8ìıÇŒ‚/
-Qpython:S1481¬"1Remove the unused local variable "beam_exposure".(®›÷ù8ìıÇŒ‚/
-lpython:S117"MRename this parameter "D" to match the regular expression ^[_a-z][a-z0-9_]*$.(×æ¢ñ8™º‡‚/
->python:S125 "Remove this commented out code.(‚¿°¹8ìıÇŒ‚/
->python:S125¢"Remove this commented out code.(ÛÑáÒ8ìıÇŒ‚/
-6python:S125?"Remove this commented out code.(ß¤ƒ…
->python:S125Ç"Remove this commented out code.(¶²¡¶8ìıÇŒ‚/
-Cpython:S125¦"Remove this commented out code.(ëÍ™Èùÿÿÿÿ8ìıÇŒ‚/
-;python:S125"Remove this commented out code.(´ô¥Êşÿÿÿÿ
-rpython:S1226ƒ"MIntroduce a new variable or use its initial value before reassigning 'summ1'.(ü®ˆ£ÿÿÿÿÿ8ìıÇŒ‚/
-Cpython:S125¤"Remove this commented out code.(¡™Òÿÿÿÿÿ8ìıÇŒ‚/
-6python:S125*"Remove this commented out code.(á—
