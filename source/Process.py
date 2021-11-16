@@ -28,7 +28,7 @@ import line_profiler
 from Structure import Structure
 import VTK_Rendering as vr
 import etraj3d
-from modified_libraries.rolling import roll
+from libraries.rolling import roll
 
 # TODO: look into k-d trees
 # TODO: add a benchmark to determine optimal threads number for current machine

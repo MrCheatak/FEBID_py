@@ -12,7 +12,7 @@ import pyvista as pv
 from numpy.random import default_rng
 import line_profiler
 
-from modified_libraries.ray_traversal import traversal
+from libraries.ray_traversal import traversal
 
 
 class ETrajMap3d(object):

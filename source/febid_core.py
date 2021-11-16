@@ -30,7 +30,7 @@ from tqdm import tqdm
 from Process import Structure, Process
 import VTK_Rendering as vr
 import etraj3d, etrajectory, etrajmap3d
-from modified_libraries.rolling import roll
+from libraries.rolling import roll
 
 # It is assumed, that surface cell is a cell with a fully deposited cell(or substrate) under it and thus able produce deposit under irradiation.
 

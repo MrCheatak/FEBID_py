@@ -18,7 +18,7 @@ import timeit
 import line_profiler
 
 # Local packages
-from modified_libraries.ray_traversal import traversal
+from libraries.ray_traversal import traversal
 
 
 class ETrajectory(object):
