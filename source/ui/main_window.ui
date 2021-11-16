@@ -1,0 +1,1448 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<ui version="4.0">
+ <class>MainWindow</class>
+ <widget class="QMainWindow" name="MainWindow">
+  <property name="geometry">
+   <rect>
+    <x>0</x>
+    <y>0</y>
+    <width>614</width>
+    <height>458</height>
+   </rect>
+  </property>
+  <property name="windowTitle">
+   <string>MainWindow</string>
+  </property>
+  <widget class="QWidget" name="centralwidget">
+   <layout class="QVBoxLayout" name="verticalLayout">
+    <item>
+     <widget class="QTabWidget" name="tabWidget">
+      <property name="currentIndex">
+       <number>0</number>
+      </property>
+      <widget class="QWidget" name="tab">
+       <attribute name="title">
+        <string>FEBID</string>
+       </attribute>
+       <widget class="QGroupBox" name="groupBox">
+        <property name="geometry">
+         <rect>
+          <x>6</x>
+          <y>0</y>
+          <width>573</width>
+          <height>127</height>
+         </rect>
+        </property>
+        <property name="title">
+         <string>Initial conditions</string>
+        </property>
+        <widget class="QRadioButton" name="choice_geom_parameters_file">
+         <property name="geometry">
+          <rect>
+           <x>12</x>
+           <y>60</y>
+           <width>119</width>
+           <height>20</height>
+          </rect>
+         </property>
+         <property name="text">
+          <string>Parameters</string>
+         </property>
+        </widget>
+        <widget class="QRadioButton" name="choice_vtk_file">
+         <property name="geometry">
+          <rect>
+           <x>12</x>
+           <y>28</y>
+           <width>100</width>
+           <height>20</height>
+          </rect>
+         </property>
+         <property name="text">
+          <string>VTK file</string>
+         </property>
+         <property name="checked">
+          <bool>true</bool>
+         </property>
+        </widget>
+        <widget class="QRadioButton" name="choice_auto">
+         <property name="geometry">
+          <rect>
+           <x>12</x>
+           <y>94</y>
+           <width>159</width>
+           <height>20</height>
+          </rect>
+         </property>
+         <property name="text">
+          <string>Auto (from streamfile)</string>
+         </property>
+        </widget>
+        <widget class="QPushButton" name="open_vtk_file">
+         <property name="geometry">
+          <rect>
+           <x>138</x>
+           <y>20</y>
+           <width>113</width>
+           <height>32</height>
+          </rect>
+         </property>
+         <property name="text">
+          <string>Open file</string>
+         </property>
+        </widget>
+        <widget class="QLineEdit" name="geom_param_width">
+         <property name="geometry">
+          <rect>
+           <x>296</x>
+           <y>56</y>
+           <width>45</width>
+           <height>21</height>
+          </rect>
+         </property>
+         <property name="inputMask">
+          <string>0000</string>
+         </property>
+         <property name="readOnly">
+          <bool>true</bool>
+         </property>
+        </widget>
+        <widget class="QLineEdit" name="geom_param_height">
+         <property name="geometry">
+          <rect>
+           <x>488</x>
+           <y>56</y>
+           <width>45</width>
+           <height>21</height>
+          </rect>
+         </property>
+         <property name="inputMask">
+          <string>0000</string>
+         </property>
+         <property name="readOnly">
+          <bool>true</bool>
+         </property>
+        </widget>
+        <widget class="QLineEdit" name="geom_param_length">
+         <property name="geometry">
+          <rect>
+           <x>392</x>
+           <y>56</y>
+           <width>45</width>
+           <height>21</height>
+          </rect>
+         </property>
+         <property name="inputMask">
+          <string>0000</string>
+         </property>
+         <property name="readOnly">
+          <bool>true</bool>
+         </property>
+        </widget>
+        <widget class="QLabel" name="label">
+         <property name="geometry">
+          <rect>
+           <x>540</x>
+           <y>60</y>
+           <width>19</width>
+           <height>16</height>
+          </rect>
+         </property>
+         <property name="text">
+          <string>nm</string>
+         </property>
+        </widget>
+        <widget class="QPushButton" name="open_geom_parameters_file">
+         <property name="geometry">
+          <rect>
+           <x>138</x>
+           <y>54</y>
+           <width>113</width>
+           <height>32</height>
+          </rect>
+         </property>
+         <property name="text">
+          <string>Open file</string>
+         </property>
+        </widget>
+        <widget class="QLineEdit" name="vtk_filename">
+         <property name="geometry">
+          <rect>
+           <x>258</x>
+           <y>24</y>
+           <width>297</width>
+           <height>21</height>
+          </rect>
+         </property>
+         <property name="readOnly">
+          <bool>true</bool>
+         </property>
+        </widget>
+        <widget class="QLabel" name="label_3">
+         <property name="geometry">
+          <rect>
+           <x>258</x>
+           <y>60</y>
+           <width>37</width>
+           <height>16</height>
+          </rect>
+         </property>
+         <property name="text">
+          <string>width</string>
+         </property>
+        </widget>
+        <widget class="QLabel" name="label_4">
+         <property name="geometry">
+          <rect>
+           <x>348</x>
+           <y>60</y>
+           <width>41</width>
+           <height>16</height>
+          </rect>
+         </property>
+         <property name="text">
+          <string>length</string>
+         </property>
+        </widget>
+        <widget class="QLabel" name="label_5">
+         <property name="geometry">
+          <rect>
+           <x>446</x>
+           <y>60</y>
+           <width>41</width>
+           <height>16</height>
+          </rect>
+         </property>
+         <property name="text">
+          <string>height</string>
+         </property>
+        </widget>
+        <widget class="QLabel" name="label_6">
+         <property name="geometry">
+          <rect>
+           <x>198</x>
+           <y>96</y>
+           <width>60</width>
+           <height>16</height>
+          </rect>
+         </property>
+         <property name="text">
+          <string>Cell size:</string>
+         </property>
+        </widget>
+        <widget class="QLineEdit" name="cell_size_input">
+         <property name="geometry">
+          <rect>
+           <x>258</x>
+           <y>92</y>
+           <width>45</width>
+           <height>21</height>
+          </rect>
+         </property>
+         <property name="inputMask">
+          <string>0</string>
+         </property>
+         <property name="text">
+          <string>2</string>
+         </property>
+         <property name="readOnly">
+          <bool>true</bool>
+         </property>
+        </widget>
+        <widget class="QLabel" name="label_7">
+         <property name="geometry">
+          <rect>
+           <x>306</x>
+           <y>96</y>
+           <width>19</width>
+           <height>16</height>
+          </rect>
+         </property>
+         <property name="text">
+          <string>nm</string>
+         </property>
+        </widget>
+        <widget class="QLabel" name="label_30">
+         <property name="geometry">
+          <rect>
+           <x>512</x>
+           <y>94</y>
+           <width>19</width>
+           <height>16</height>
+          </rect>
+         </property>
+         <property name="text">
+          <string>nm</string>
+         </property>
+        </widget>
+        <widget class="QLineEdit" name="cell_size_input_mc_3">
+         <property name="geometry">
+          <rect>
+           <x>464</x>
+           <y>90</y>
+           <width>45</width>
+           <height>21</height>
+          </rect>
+         </property>
+         <property name="inputMask">
+          <string>00</string>
+         </property>
+        </widget>
+        <widget class="QLabel" name="label_31">
+         <property name="geometry">
+          <rect>
+           <x>354</x>
+           <y>94</y>
+           <width>105</width>
+           <height>16</height>
+          </rect>
+         </property>
+         <property name="text">
+          <string>Substrate height:</string>
+         </property>
+        </widget>
+       </widget>
+       <widget class="QGroupBox" name="groupBox_2">
+        <property name="geometry">
+         <rect>
+          <x>6</x>
+          <y>134</y>
+          <width>573</width>
+          <height>127</height>
+         </rect>
+        </property>
+        <property name="title">
+         <string>Pattern</string>
+        </property>
+        <widget class="QRadioButton" name="radioButton_7">
+         <property name="geometry">
+          <rect>
+           <x>12</x>
+           <y>60</y>
+           <width>119</width>
+           <height>20</height>
+          </rect>
+         </property>
+         <property name="text">
+          <string>Stream file</string>
+         </property>
+        </widget>
+        <widget class="QRadioButton" name="choice_simple_pattern">
+         <property name="geometry">
+          <rect>
+           <x>12</x>
+           <y>28</y>
+           <width>115</width>
+           <height>20</height>
+          </rect>
+         </property>
+         <property name="text">
+          <string>Simple pattern</string>
+         </property>
+         <property name="checked">
+          <bool>true</bool>
+         </property>
+        </widget>
+        <widget class="QRadioButton" name="radioButton_9">
+         <property name="geometry">
+          <rect>
+           <x>12</x>
+           <y>94</y>
+           <width>159</width>
+           <height>20</height>
+          </rect>
+         </property>
+         <property name="text">
+          <string>auto (from streamfile)</string>
+         </property>
+        </widget>
+        <widget class="QPushButton" name="pushButton_6">
+         <property name="geometry">
+          <rect>
+           <x>138</x>
+           <y>54</y>
+           <width>113</width>
+           <height>32</height>
+          </rect>
+         </property>
+         <property name="text">
+          <string>Open file</string>
+         </property>
+        </widget>
+        <widget class="QLineEdit" name="param2">
+         <property name="geometry">
+          <rect>
+           <x>406</x>
+           <y>26</y>
+           <width>43</width>
+           <height>21</height>
+          </rect>
+         </property>
+        </widget>
+        <widget class="QComboBox" name="comboBox">
+         <property name="geometry">
+          <rect>
+           <x>144</x>
+           <y>24</y>
+           <width>119</width>
+           <height>26</height>
+          </rect>
+         </property>
+         <property name="currentIndex">
+          <number>0</number>
+         </property>
+         <item>
+          <property name="text">
+           <string>Point</string>
+          </property>
+         </item>
+         <item>
+          <property name="text">
+           <string>Rectangle</string>
+          </property>
+         </item>
+         <item>
+          <property name="text">
+           <string>Square</string>
+          </property>
+         </item>
+         <item>
+          <property name="text">
+           <string>Triangle (equilateral)</string>
+          </property>
+         </item>
+         <item>
+          <property name="text">
+           <string>Circle</string>
+          </property>
+         </item>
+        </widget>
+        <widget class="QLabel" name="label_14">
+         <property name="geometry">
+          <rect>
+           <x>278</x>
+           <y>28</y>
+           <width>37</width>
+           <height>16</height>
+          </rect>
+         </property>
+         <property name="text">
+          <string>x</string>
+         </property>
+        </widget>
+        <widget class="QLineEdit" name="param1">
+         <property name="geometry">
+          <rect>
+           <x>308</x>
+           <y>24</y>
+           <width>45</width>
+           <height>21</height>
+          </rect>
+         </property>
+        </widget>
+        <widget class="QLabel" name="label_15">
+         <property name="geometry">
+          <rect>
+           <x>374</x>
+           <y>28</y>
+           <width>41</width>
+           <height>16</height>
+          </rect>
+         </property>
+         <property name="text">
+          <string>y</string>
+         </property>
+        </widget>
+        <widget class="QLineEdit" name="streamfile_filename">
+         <property name="geometry">
+          <rect>
+           <x>262</x>
+           <y>58</y>
+           <width>297</width>
+           <height>21</height>
+          </rect>
+         </property>
+         <property name="readOnly">
+          <bool>true</bool>
+         </property>
+        </widget>
+       </widget>
+       <widget class="QGroupBox" name="groupBox_4">
+        <property name="geometry">
+         <rect>
+          <x>6</x>
+          <y>270</y>
+          <width>573</width>
+          <height>93</height>
+         </rect>
+        </property>
+        <property name="title">
+         <string>Beam and precursor</string>
+        </property>
+        <widget class="QPushButton" name="pushButton_9">
+         <property name="geometry">
+          <rect>
+           <x>158</x>
+           <y>20</y>
+           <width>113</width>
+           <height>32</height>
+          </rect>
+         </property>
+         <property name="text">
+          <string>Open file</string>
+         </property>
+        </widget>
+        <widget class="QPushButton" name="pushButton_10">
+         <property name="geometry">
+          <rect>
+           <x>158</x>
+           <y>54</y>
+           <width>113</width>
+           <height>32</height>
+          </rect>
+         </property>
+         <property name="text">
+          <string>Open file</string>
+         </property>
+        </widget>
+        <widget class="QLineEdit" name="beam_parameters_filename">
+         <property name="geometry">
+          <rect>
+           <x>280</x>
+           <y>24</y>
+           <width>275</width>
+           <height>21</height>
+          </rect>
+         </property>
+         <property name="readOnly">
+          <bool>true</bool>
+         </property>
+        </widget>
+        <widget class="QLineEdit" name="precursor_parameters_filename">
+         <property name="geometry">
+          <rect>
+           <x>280</x>
+           <y>56</y>
+           <width>275</width>
+           <height>21</height>
+          </rect>
+         </property>
+         <property name="readOnly">
+          <bool>true</bool>
+         </property>
+        </widget>
+        <widget class="QLabel" name="label_12">
+         <property name="geometry">
+          <rect>
+           <x>8</x>
+           <y>30</y>
+           <width>117</width>
+           <height>16</height>
+          </rect>
+         </property>
+         <property name="text">
+          <string>Beam parameters</string>
+         </property>
+        </widget>
+        <widget class="QLabel" name="label_13">
+         <property name="geometry">
+          <rect>
+           <x>8</x>
+           <y>62</y>
+           <width>143</width>
+           <height>16</height>
+          </rect>
+         </property>
+         <property name="text">
+          <string>Precursor parameters</string>
+         </property>
+        </widget>
+       </widget>
+      </widget>
+      <widget class="QWidget" name="tab_2">
+       <attribute name="title">
+        <string>Monte Carlo</string>
+       </attribute>
+       <widget class="QGroupBox" name="groupBox_3">
+        <property name="geometry">
+         <rect>
+          <x>6</x>
+          <y>0</y>
+          <width>573</width>
+          <height>127</height>
+         </rect>
+        </property>
+        <property name="title">
+         <string>Initial conditions</string>
+        </property>
+        <widget class="QRadioButton" name="choice_geom_parameters_file_mc">
+         <property name="geometry">
+          <rect>
+           <x>12</x>
+           <y>60</y>
+           <width>119</width>
+           <height>20</height>
+          </rect>
+         </property>
+         <property name="text">
+          <string>Parameters</string>
+         </property>
+        </widget>
+        <widget class="QRadioButton" name="choice_vtk_file_mc">
+         <property name="geometry">
+          <rect>
+           <x>12</x>
+           <y>28</y>
+           <width>100</width>
+           <height>20</height>
+          </rect>
+         </property>
+         <property name="text">
+          <string>VTK file</string>
+         </property>
+         <property name="checked">
+          <bool>true</bool>
+         </property>
+        </widget>
+        <widget class="QPushButton" name="open_vtk_file_mc">
+         <property name="geometry">
+          <rect>
+           <x>138</x>
+           <y>20</y>
+           <width>113</width>
+           <height>32</height>
+          </rect>
+         </property>
+         <property name="text">
+          <string>Open file</string>
+         </property>
+        </widget>
+        <widget class="QLineEdit" name="geom_param_width_mc">
+         <property name="geometry">
+          <rect>
+           <x>296</x>
+           <y>56</y>
+           <width>45</width>
+           <height>21</height>
+          </rect>
+         </property>
+         <property name="inputMask">
+          <string>0000</string>
+         </property>
+        </widget>
+        <widget class="QLineEdit" name="geom_param_height_mc">
+         <property name="geometry">
+          <rect>
+           <x>488</x>
+           <y>56</y>
+           <width>45</width>
+           <height>21</height>
+          </rect>
+         </property>
+         <property name="inputMask">
+          <string>0000</string>
+         </property>
+        </widget>
+        <widget class="QLineEdit" name="geom_param_length_mc">
+         <property name="geometry">
+          <rect>
+           <x>392</x>
+           <y>56</y>
+           <width>45</width>
+           <height>21</height>
+          </rect>
+         </property>
+         <property name="inputMask">
+          <string>0000</string>
+         </property>
+        </widget>
+        <widget class="QLabel" name="label_2">
+         <property name="geometry">
+          <rect>
+           <x>540</x>
+           <y>60</y>
+           <width>19</width>
+           <height>16</height>
+          </rect>
+         </property>
+         <property name="text">
+          <string>nm</string>
+         </property>
+        </widget>
+        <widget class="QPushButton" name="open_geom_parameters_file_mc">
+         <property name="geometry">
+          <rect>
+           <x>138</x>
+           <y>54</y>
+           <width>113</width>
+           <height>32</height>
+          </rect>
+         </property>
+         <property name="text">
+          <string>Open file</string>
+         </property>
+        </widget>
+        <widget class="QLineEdit" name="vtk_filename_mc">
+         <property name="geometry">
+          <rect>
+           <x>258</x>
+           <y>24</y>
+           <width>297</width>
+           <height>21</height>
+          </rect>
+         </property>
+         <property name="readOnly">
+          <bool>true</bool>
+         </property>
+        </widget>
+        <widget class="QLabel" name="label_8">
+         <property name="geometry">
+          <rect>
+           <x>258</x>
+           <y>60</y>
+           <width>37</width>
+           <height>16</height>
+          </rect>
+         </property>
+         <property name="text">
+          <string>width</string>
+         </property>
+        </widget>
+        <widget class="QLabel" name="label_9">
+         <property name="geometry">
+          <rect>
+           <x>348</x>
+           <y>60</y>
+           <width>41</width>
+           <height>16</height>
+          </rect>
+         </property>
+         <property name="text">
+          <string>length</string>
+         </property>
+        </widget>
+        <widget class="QLabel" name="label_10">
+         <property name="geometry">
+          <rect>
+           <x>446</x>
+           <y>60</y>
+           <width>41</width>
+           <height>16</height>
+          </rect>
+         </property>
+         <property name="text">
+          <string>height</string>
+         </property>
+        </widget>
+        <widget class="QLabel" name="label_11">
+         <property name="geometry">
+          <rect>
+           <x>18</x>
+           <y>96</y>
+           <width>60</width>
+           <height>16</height>
+          </rect>
+         </property>
+         <property name="text">
+          <string>Cell size:</string>
+         </property>
+        </widget>
+        <widget class="QLineEdit" name="cell_size_input_mc">
+         <property name="geometry">
+          <rect>
+           <x>78</x>
+           <y>92</y>
+           <width>45</width>
+           <height>21</height>
+          </rect>
+         </property>
+         <property name="inputMask">
+          <string>00</string>
+         </property>
+         <property name="text">
+          <string>2</string>
+         </property>
+         <property name="placeholderText">
+          <string/>
+         </property>
+        </widget>
+        <widget class="QLabel" name="label_16">
+         <property name="geometry">
+          <rect>
+           <x>126</x>
+           <y>96</y>
+           <width>19</width>
+           <height>16</height>
+          </rect>
+         </property>
+         <property name="text">
+          <string>nm</string>
+         </property>
+        </widget>
+        <widget class="QLabel" name="label_19">
+         <property name="geometry">
+          <rect>
+           <x>170</x>
+           <y>96</y>
+           <width>105</width>
+           <height>16</height>
+          </rect>
+         </property>
+         <property name="text">
+          <string>Substrate height:</string>
+         </property>
+        </widget>
+        <widget class="QLineEdit" name="cell_size_input_mc_2">
+         <property name="geometry">
+          <rect>
+           <x>280</x>
+           <y>92</y>
+           <width>45</width>
+           <height>21</height>
+          </rect>
+         </property>
+         <property name="inputMask">
+          <string>00</string>
+         </property>
+        </widget>
+        <widget class="QLabel" name="label_20">
+         <property name="geometry">
+          <rect>
+           <x>328</x>
+           <y>96</y>
+           <width>19</width>
+           <height>16</height>
+          </rect>
+         </property>
+         <property name="text">
+          <string>nm</string>
+         </property>
+        </widget>
+       </widget>
+       <widget class="QGroupBox" name="groupBox_5">
+        <property name="geometry">
+         <rect>
+          <x>6</x>
+          <y>134</y>
+          <width>573</width>
+          <height>153</height>
+         </rect>
+        </property>
+        <property name="title">
+         <string>Beam parameters</string>
+        </property>
+        <widget class="QLineEdit" name="energy_cutoff">
+         <property name="geometry">
+          <rect>
+           <x>58</x>
+           <y>90</y>
+           <width>45</width>
+           <height>21</height>
+          </rect>
+         </property>
+         <property name="inputMask">
+          <string>0.00</string>
+         </property>
+         <property name="text">
+          <string>0.10</string>
+         </property>
+        </widget>
+        <widget class="QLabel" name="label_17">
+         <property name="geometry">
+          <rect>
+           <x>32</x>
+           <y>70</y>
+           <width>25</width>
+           <height>16</height>
+          </rect>
+         </property>
+         <property name="text">
+          <string>E0:</string>
+         </property>
+        </widget>
+        <widget class="QLineEdit" name="beam_energy">
+         <property name="geometry">
+          <rect>
+           <x>58</x>
+           <y>66</y>
+           <width>45</width>
+           <height>21</height>
+          </rect>
+         </property>
+         <property name="inputMask">
+          <string>00.00</string>
+         </property>
+         <property name="text">
+          <string>20.00</string>
+         </property>
+         <property name="placeholderText">
+          <string>20.00</string>
+         </property>
+        </widget>
+        <widget class="QLabel" name="label_18">
+         <property name="geometry">
+          <rect>
+           <x>20</x>
+           <y>94</y>
+           <width>41</width>
+           <height>16</height>
+          </rect>
+         </property>
+         <property name="text">
+          <string>Emin:</string>
+         </property>
+        </widget>
+        <widget class="QLineEdit" name="beam_parameters_filename_mc">
+         <property name="geometry">
+          <rect>
+           <x>142</x>
+           <y>28</y>
+           <width>415</width>
+           <height>21</height>
+          </rect>
+         </property>
+         <property name="readOnly">
+          <bool>true</bool>
+         </property>
+        </widget>
+        <widget class="QPushButton" name="open_beam_parameters_mc">
+         <property name="geometry">
+          <rect>
+           <x>12</x>
+           <y>24</y>
+           <width>113</width>
+           <height>32</height>
+          </rect>
+         </property>
+         <property name="text">
+          <string>Open file</string>
+         </property>
+        </widget>
+        <widget class="QLineEdit" name="number_of_e">
+         <property name="geometry">
+          <rect>
+           <x>58</x>
+           <y>114</y>
+           <width>45</width>
+           <height>21</height>
+          </rect>
+         </property>
+         <property name="inputMask">
+          <string>0000</string>
+         </property>
+         <property name="text">
+          <string>100</string>
+         </property>
+        </widget>
+        <widget class="QLabel" name="label_21">
+         <property name="geometry">
+          <rect>
+           <x>40</x>
+           <y>118</y>
+           <width>15</width>
+           <height>16</height>
+          </rect>
+         </property>
+         <property name="text">
+          <string>N:</string>
+         </property>
+        </widget>
+        <widget class="QLineEdit" name="gauss_dev">
+         <property name="geometry">
+          <rect>
+           <x>292</x>
+           <y>64</y>
+           <width>45</width>
+           <height>21</height>
+          </rect>
+         </property>
+         <property name="inputMask">
+          <string>00.00</string>
+         </property>
+         <property name="text">
+          <string>5.00</string>
+         </property>
+        </widget>
+        <widget class="QLabel" name="label_22">
+         <property name="geometry">
+          <rect>
+           <x>166</x>
+           <y>68</y>
+           <width>123</width>
+           <height>16</height>
+          </rect>
+         </property>
+         <property name="text">
+          <string>Gaussian deviation:</string>
+         </property>
+        </widget>
+        <widget class="QLineEdit" name="x_pos">
+         <property name="geometry">
+          <rect>
+           <x>292</x>
+           <y>88</y>
+           <width>45</width>
+           <height>21</height>
+          </rect>
+         </property>
+         <property name="inputMask">
+          <string>0000.0</string>
+         </property>
+         <property name="text">
+          <string>100.0</string>
+         </property>
+        </widget>
+        <widget class="QLabel" name="label_23">
+         <property name="geometry">
+          <rect>
+           <x>268</x>
+           <y>92</y>
+           <width>21</width>
+           <height>16</height>
+          </rect>
+         </property>
+         <property name="text">
+          <string>x:</string>
+         </property>
+        </widget>
+        <widget class="QLineEdit" name="y_pos">
+         <property name="geometry">
+          <rect>
+           <x>292</x>
+           <y>112</y>
+           <width>45</width>
+           <height>21</height>
+          </rect>
+         </property>
+         <property name="inputMask">
+          <string>0000.0</string>
+         </property>
+         <property name="text">
+          <string>100.0</string>
+         </property>
+        </widget>
+        <widget class="QLabel" name="label_25">
+         <property name="geometry">
+          <rect>
+           <x>268</x>
+           <y>116</y>
+           <width>21</width>
+           <height>16</height>
+          </rect>
+         </property>
+         <property name="text">
+          <string>y:</string>
+         </property>
+        </widget>
+        <widget class="QLabel" name="label_26">
+         <property name="geometry">
+          <rect>
+           <x>108</x>
+           <y>68</y>
+           <width>25</width>
+           <height>16</height>
+          </rect>
+         </property>
+         <property name="text">
+          <string>keV</string>
+         </property>
+        </widget>
+        <widget class="QLabel" name="label_27">
+         <property name="geometry">
+          <rect>
+           <x>108</x>
+           <y>92</y>
+           <width>25</width>
+           <height>16</height>
+          </rect>
+         </property>
+         <property name="text">
+          <string>keV</string>
+         </property>
+        </widget>
+        <widget class="QLabel" name="label_28">
+         <property name="geometry">
+          <rect>
+           <x>342</x>
+           <y>90</y>
+           <width>25</width>
+           <height>16</height>
+          </rect>
+         </property>
+         <property name="text">
+          <string>nm</string>
+         </property>
+        </widget>
+        <widget class="QLabel" name="label_29">
+         <property name="geometry">
+          <rect>
+           <x>342</x>
+           <y>114</y>
+           <width>25</width>
+           <height>16</height>
+          </rect>
+         </property>
+         <property name="text">
+          <string>nm</string>
+         </property>
+        </widget>
+       </widget>
+       <widget class="QGroupBox" name="groupBox_6">
+        <property name="geometry">
+         <rect>
+          <x>6</x>
+          <y>296</y>
+          <width>573</width>
+          <height>55</height>
+         </rect>
+        </property>
+        <property name="title">
+         <string>Beam and precursor</string>
+        </property>
+        <widget class="QPushButton" name="open_precursor_parameters_mc">
+         <property name="geometry">
+          <rect>
+           <x>158</x>
+           <y>20</y>
+           <width>113</width>
+           <height>32</height>
+          </rect>
+         </property>
+         <property name="text">
+          <string>Open file</string>
+         </property>
+        </widget>
+        <widget class="QLineEdit" name="precursor_parameters_filename_mc">
+         <property name="geometry">
+          <rect>
+           <x>280</x>
+           <y>24</y>
+           <width>275</width>
+           <height>21</height>
+          </rect>
+         </property>
+         <property name="readOnly">
+          <bool>true</bool>
+         </property>
+        </widget>
+        <widget class="QLabel" name="label_24">
+         <property name="geometry">
+          <rect>
+           <x>8</x>
+           <y>28</y>
+           <width>143</width>
+           <height>16</height>
+          </rect>
+         </property>
+         <property name="text">
+          <string>Precursor parameters</string>
+         </property>
+        </widget>
+       </widget>
+      </widget>
+     </widget>
+    </item>
+   </layout>
+  </widget>
+  <widget class="QMenuBar" name="menubar">
+   <property name="geometry">
+    <rect>
+     <x>0</x>
+     <y>0</y>
+     <width>614</width>
+     <height>22</height>
+    </rect>
+   </property>
+   <widget class="QMenu" name="menuFile">
+    <property name="title">
+     <string>File</string>
+    </property>
+    <addaction name="actionOpen_session"/>
+    <addaction name="actionAbout"/>
+   </widget>
+   <widget class="QMenu" name="menuHelp">
+    <property name="title">
+     <string>Help</string>
+    </property>
+    <addaction name="actionManual"/>
+   </widget>
+   <addaction name="menuFile"/>
+   <addaction name="menuHelp"/>
+  </widget>
+  <widget class="QStatusBar" name="statusbar"/>
+  <action name="actionAbout">
+   <property name="text">
+    <string>About</string>
+   </property>
+  </action>
+  <action name="actionOpen_session">
+   <property name="text">
+    <string>Open session</string>
+   </property>
+  </action>
+  <action name="actionManual">
+   <property name="text">
+    <string>Manual</string>
+   </property>
+  </action>
+ </widget>
+ <resources/>
+ <connections>
+  <connection>
+   <sender>choice_vtk_file</sender>
+   <signal>toggled(bool)</signal>
+   <receiver>MainWindow</receiver>
+   <slot>vtk_chosen()</slot>
+   <hints>
+    <hint type="sourcelabel">
+     <x>47</x>
+     <y>92</y>
+    </hint>
+    <hint type="destinationlabel">
+     <x>7</x>
+     <y>91</y>
+    </hint>
+   </hints>
+  </connection>
+  <connection>
+   <sender>choice_geom_parameters_file</sender>
+   <signal>toggled(bool)</signal>
+   <receiver>MainWindow</receiver>
+   <slot>geom_parameters_chosen()</slot>
+   <hints>
+    <hint type="sourcelabel">
+     <x>50</x>
+     <y>129</y>
+    </hint>
+    <hint type="destinationlabel">
+     <x>7</x>
+     <y>123</y>
+    </hint>
+   </hints>
+  </connection>
+  <connection>
+   <sender>choice_auto</sender>
+   <signal>toggled(bool)</signal>
+   <receiver>MainWindow</receiver>
+   <slot>auto_chosen()</slot>
+   <hints>
+    <hint type="sourcelabel">
+     <x>53</x>
+     <y>161</y>
+    </hint>
+    <hint type="destinationlabel">
+     <x>6</x>
+     <y>158</y>
+    </hint>
+   </hints>
+  </connection>
+  <connection>
+   <sender>choice_simple_pattern</sender>
+   <signal>toggled(bool)</signal>
+   <receiver>MainWindow</receiver>
+   <slot>simple_pattern_chosen()</slot>
+   <hints>
+    <hint type="sourcelabel">
+     <x>40</x>
+     <y>228</y>
+    </hint>
+    <hint type="destinationlabel">
+     <x>6</x>
+     <y>226</y>
+    </hint>
+   </hints>
+  </connection>
+  <connection>
+   <sender>radioButton_7</sender>
+   <signal>toggled(bool)</signal>
+   <receiver>MainWindow</receiver>
+   <slot>streamfile_chosen()</slot>
+   <hints>
+    <hint type="sourcelabel">
+     <x>51</x>
+     <y>257</y>
+    </hint>
+    <hint type="destinationlabel">
+     <x>7</x>
+     <y>259</y>
+    </hint>
+   </hints>
+  </connection>
+  <connection>
+   <sender>open_vtk_file</sender>
+   <signal>clicked()</signal>
+   <receiver>MainWindow</receiver>
+   <slot>open_vtk_file()</slot>
+   <hints>
+    <hint type="sourcelabel">
+     <x>200</x>
+     <y>90</y>
+    </hint>
+    <hint type="destinationlabel">
+     <x>221</x>
+     <y>25</y>
+    </hint>
+   </hints>
+  </connection>
+  <connection>
+   <sender>open_geom_parameters_file</sender>
+   <signal>clicked()</signal>
+   <receiver>MainWindow</receiver>
+   <slot>open_geom_parameters_file()</slot>
+   <hints>
+    <hint type="sourcelabel">
+     <x>172</x>
+     <y>125</y>
+    </hint>
+    <hint type="destinationlabel">
+     <x>183</x>
+     <y>22</y>
+    </hint>
+   </hints>
+  </connection>
+  <connection>
+   <sender>pushButton_6</sender>
+   <signal>clicked()</signal>
+   <receiver>MainWindow</receiver>
+   <slot>open_stream_file()</slot>
+   <hints>
+    <hint type="sourcelabel">
+     <x>206</x>
+     <y>260</y>
+    </hint>
+    <hint type="destinationlabel">
+     <x>607</x>
+     <y>279</y>
+    </hint>
+   </hints>
+  </connection>
+  <connection>
+   <sender>pushButton_9</sender>
+   <signal>clicked()</signal>
+   <receiver>MainWindow</receiver>
+   <slot>open_beam_parameters_file()</slot>
+   <hints>
+    <hint type="sourcelabel">
+     <x>243</x>
+     <y>361</y>
+    </hint>
+    <hint type="destinationlabel">
+     <x>605</x>
+     <y>320</y>
+    </hint>
+   </hints>
+  </connection>
+  <connection>
+   <sender>pushButton_10</sender>
+   <signal>clicked()</signal>
+   <receiver>MainWindow</receiver>
+   <slot>open_precursor_parameters_file()</slot>
+   <hints>
+    <hint type="sourcelabel">
+     <x>267</x>
+     <y>397</y>
+    </hint>
+    <hint type="destinationlabel">
+     <x>605</x>
+     <y>379</y>
+    </hint>
+   </hints>
+  </connection>
+  <connection>
+   <sender>open_vtk_file_mc</sender>
+   <signal>clicked()</signal>
+   <receiver>MainWindow</receiver>
+   <slot>open_vtk_file()</slot>
+   <hints>
+    <hint type="sourcelabel">
+     <x>215</x>
+     <y>91</y>
+    </hint>
+    <hint type="destinationlabel">
+     <x>134</x>
+     <y>27</y>
+    </hint>
+   </hints>
+  </connection>
+  <connection>
+   <sender>choice_vtk_file_mc</sender>
+   <signal>toggled(bool)</signal>
+   <receiver>MainWindow</receiver>
+   <slot>vtk_chosen_mc()</slot>
+   <hints>
+    <hint type="sourcelabel">
+     <x>37</x>
+     <y>94</y>
+    </hint>
+    <hint type="destinationlabel">
+     <x>8</x>
+     <y>83</y>
+    </hint>
+   </hints>
+  </connection>
+  <connection>
+   <sender>choice_geom_parameters_file_mc</sender>
+   <signal>toggled(bool)</signal>
+   <receiver>MainWindow</receiver>
+   <slot>geom_parameters_chosen_mc()</slot>
+   <hints>
+    <hint type="sourcelabel">
+     <x>48</x>
+     <y>127</y>
+    </hint>
+    <hint type="destinationlabel">
+     <x>9</x>
+     <y>118</y>
+    </hint>
+   </hints>
+  </connection>
+  <connection>
+   <sender>open_beam_parameters_mc</sender>
+   <signal>clicked()</signal>
+   <receiver>MainWindow</receiver>
+   <slot>open_beam_parameters_file_mc()</slot>
+   <hints>
+    <hint type="sourcelabel">
+     <x>66</x>
+     <y>226</y>
+    </hint>
+    <hint type="destinationlabel">
+     <x>8</x>
+     <y>222</y>
+    </hint>
+   </hints>
+  </connection>
+  <connection>
+   <sender>open_precursor_parameters_mc</sender>
+   <signal>clicked()</signal>
+   <receiver>MainWindow</receiver>
+   <slot>open_precursor_parameters_file_mc()</slot>
+   <hints>
+    <hint type="sourcelabel">
+     <x>202</x>
+     <y>384</y>
+    </hint>
+    <hint type="destinationlabel">
+     <x>10</x>
+     <y>383</y>
+    </hint>
+   </hints>
+  </connection>
+ </connections>
+ <slots>
+  <slot>vtk_chosen()</slot>
+  <slot>geom_parameters_chosen()</slot>
+  <slot>auto_chosen()</slot>
+  <slot>simple_pattern_chosen()</slot>
+  <slot>streamfile_chosen()</slot>
+  <slot>open_vtk_file()</slot>
+  <slot>open_geom_parameters_file()</slot>
+  <slot>open_stream_file()</slot>
+  <slot>open_beam_parameters_file()</slot>
+  <slot>open_precursor_parameters_file()</slot>
+  <slot>vtk_chosen_mc()</slot>
+  <slot>geom_parameters_chosen_mc()</slot>
+  <slot>open_beam_parameters_file_mc()</slot>
+  <slot>open_precursor_parameters_file_mc()</slot>
+ </slots>
+</ui>
