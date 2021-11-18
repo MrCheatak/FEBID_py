@@ -540,7 +540,7 @@ def open_stream_file(offset=1.5):
 
 
 # @jit(nopython=True, parallel=True)
-def deposition(deposit, precursor, flux_matrix, surface_bool, sigma_V_dt, gr = 1):
+def deposition(deposit, precursor, flux_flat, index, sigma_V_dt, gr = 1.0):
 
     """
     Calculates deposition on the surface for a given time step dt (outer loop)
@@ -554,7 +554,10 @@ def deposition(deposit, precursor, flux_matrix, surface_bool, sigma_V_dt, gr = 1
     # Instead of processing cell by cell and on the whole surface, it is implemented to process only (effectively) irradiated area and array-wise(thanks to Numpy)
     # Math here cannot be efficiently simplified, because multiplication of constant variables here produces a value below np.float32 accuracy
     # np.float32 — ~1E-7, produced value — ~1E-10
-    deposit[surface_bool] += precursor[surface_bool] * flux_matrix[surface_bool] * sigma_V_dt * gr
+    # deposit[surface_bool] += precursor[surface_bool] * flux_matrix[surface_bool] * sigma_V_dt * gr
+    const = sigma_V_dt * gr
+    deposit[index] += precursor[index] * flux_flat * const
+
 
 
 # @jit(nopython=True, parallel=True)
@@ -569,15 +572,16 @@ def update_surface(deposit, precursor, surface_bool, semi_surf_bool, ghosts_bool
     :param ghosts_bool: array representing ghost cells
     :return: changes surface, semi-surface and ghosts arrays
     """
-
-    new_deposits = np.argwhere(deposit>=1) # looking for new deposits
-    if new_deposits.any():
+    # new_deposits = np.argwhere(deposit >= 1)  # looking for new deposits
+    if deposit.max()>=1:
+        nd = (deposit>=1).nonzero()
+        new_deposits = [(nd[0][i], nd[1][i], nd[2][i]) for i in range(nd[0].shape[0])]
         for cell in new_deposits:
-            # deposit[cell[0]+1, cell[1], cell[2]] += deposit[cell[0], cell[1], cell[2]] - 1  # if the cell was filled above unity, transferring that surplus to the cell above
-            deposit[cell[0], cell[1], cell[2]] = -1  # a fully deposited cell is always a minus unity
-            precursor[cell[0], cell[1], cell[2]] = 1
-            ghosts_bool[cell[0], cell[1], cell[2]] = True # deposited cell belongs to ghost shell
-            surface_bool[cell[0], cell[1], cell[2]] = False  # rising the surface one cell up (new cell)
+            # deposit[cell[0]+1, cell[1], cell[2]] += deposit[cell] - 1  # if the cell was filled above unity, transferring that surplus to the cell above
+            deposit[cell] = -1  # a fully deposited cell is always a minus unity
+            precursor[cell] = 0
+            ghosts_bool[cell] = True  # deposited cell belongs to ghost shell
+            surface_bool[cell] = False  # rising the surface one cell up (new cell)
 
             # Instead of using classical conditions, boolean arrays are used to select elements
             # First, a condition array is created, that picks only elements that satisfy conditions
@@ -690,10 +694,10 @@ def update_surface(deposit, precursor, surface_bool, semi_surf_bool, ghosts_bool
             condition = np.logical_and(surf_kern==0, semi_s_kern==0) # True for elements that are neither surface nor semi-surface cells
             ghosts_kern[condition] = True
 
-            deposit[cell[0], cell[1], cell[2]] = -1  # a fully deposited cell is always a minus unity
-            precursor[cell[0], cell[1], cell[2]] = -1
-            ghosts_bool[cell[0], cell[1], cell[2]] = True # deposited cell belongs to ghost shell
-            surface_bool[cell[0], cell[1], cell[2]] = False  # rising the surface one cell up (new cell)
+            deposit[cell] = -1  # a fully deposited cell is always a minus unity
+            precursor[cell] = 0
+            ghosts_bool[cell] = True # deposited cell belongs to ghost shell
+            surface_bool[cell] = False  # rising the surface one cell up (new cell)
             precursor_kern = precursor[neighbors_2nd]
             precursor_kern[semi_s_kern] += 0.0001 # only for plotting purpose (to pass vtk threshold filter)
             precursor_kern[surf_kern] +=0.0001
@@ -784,7 +788,6 @@ def refresh_ghosts(precursor, ghosts_bool, x, y, z):
         ghosts_bool[z, y, x + 1] = True
 
 
-# @profile
 def precursor_density(flux_matrix, precursor, surface_bool, ghosts_bool, F, n0, tau, sigma, D, dt):
     """
     Recalculates precursor density on the whole surface
@@ -807,7 +810,6 @@ def precursor_density(flux_matrix, precursor, surface_bool, ghosts_bool, F, n0, 
 
 
 # @jit(nopython=False, parallel=True)
-# noinspection PyUnusedLocal
 def rk4(dt, sub, F, n0, tau, sigma, flux_matrix=0):
     """
     Calculates increment of precursor density by Runge-Kutta method
@@ -1069,7 +1071,6 @@ def buffer_constants(precursor: dict, settings: dict, sim_params: dict):
     
 # /The printing loop.
 # @jit(nopython=True)
-# @profile
 def printing(loops=1, dwell_time=1):
     """
     Performs FEBID printing process in a zig-zag manner for given number of times
@@ -1111,6 +1112,10 @@ def printing(loops=1, dwell_time=1):
     y_start, y_end, x_start, x_end = 0, 0, 0, 0
     irradiated_area_3D = None
 
+    # Deposition index
+    deposition_index = None
+    beam_matrix_flat = None
+
     flag = True
     # precursor[sub_h, 30, 30] = 0.01
     render = vr.Render(structure.cell_dimension)
@@ -1138,16 +1143,18 @@ def printing(loops=1, dwell_time=1):
             render.p.clear()
             total_dep_cells.append(np.count_nonzero(deposit[deposit < 0]) - init_cells)
             growth_rate.append((total_dep_cells[i] - total_dep_cells[i - 1]) / (time_stamp - time_step + 0.001) * 60 * 60)
-            render._add_3Darray(precursor, 0.00001, 1, opacity=0.5, show_edges=True, exclude_zeros=False,
-                               scalar_name='Precursor',
-                               button_name='precursor', cmap='plasma')
-            # render.add_3Darray(deposit, structure.cell_dimension, -2, -0.5, 0.7, scalar_name='Deposit',
+            render._add_3Darray(precursor, 0.000001, 1, opacity=0.5, show_edges=True, exclude_zeros=False,
+                                scalar_name='Precursor',
+                                button_name='precursor', cmap='plasma')
+            render.meshes_count += 1
+            # render.add_3Dar1ray(deposit, structure.cell_dimension, -2, -0.5, 0.7, scalar_name='Deposit',
             #            button_name='Deposit', color='white', show_scalar_bar=False)
             render.p.add_text(f'Time: {str(datetime.timedelta(seconds=int(time_stamp)))} \n'
                               f'Sim. time: {(t):.8f} s \n'
                               f'Speed: {(t / time_stamp):.8f} \n'  # showing time passed
                               f'Relative growth rate: {int(total_dep_cells[i] / time_stamp * 60 * 60)} cell/h \n'  # showing average growth rate
-                              f'Real growth rate: {int(total_dep_cells[i] / t * 60)} cell/min \n', position='upper_left',
+                              f'Real growth rate: {int(total_dep_cells[i] / t * 60)} cell/min \n',
+                              position='upper_left',
                               font_size=12)  # showing average growth rate
             render.p.add_text(f'Cells: {total_dep_cells[i]} \n'  # showing total number of deposited cells
                               f'Height: {max_z * structure.cell_dimension} nm \n', position='upper_right',
@@ -1155,52 +1162,25 @@ def printing(loops=1, dwell_time=1):
             redraw_flag = False
         else:
             # render.p.mesh['precursor'] = precursor[precursor!=0]
-            render.p.update_scalars(precursor[precursor>0])
-            render.p.update_scalar_bar_range(clim=[precursor[precursor>0].min(), precursor.max()])
+            render.p.update_scalars(precursor[precursor > 0])
+            render.p.update_scalar_bar_range(clim=[precursor[precursor > 0].min(), precursor.max()])
         render.p.update()
         return frame, redraw_flag
 
     for l in tqdm(range(0, loops)):  # loop repeats
-        if timeit.default_timer() >= start_time:
+        # if timeit.default_timer() >= start_time:
+        #
+        #     # structure.deposit = deposit
+        #     # structure.precursor = precursor
+        #     # structure.ghosts_bool = ghosts_bool
+        #     # structure.surface_bool = surface_bool
+        #     # vr.save_deposited_structure(structure, f'{l/1000}k_of_{loops/1000}_loops_k_gr4 ')
+        #     time_stamp += time_step
+        #     start_time += time_step
+        #     print(f'Time passed: {time_stamp}, Av.speed: {l/time_stamp}')
 
-            # structure.deposit = deposit
-            # structure.precursor = precursor
-            # structure.ghosts_bool = ghosts_bool
-            # structure.surface_bool = surface_bool
-            # vr.save_deposited_structure(structure, f'{l/1000}k_of_{loops/1000}_loops_k_gr4 ')
-            time_stamp += time_step
-            start_time += time_step
-            print(f'Time passed: {time_stamp}, Av.speed: {l/time_stamp}')
-        if timeit.default_timer() > frame:
-            frame += frame_rate
-            if a == 1:
-                i += 1
-                render.p.clear()
-                total_dep_cells.append(np.count_nonzero(deposit[deposit < 0]) - init_cells)
-                growth_rate.append((total_dep_cells[i] - total_dep_cells[i - 1]) / (time_stamp - time_step + 0.001) * 60 * 60)
-                render._add_3Darray(precursor, 0.00001, 1, opacity=0.5, show_edges=True, exclude_zeros=False,
-                                    scalar_name='Precursor',
-                                    button_name='precursor', cmap='plasma')
-                render.meshes_count += 1
-                # render.add_3Dar1ray(deposit, structure.cell_dimension, -2, -0.5, 0.7, scalar_name='Deposit',
-                #            button_name='Deposit', color='white', show_scalar_bar=False)
-                render.p.add_text(f'Time: {str(datetime.timedelta(seconds=int(time_stamp)))} \n'
-                                  f'Sim. time: {(t):.8f} s \n'
-                                  f'Speed: {(t / time_stamp):.8f} \n'  # showing time passed
-                                  f'Relative growth rate: {int(total_dep_cells[i] / time_stamp * 60 * 60)} cell/h \n'  # showing average growth rate
-                                  f'Real growth rate: {int(total_dep_cells[i] / t * 60)} cell/min \n',
-                                  position='upper_left',
-                                  font_size=12)  # showing average growth rate
-                render.p.add_text(f'Cells: {total_dep_cells[i]} \n'  # showing total number of deposited cells
-                                  f'Height: {max_z * structure.cell_dimension} nm \n', position='upper_right',
-                                  font_size=12)  # showing current height of the structure
-                redraw_flag = False
-                a = 0
-            else:
-                # render.p.mesh['precursor'] = precursor[precursor!=0]
-                render.p.update_scalars(precursor[precursor > 0])
-                render.p.update_scalar_bar_range(clim=[precursor[precursor > 0].min(), precursor.max()])
-            render.p.update()
+        # if timeit.default_timer() > frame:
+        #     frame, a = show_threaded(frame, i, a)
         if flag:
             start = timeit.default_timer()
             beam_matrix = etraj3d.rerun_simulation(y, x, deposit, surface_bool, sim, dt)
@@ -1210,10 +1190,12 @@ def printing(loops=1, dwell_time=1):
             max_z = int(sub_h + np.nonzero(surface_bool)[0].max() + 3)
             flag = False
             irradiated_area_3D = np.s_[sub_h:max_z, y_start:y_end,x_start:x_end]  # a slice of the currently irradiated area
+            deposition_index = beam_matrix[irradiated_area_3D].nonzero()
+            beam_matrix_flat = beam_matrix[irradiated_area_3D][deposition_index]
         deposition(deposit[irradiated_area_3D],
                    precursor[irradiated_area_3D],
-                   beam_matrix[irradiated_area_3D],
-                   surface_bool[irradiated_area_3D], sigma*V*dt, 4)  # depositing on a selected area
+                   beam_matrix_flat,
+                   deposition_index, sigma*V*dt, 0.01)  # depositing on a selected area
         redraw_flag = flag = update_surface(deposit[irradiated_area_3D],
                                precursor[irradiated_area_3D],
                                surface_bool[irradiated_area_3D],
