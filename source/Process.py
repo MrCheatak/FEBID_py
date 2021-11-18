@@ -788,7 +788,7 @@ def refresh_ghosts(precursor, ghosts_bool, x, y, z):
         ghosts_bool[z, y, x + 1] = True
 
 
-def precursor_density(flux_matrix, precursor, surface_bool, ghosts_bool, F, n0, tau, sigma, D, dt):
+def precursor_density(flux_matrix_flat, precursor, surface_bool, surface_full_bool, surface_index, ghosts, F, n0, tau, sigma, D, dt):
     """
     Recalculates precursor density on the whole surface
 
@@ -800,11 +800,11 @@ def precursor_density(flux_matrix, precursor, surface_bool, ghosts_bool, F, n0, 
     :param dt: time step
     :return: changes precursor array
     """
-    # profiled_func(precursor, surface_bool, ghosts_bool, D, dt)
-    diffusion_matrix = laplace_term_rolling(precursor, surface_bool, ghosts_bool, D, dt)  # Diffusion term is calculated separately and added in the end
-    precursor[surface_bool] += rk4(dt, precursor[surface_bool], F, n0, tau, sigma, flux_matrix[surface_bool]) # An increment is calculated through Runge-Kutta method without the diffusion term
+    # diffusion_matrix = laplace_term_rolling(precursor, surface_full_bool, ghosts, D, dt)  # Diffusion term is calculated separately and added in the end
+    diffusion_matrix = laplace_term_stencil(precursor, surface_full_bool, surface_index, D, dt) # Diffusion term is calculated separately and added in the end
+    precursor[surface_bool] += rk4(dt, precursor[surface_bool], F, n0, tau, sigma, flux_matrix_flat) # An increment is calculated through Runge-Kutta method without the diffusion term
     # precursor[semi_surf_bool] += rk4(dt, precursor[semi_surf_bool])  # same process for semi-cells, but without dissociation term
-    precursor+=diffusion_matrix # finally adding diffusion term
+    precursor[surface_full_bool]+=diffusion_matrix # finally adding diffusion term
     # if precursor[precursor > 1] != 0:
     #     raise Exception("Normalized precursor density is more than 1")
 
@@ -862,6 +862,34 @@ def rk4_diffusion(grid, ghosts_bool, D, dt):
     # numexpr.set_num_threads(nn)
     return evaluate_cached(expressions["rk4"], casting='same_kind')
 
+def laplace_term_stencil(grid, surface, index, D, dt, add=0, div=0):
+    """
+    Calculates diffusion term for all surface cells using stencil operator
+
+    :param grid: 3D precursor density array
+    :param surface: 3D boolean surface array
+    :param index: a tuple of 3 indices (z,y,x) of surface cells
+    :param D: diffusion coefficient
+    :param dt: time step
+    :param add: Runge-Kutta intermediate member
+    :param div:
+    :return: to grid array
+    """
+    grid += add
+    # grid = grid + add
+    # grid_out = copy.copy(grid)
+    # grid_out *= -6
+    grid_out = -6*grid
+    # Creating index
+    # index = surface.nonzero()
+    # z = np.intc(index[0])
+    # y = np.intc(index[1])
+    # x = np.intc(index[2])
+    roll.stencil(grid_out, grid, *index )
+    grid -= add
+    return grid_out[surface]*dt*D
+    # return evaluate_cached(expressions["laplace1"], local_dict={'dt_D': dt*D, 'grid_out':grid_out[surface]}, casting='same_kind')
+
 
 # @jit(nopython=True, parallel=True, forceobj=False)
 def laplace_term_rolling(grid, surface, ghosts_bool, D, dt, add = 0, div: int = 0):
@@ -870,6 +898,7 @@ def laplace_term_rolling(grid, surface, ghosts_bool, D, dt, add = 0, div: int = 
 
 
     :param grid: 3D precursor density array
+    :param surface: 3D boolean surface array
     :param ghosts_bool: array representing ghost cells
     :param D: diffusion coefficient
     :param dt: time step
@@ -878,7 +907,7 @@ def laplace_term_rolling(grid, surface, ghosts_bool, D, dt, add = 0, div: int = 
     :return: to grid array
     """
 
-    # Debugging note: it would be more elegant to just use numpy.roll() on the ghosts_bool to assign neighboring values
+    # Debugging note_: it would be more elegant to just use numpy.roll() on the ghosts_bool to assign neighboring values
     # to ghost cells. But Numpy doesn't retain array structure when utilizing boolean index streaming. It rather extracts all the cells
     # (that correspond to True in our case) and processes them as a flat array. It caused the shifted values for ghost cells to
     # be assigned to the previous(first) layer, which was not processed by numpy.roll() when it rolled backwards.
@@ -886,7 +915,6 @@ def laplace_term_rolling(grid, surface, ghosts_bool, D, dt, add = 0, div: int = 
     grid = grid + add
     grid_out = copy.copy(grid)
     grid_out *= -6
-    gs = np.logical_or(ghosts_bool, surface)
 
     # X axis:
     # No need to have a separate array of values, when whe can conveniently call them from the original data
@@ -961,7 +989,8 @@ def laplace_term_rolling(grid, surface, ghosts_bool, D, dt, add = 0, div: int = 
     grid_out.reshape(-1)[index] = 0 # result also has to be cleaned as it contains redundant values in ghost cells
     # numexpr: 1 core performs better
     # numexpr.set_num_threads(nn)
-    return evaluate_cached(expressions["laplace1"], local_dict={'dt_D': dt*D, 'grid_out':grid_out}, casting='same_kind')
+    return grid_out[surface]*dt*D
+    # return evaluate_cached(expressions["laplace1"], local_dict={'dt_D': dt*D, 'grid_out':grid_out}, casting='same_kind')
     # else:
     #     return evaluate_cached(expressions["laplace2"], local_dict={'dt_D_div': dt*D/div, 'grid_out':grid_out}, casting='same_kind')
 
@@ -1001,6 +1030,7 @@ def initialize_framework(from_file=False):
             structure.precursor[structure.surface_bool] = nr
             structure.precursor[structure.semi_surface_bool] = nr
         except FileNotFoundError:
+            print("File not found.")
             structure.create_from_parameters(sim_params['cell_dimension'], sim_params['width'], sim_params['length'],
                                   sim_params['height'], sim_params['substrate_height'], nr)
     else:
@@ -1103,12 +1133,28 @@ def printing(loops=1, dwell_time=1):
     ghosts_bool = structure.ghosts_bool
     deposit = structure.deposit
     precursor = structure.precursor
+    precursor[precursor == -1] = 0
+    surface_full_bool = np.logical_or(surface_bool, semi_surface_bool) # this is an axillary array used to apply diffusion term for both surface and semi-surface cells
+
+    max_z=int(sub_h + np.nonzero(surface_bool)[0].max()+3) # used to track the highest point
+
+    # Surface index
+    index = surface_full_bool[sub_h:max_z,:,:].nonzero()
+    z = np.intc(index[0])
+    y = np.intc(index[1])
+    x = np.intc(index[2])
+    surface_index = (z,y,x)
+
+    # Deposition index
+    deposition_index = None
+    beam_matrix_flat = None
+    beam_matrix_surface = beam_matrix[sub_h:max_z,:,:][surface_bool[sub_h:max_z,:,:]]
 
     sim = etraj3d.cache_params(mc_config, deposit, surface_bool)
 
-    y, x = structure.ydim / 2, structure.xdim / 2
+    y0, x0 = structure.ydim / 2, structure.xdim / 2
 
-    max_z=int(sub_h + np.nonzero(surface_bool)[0].max()+3) # used to track the highest point
+
     y_start, y_end, x_start, x_end = 0, 0, 0, 0
     irradiated_area_3D = None
 
@@ -1135,7 +1181,8 @@ def printing(loops=1, dwell_time=1):
     i = 0
     redraw_flag = True
     a = 1
-    timeit.default_timer()
+    start_time = timeit.default_timer()
+    time_stamp = timeit.default_timer()
     def show_threaded(frame, i, redraw_flag):
         frame += frame_rate
         i += 1
@@ -1183,11 +1230,11 @@ def printing(loops=1, dwell_time=1):
         #     frame, a = show_threaded(frame, i, a)
         if flag:
             start = timeit.default_timer()
-            beam_matrix = etraj3d.rerun_simulation(y, x, deposit, surface_bool, sim, dt)
+            beam_matrix = etraj3d.rerun_simulation(y0, x0, deposit, surface_bool, sim, dt)
             print(f'Took total {timeit.default_timer() - start}')
             beam_matrix[beam_matrix<0] = 0
             y_start, y_end, x_start, x_end = define_irr_area(beam_matrix[sub_h:max_z])
-            max_z = int(sub_h + np.nonzero(surface_bool)[0].max() + 3)
+            max_z = int(sub_h + np.nonzero(surface_bool)[0].max() + 2)
             flag = False
             irradiated_area_3D = np.s_[sub_h:max_z, y_start:y_end,x_start:x_end]  # a slice of the currently irradiated area
             deposition_index = beam_matrix[irradiated_area_3D].nonzero()
@@ -1202,18 +1249,25 @@ def printing(loops=1, dwell_time=1):
                                semi_surface_bool[irradiated_area_3D],
                                ghosts_bool[irradiated_area_3D],)  # updating surface on a selected area
         if flag:
+            surface_full_bool = np.logical_or(surface_bool, semi_surface_bool)
+            index = surface_full_bool[sub_h:max_z,:,:].nonzero()
+            z = np.intc(index[0])
+            y = np.intc(index[1])
+            x = np.intc(index[2])
+            surface_index = (z,y,x)
+            beam_matrix_surface = beam_matrix[sub_h:max_z, :, :][surface_bool[sub_h:max_z, :, :]]
             a = 1
         # if t % refresh_dt < 1E-6:
         # TODO: look into DASK for processing arrays by chunks in parallel
-        precursor_density(beam_matrix[sub_h:max_z, :, :],
+        profiled_func(beam_matrix_surface,
                           precursor[sub_h:max_z, :, :],
                           surface_bool[sub_h:max_z, :, :],
-                          ghosts_bool[sub_h:max_z, :, :], F, n0, tau, sigma, D, dt)
+                          surface_full_bool[sub_h:max_z,:,:],
+                          surface_index,
+                          ghosts_bool[sub_h:max_z,:,:], F, n0, tau, sigma, D, dt)
         t += dt
     a=0
     b=0
-
-
 
 
 
