@@ -1,5 +1,6 @@
 # Default packages
 import os, sys, time
+import timeit
 from datetime import datetime
 import copy
 
@@ -14,7 +15,6 @@ import pickle
 
 # Local packages
 from Structure import Structure
-
 
 
 
@@ -188,16 +188,45 @@ class Render:
 
         mesh = pv.PolyData()
         # If energies are provided, they are gonna be used as scalars to color trajectories
-        print("Rendering trajectories:")
+        start = timeit.default_timer()
         if any(energies):
+            print('Rendering PEs...', end='')
             for i in tqdm(range(0, len(traj), step)): #
-                mesh = mesh + self.__render_trajectory(traj[i], energies[i], radius, name)
-                # mesh.plot()
+            #     mesh = mesh + self.__render_trajectory(traj[i], energies[i], radius, name)
+            #     mesh[name] = energies
+                mesh_d = self.__render_trajectories(np.asarray(traj[i]), 'line')
+                mesh_d[name] = np.asarray(energies[i])
+                mesh += mesh_d
+            print(f'took {timeit.default_timer()-start}')
         else:
-            for i in tqdm(range(0, len(traj), step)):
-                mesh = mesh + self.__render_trajectory(traj[i], 0, radius, name)
-        return mesh.tube(radius=radius) # it is important for color mapping to creaate tubes after all trajectories are added
+            print('Rendering SEs...', end='')
+            # for i in tqdm(range(0, len(traj), step)):
+                # mesh = mesh + self.__render_trajectory(traj[i], 0, radius, name)
+            traj = traj.reshape(traj.shape[0] * 2, 3)
+            mesh = self.__render_trajectories(traj, 'seg')
+            print(f'took {timeit.default_timer() - start}')
+        return mesh.tube(radius=radius) # it is important for color mapping to create tubes after all trajectories are added
 
+    def __render_trajectories(self, traj, kind='line'):
+        """
+        Turn a collection of points to line/lines.
+
+        kind: 'line' to create a line connecting all the points
+              'seg' to create separate segments (2 points each)
+
+        :param traj: collection of points
+        :param kind: type of connection
+        :return:
+        """
+
+        if kind not in ['line', 'seg']:
+            raise RuntimeWarning('Wrong \'type\' argument in Render.__render_trajectories. Method accepts \'line\' or \'seg\'')
+        traj[:, 0], traj[:,2] = traj[:, 2], traj[:,0].copy() # swapping x and z coordinates
+        if kind == 'line':
+            mesh = pv.lines_from_points(np.asfortranarray(traj))
+        if kind == 'seg':
+            mesh = pv.line_segments_from_points(traj)
+        return mesh
 
     def __render_trajectory(self, traj, energies=0, radius=0.7, name='scalars'):
         """
