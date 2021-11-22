@@ -198,15 +198,19 @@ class ETrajMap3d(object):
 
     def generate_se(self):
         rng = default_rng()
-        alpha = rng.uniform(0, 1, self.dES_all.shape) * 2 * pi
+        # alpha = rng.uniform(0, 1, self.dES_all.shape)* 2 * pi
         # z = rng.uniform(0, 1, self.dES_all.shape)
         # y = np.sin(alpha) * np.sqrt(1-z*z) * length
         # x = np.cos(alpha) * np.sqrt(1-z*z) * length
-        direction = np.empty((self.dES_all.shape[0], 3))
-        direction[:, 0] = rng.uniform(0, 1, self.dES_all.shape)
-        z_sqrt = np.sqrt(1 - direction[:, 0] * direction[:, 0])
-        direction[:, 1] = np.sin(alpha) * z_sqrt
-        direction[:, 2] = np.cos(alpha) * z_sqrt
+        # direction = np.empty((self.dES_all.shape[0], 3))
+        # direction[:, 0] = rng.uniform(0, 1, self.dES_all.shape)
+        # z_sqrt = np.sqrt(1 - direction[:, 0] * direction[:, 0])
+        # direction[:, 1] = np.sin(alpha) * z_sqrt
+        # direction[:, 2] = np.cos(alpha) * z_sqrt
+        L = np.empty_like(self.dES_all)
+        direction = np.random.normal(0, 10,(self.dES_all.shape[0], 3))
+        traversal.det_2d(direction, L)
+        direction /= L.reshape(L.shape[0],1)
         sign = np.int8(np.sign(direction))
         sign[sign==-1] = 0
         sign[sign==1] = -1
