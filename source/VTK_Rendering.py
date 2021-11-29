@@ -80,7 +80,7 @@ class Render:
                    (-0.27787912231751677, -0.1411181984824172, 0.950194110399093)]
         self.show(cam_pos=cam_pos)
 
-    def show_mc_result(self, grid, pe_traj=None, deposited_E=None, surface_flux=None, se_traj=None, cam_pos=None):
+    def show_mc_result(self, grid, pe_traj=None, deposited_E=None, surface_flux=None, se_traj=None, cam_pos=None, interactive=True):
         if grid is not None:
             self._add_3Darray(grid, -2, -0.01, False, opacity=0.7, show_edges=True, scalar_name='Structure', button_name='Structure', color='white')
         if pe_traj is not None:
@@ -97,7 +97,7 @@ class Render:
             cam_pos = [(463.14450307610286, 271.1171723376318, 156.56895424388603),
                    (225.90027381807235, 164.9577775224395, 71.42188811921902),
                    (-0.27787912231751677, -0.1411181984824172, 0.950194110399093)]
-        return self.show(cam_pos=cam_pos)
+        return self.show(cam_pos=cam_pos, interactive_update=interactive)
 
     def _add_trajectory(self, traj, energies=None, radius=0.7, step=1, scalar_name='scalars_t', button_name='1', color='', cmap='plasma'):
         """

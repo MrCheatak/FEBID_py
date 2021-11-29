@@ -107,9 +107,10 @@ class Structure():
             self.define_surface()
             self.define_semi_surface()
             self.define_ghosts()
-        self.substrate_height = 0
+            self.substrate_height = 0
+        self.precursor[self.precursor<0] = 0
 
-    def create_from_parameters(self, cell_dim=5, width=50, length=50, height=100, substrate_height=4, nr=1):
+    def create_from_parameters(self, cell_dim=5, width=50, length=50, height=100, substrate_height=4, nr=0):
         self.cell_dimension = cell_dim
         self.zdim, self.ydim, self.xdim = height, width, length
         self.shape = (self.zdim, self.ydim, self.xdim)
@@ -141,7 +142,7 @@ class Structure():
         """
         self.precursor[...] = 0
         self.precursor[0:self.substrate_height, :, :] = 0  # substrate surface
-        self.precursor[self.substrate_height, :, :] = self.nr  # filling substrate surface with initial precursor density
+        self.precursor[self.substrate_height, :, :] = 0.0000001  # filling substrate surface with initial precursor density
         # if self.vol_prefill == 0:
         #     self.deposit[...] = 0
         # else:

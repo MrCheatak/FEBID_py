@@ -337,8 +337,7 @@ class ETrajectory(object):
         passes = []
         if N == 0:
             N = self.N
-        if type(x0) in [float, int]:
-            x0, y0 = self.rnd_gauss_xy(x0 * self.cell_dim, y0 * self.cell_dim, N)  # generate gauss-distributed beam positions
+        x0, y0 = self.rnd_gauss_xy(x0 * self.cell_dim, y0 * self.cell_dim, N)  # generate gauss-distributed beam positions
         # profiler = line_profiler.LineProfiler()
         # profiled_func = profiler(self.map_trajectory)
         # try:

@@ -54,6 +54,7 @@ cpdef void rolling_2d(double[:,:] a, const double[:,:] b):
     """
     rolling_2d_cy(a, b)
 
+@cython.initializedcheck(False) # turn off initialization check for memoryviews
 @cython.boundscheck(False) # turn off bounds-checking for entire function
 @cython.wraparound(False)  # turn off negative index wrapping for entire function
 cdef void stencil_cy(double[:,:,::1] grid_out, double[:,:,::1] grid, int[:] z_index, int[:] y_index, int[:] x_index) nogil:
