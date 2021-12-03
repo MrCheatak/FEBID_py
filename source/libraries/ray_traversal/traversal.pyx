@@ -12,6 +12,7 @@
 #in particular enables special integer division
 
 import cython
+from cython.parallel cimport prange
 import numpy as np
 from libc.stdlib cimport malloc, realloc, free
 from libc.math cimport sqrt, log, cos, sin
@@ -278,14 +279,14 @@ cdef double generate_flux_c(double[:,:,:] flux, unsigned char[:,:,:] surface, in
         # Allocating memory, the size corresponds to the length of SE trajectory
         float ** crossings = <float**> malloc(max_count * sizeof(float *))
         int ** coords = <int**> malloc(max_count * sizeof(int *))
-        int zdim_abs = surface.shape[0] * cell_dim
-        int  ydim_abs = surface.shape[0] * cell_dim
-        int xdim_abs = surface.shape[0] * cell_dim
+        int zdim_abs = surface.shape[0]
+        int ydim_abs = surface.shape[1]
+        int xdim_abs = surface.shape[2]
     for i in range(max_count):
         crossings[i] = <float *> malloc(3 * sizeof(float))
         coords[i] = <int *> malloc(3 * sizeof(int))
 
-    for q in range(N):
+    for q in prange(N):
         # Traversing cells
         count = traverse_cells_c(p0[q], pn[q], direction[q], t[q], step_t[q], crossings, max_count)
         if count>max_count:
@@ -358,7 +359,7 @@ cdef double traverse_segment_c(double[:,:,:] energies, double[:,:,:] grid, int c
         crossings[i] = <float *> malloc(3 * sizeof(float))
         deltas[i] = <float *> malloc(3 * sizeof(float))
         coords[i] = <int *> malloc(3 * sizeof(int))
-    for q in range(N):  # go through segments, from here segment -> ray
+    for q in prange(N):  # go through segments, from here segment -> ray
         # Traversing cells
         count = traverse_cells_c(p0[q], pn[q], direction[q], t[q], step_t[q], crossings, max_count)
         count -= 1 # Because we calculate distances between points

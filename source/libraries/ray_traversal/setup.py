@@ -1,4 +1,4 @@
-import cython
+import os, sys
 from setuptools import  setup
 from Cython.Build import cythonize
 import numpy as np
@@ -8,7 +8,19 @@ directive_defaults = get_directive_defaults()
 # directive_defaults['linetrace'] = True
 # directive_defaults['binding'] = True
 
-extensions = [Extension("traversal", ["traversal.pyx"], define_macros=[('CYTHON_TRACE', '1')])]
+# Using compiler of clang with llvm installed on mac OSX
+if sys.platform is 'darwin':  # darwin == OSX
+    os.environ["CC"] = "/usr/local/opt/llvm/bin/clang"
+    os.environ["CXX"] = "/usr/local/opt/llvm/bin/clang++"
+
+# Add include/link dirs, and modify the stdlib to libc++
+ext_module = [Extension("traversal", ['traversal.pyx'],
+                  include_dirs=["/usr/local/opt/llvm/include"],
+                  library_dirs=["/usr/local/opt/llvm/lib"],
+                  language="c",
+                  extra_compile_args=["-w", "-fopenmp"],
+                  extra_link_args=["-lomp"]
+                  )]
 
 # setup(ext_modules = cythonize("cytest.pyx", annotate=True, compiler_directives={'linetrace': True}), include_dirs=[np.get_include()])
 setup(ext_modules = cythonize("traversal.pyx", annotate=True), include_dirs=[np.get_include()])

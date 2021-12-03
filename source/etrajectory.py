@@ -269,25 +269,25 @@ class ETrajectory(object):
         '''
         # x, y = [], []
         if N==0: N=self.N
-        r = np.random.normal(0, self.sigma, N)
-        phi = np.random.uniform(0, 2 * pi - np.finfo(float).tiny, N)
-        rnd.seed()
-        # for i in range(self.N):
-        #     ra = rnd.gauss(0.0, self.sigma)
-        #     phis = rnd.uniform(0, 2 * pi - np.finfo(float).tiny)
-        #     x.append(ra * cos(phis)+x0)
-        #     y.append(ra * sin(phis)+y0)
-        x = r*np.cos(phi) + x0
-        y = r*np.sin(phi) + y0
-        max_x = x[x>self.xdim_abs]
-        reduct_coeff = max_x/self.xdim_abs +0.1
-        x[x>self.xdim_abs] /= reduct_coeff
-        max_y = y[y>self.ydim_abs]
-        reduct_coeff = max_y/self.ydim_abs +0.1
-        y[y > self.ydim_abs] /= reduct_coeff
-        x = np.where(x<0, np.abs(x), x)
-        y = np.where(y<0, np.abs(y), y)
-        return (x, y)
+        while True:
+            r = np.random.normal(0, self.sigma, N)
+            phi = np.random.uniform(0, 2 * pi - np.finfo(float).tiny, N)
+            rnd.seed()
+            x = r*np.cos(phi) + x0
+            y = r*np.sin(phi) + y0
+            try:
+                if x.max()>self.xdim_abs:
+                    x = np.take(x, (x<self.xdim_abs).nonzero()[0])
+                if x.min() < 0:
+                    x = np.take(x, (x>0).nonzero()[0])
+                if y.max() > self.ydim_abs:
+                    y = np.take(y, (y<self.ydim_abs).nonzero()[0])
+                if y.min() < 0:
+                    y = np.take(y, (y>0).nonzero()[0])
+            except:
+                continue
+            if x.size > 0 and y.size > 0:
+                return (x, y)
 
     def run(self, i0, j0, N=0):
         """
