@@ -119,7 +119,7 @@ class Render:
         self.__prepare_obj(obj, button_name, cmap, color)
 
 
-    def _add_3Darray(self, arr, lower_t=None, upper_t=1.0, exclude_zeros=True, opacity=0.5, clim=None, show_edges=None, nan_opacity=None, scalar_name='scalars_s', button_name='1', color='', show_scalar_bar=True, cmap='viridis', log_scale=False, invert=False):
+    def _add_3Darray(self, arr, lower_t=None, upper_t=None, exclude_zeros=True, opacity=0.5, clim=None, show_edges=None, nan_opacity=None, scalar_name='scalars_s', button_name='1', color='', show_scalar_bar=True, cmap='viridis', log_scale=False, invert=False, texture=None):
         """
         Adds 3D structure from a Numpy array to the Pyvista plot
 
@@ -136,16 +136,16 @@ class Render:
         if nan_opacity == None:
             nan_opacity = opacity
         self.obj = self._render_3Darray(arr=arr, lower_t=lower_t, upper_t=upper_t, exclude_zeros=exclude_zeros, name=scalar_name, invert=invert)
-        self.__prepare_obj(self.obj, button_name, cmap, color, show_scalar_bar, clim, log_scale=log_scale, opacity=opacity, nan_opacity=nan_opacity, show_edges=show_edges)
+        self.__prepare_obj(self.obj, button_name, cmap, color, show_scalar_bar, clim, log_scale=log_scale, opacity=opacity, nan_opacity=nan_opacity, show_edges=show_edges, texture=texture)
 
-    def __prepare_obj(self, obj, name, cmap, color, show_scalar_bar=True, clim=None, log_scale=False, opacity=0.5, nan_opacity=0.5, show_edges=None):
+    def __prepare_obj(self, obj, name, cmap, color, show_scalar_bar=True, clim=None, log_scale=False, opacity=0.5, nan_opacity=0.5, show_edges=None, texture=None):
         while True:
             try:
                 if color:
-                    obj_a = self.p.add_mesh(obj, style='surface', opacity=opacity, nan_opacity=nan_opacity, clim=clim, name=name, label='Structure', log_scale=log_scale, show_scalar_bar=show_scalar_bar, color=color, lighting=True, show_edges=show_edges, render=False) # adding data to the plot
+                    obj_a = self.p.add_mesh(obj, style='surface', opacity=opacity, nan_opacity=nan_opacity, clim=clim, name=name, label='Structure', log_scale=log_scale, show_scalar_bar=show_scalar_bar, color=color, lighting=True, show_edges=show_edges, texture=texture, render=False) # adding data to the plot
                     break
                 if cmap:
-                    obj_a = self.p.add_mesh(obj, style='surface', opacity=opacity, use_transparency=False, nan_opacity=nan_opacity, clim=clim, name=name, label='Structure', log_scale=log_scale, show_scalar_bar=show_scalar_bar, cmap=cmap, lighting=True, show_edges=show_edges, render=False)
+                    obj_a = self.p.add_mesh(obj, style='surface', opacity=opacity, use_transparency=False, nan_opacity=nan_opacity, clim=clim, name=name, label='Structure', log_scale=log_scale, show_scalar_bar=show_scalar_bar, cmap=cmap, lighting=True, show_edges=show_edges, texture=texture, render=False)
                     break
             except Exception as e:
                 print(f'Error:{e.args}')
@@ -157,7 +157,7 @@ class Render:
         self.meshes_count += 1
 
 
-    def _render_3Darray(self, arr, lower_t=0, upper_t=1, exclude_zeros=True, name='scalars_s', invert=False ):
+    def _render_3Darray(self, arr, lower_t=None, upper_t=None, exclude_zeros=True, name='scalars_s', invert=False ):
         """
         Renders a 3D numpy array and trimms values
 
@@ -166,13 +166,15 @@ class Render:
         :param upper_t: upper cutoff threshold
         :return: pyvista.PolyData object
         """
-        if upper_t == 1: upper_t = arr.max()
-        if lower_t == 0: lower_t = arr.min()
+        # if upper_t is None: upper_t = arr.max()
+        # if lower_t is None: lower_t = arr.min()
         grid = numpy_to_vtk(arr, self.cell_dim, data_name=name)
         if exclude_zeros:
             grid.remove_cells((arr==0).flatten())
-        if lower_t is not None:
-            grid = grid.threshold([lower_t,upper_t], invert=invert) # trimming
+        if upper_t is not None or lower_t is not None:
+            if upper_t is None: upper_t = arr.max()
+            if lower_t is None: lower_t = arr.min()
+            grid = grid.threshold([lower_t,upper_t], continuous=True, invert=invert) # trimming
         return grid
 
 
@@ -296,44 +298,49 @@ class Render:
         self.p.clear()
 
 
-def numpy_to_vtk(arr, cell_dim, data_name='scalar', grid=None):
+def numpy_to_vtk(arr, cell_dim, data_name='scalar', grid=None, unstructured=True):
         if not grid:
             grid = pv.UniformGrid()
             grid.dimensions = np.asarray([arr.shape[2], arr.shape[1], arr.shape[0]]) + 1  # creating a grid with the size of the array
             grid.spacing = (cell_dim, cell_dim, cell_dim)  # assigning dimensions of a cell
+            grid_given = False
+        else:
+            grid_given = True
         grid.cell_data[data_name] = arr.flatten()  # writing values
-        grid = grid.cast_to_unstructured_grid()
+        if unstructured and not grid_given:
+            grid = grid.cast_to_unstructured_grid()
         return grid
 
 
 def save_deposited_structure(structure, filename=None):
     """
     Saves current deposition result to a vtk file
+    if filename does not contain path, saves to the current directory
 
     :param structure: an instance of the current state of the process
     :return:
     """
 
     cell_dim = structure.cell_dimension
-    vtk_obj = numpy_to_vtk(structure.deposit, cell_dim, 'deposit')
+    vtk_obj = numpy_to_vtk(structure.deposit, cell_dim, 'deposit', unstructured=False)
     vtk_obj = numpy_to_vtk(structure.precursor, cell_dim, data_name='precursor_density', grid=vtk_obj)
     vtk_obj = numpy_to_vtk(structure.surface_bool, cell_dim, data_name='surface_bool', grid=vtk_obj)
     vtk_obj = numpy_to_vtk(structure.semi_surface_bool, cell_dim, data_name='semi_surface_bool', grid=vtk_obj)
     vtk_obj = numpy_to_vtk(structure.ghosts_bool, cell_dim, data_name='ghosts_bool', grid=vtk_obj)
-    vtk_obj.__setattr__('features', True) # Availability of this parameter will show if vtk file is either just a structure or a simulation result
-    vtk_obj.__setattr__('substrate_val', structure.substrate_val)
-    vtk_obj.__setattr__('substrate_height', structure.substrate_height)
-    vtk_obj.__setattr__('deposit_val', structure.deposit_val)
-    vtk_obj.__setattr__('volume_prefill', structure.vol_prefill)
-    a = vtk_obj.features
-    b = vtk_obj.cell_data['surface_bool']
-    c = vtk_obj.cell_data['deposit']
+    # vtk_obj.__setattr__('features', True) # Availability of this parameter will show if vtk file is either just a structure or a simulation result
+    # vtk_obj.__setattr__('substrate_val', structure.substrate_val)
+    # vtk_obj.__setattr__('substrate_height', structure.substrate_height)
+    # vtk_obj.__setattr__('deposit_val', structure.deposit_val)
+    # vtk_obj.__setattr__('volume_prefill', structure.vol_prefill)
+    # a = vtk_obj.features
+    # b = vtk_obj.cell_data['surface_bool']
+    # c = vtk_obj.cell_data['deposit']
     if filename == None:
         filename = "Structure"
-    file = open(f'{sys.path[0]}{os.sep}{filename}{time.strftime("%H:%M:%S", time.localtime())}.vtk', 'wb')
+    # file = open(f'{filename}{time.strftime("%H:%M:%S", time.localtime())}.vtk', 'wb')
     # pickle.dump(vtk_obj, file,protocol=4)
     # Eventually, vtk does not save those new attributes
-    vtk_obj.save((f'{sys.path[0]}{os.sep}{filename}{time.strftime("%H:%M:%S", time.localtime())}.vtk'))
+    vtk_obj.save(f'{filename}_{time.strftime("%H:%M:%S", time.localtime())}.vtk')
 
 def open_deposited_structure(filename=None):
     vtk_obj = pv.read(filename)
@@ -361,7 +368,7 @@ def show_animation(directory=''):
         directory = fd.askdirectory()
     font_size = 12
     files, times = open_file(directory)
-    cell_dim, deposit, substrate, surface_bool, semi_surface_bool, ghosts_bool = open_deposited_structure(pv.read(os.path.join(directory, files[0])))
+    cell_dim, deposit, substrate, surface_bool, semi_surface_bool, ghosts_bool = open_deposited_structure(os.path.join(directory, files[0]))
     render = Render(cell_dim)
     substrate[np.isnan(substrate)] = 0 # setting all NAN values to 0
     render._add_3Darray(substrate, 0.0001, 1, opacity=1, nan_opacity=1, clim=[0, 1], scalar_name='Precursor',button_name='Precursor', cmap='plasma')
