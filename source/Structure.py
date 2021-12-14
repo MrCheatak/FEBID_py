@@ -52,10 +52,10 @@ class Structure():
         self.cell_dimension = 1
         if vtk_obj.spacing[0] != vtk_obj.spacing[1] or vtk_obj.spacing[0] != vtk_obj.spacing[2] or vtk_obj.spacing[1] != \
                 vtk_obj.spacing[2]:
-            choice = 'z'  # input(f'Cell\'s dimensions must be equal and represent a cube. '
-            # f'\nType x, y or z to specify dimension value that will be used for all three. '
-            # f'\nx={vtk_obj.spacing[0]} \ny={vtk_obj.spacing[1]} \nz={vtk_obj.spacing[2]} '
-            # f'\nThis may lead to a change of the structure\'s shape. Press any other key to exit.')
+            choice = input(f'Cell\'s dimensions must be equal and represent a cube. '
+            f'\nType x, y or z to specify dimension value that will be used for all three. '
+            f'\nx={vtk_obj.spacing[0]} \ny={vtk_obj.spacing[1]} \nz={vtk_obj.spacing[2]} '
+            f'\nThis may lead to a change of the structure\'s shape. Press any other key to exit.')
             if choice == 'x':
                 self.cell_dimension = vtk_obj.spacing[0]
             if choice == 'y':
@@ -142,7 +142,10 @@ class Structure():
         """
         self.precursor[...] = 0
         self.precursor[0:self.substrate_height, :, :] = 0  # substrate surface
-        self.precursor[self.substrate_height, :, :] = 0.0000001  # filling substrate surface with initial precursor density
+        if self.nr == 0:
+            self.precursor[self.substrate_height, :, :] = 0.000001  # filling substrate surface with initial precursor density
+        else:
+            self.precursor[self.substrate_height, :, :] = self.nr  # filling substrate surface with initial precursor density
         # if self.vol_prefill == 0:
         #     self.deposit[...] = 0
         # else:

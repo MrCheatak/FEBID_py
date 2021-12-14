@@ -108,7 +108,11 @@ class Process():
     Class representing the core deposition process.
     It contains all necessary arrays, variables, parameters and methods to support a continuous deposition process.
     """
-    def __init__(self, structure, mc_config, equation_values, timings, time_spent=datetime.datetime.now(), deposition_scaling=1):
+    def __init__(self, structure, mc_config, equation_values, timings, time_spent=datetime.datetime.now(), deposition_scaling=1, name=None):
+        if not name:
+            self.name = 'experiment_id_'+str(np.random.randint(000000, 999999, 1)[0])
+        else:
+            self.name = name
         # Declaring necessary  properties
         self.structure = None
         self.cell_dimension = None
@@ -175,6 +179,7 @@ class Process():
         self.time_spent = time_spent
         self.start_time = datetime.datetime.now()
         self.execution_speed = 0
+        self.profiler= None
 
         # Initialization sequence
         self.__set_structure(structure)
@@ -211,6 +216,7 @@ class Process():
         self.sigma = params['sigma']
         self.tau = params['tau']
         self.D = params['D']
+        self.deposition_scaling = params['deposition_scaling']
 
     def __setup_MC_module(self, params):
         mc_sim = etraj3d.cache_params(params, self.deposit, self.surface)
@@ -220,8 +226,11 @@ class Process():
         self.t_diffusion = timings['t_diff']
         self.t_dissociation = timings['t_flux']
         self.t_desorption = timings['t_desorption']
-        self.dt = min(self.t_desorption, self.t_diffusion, self.t_dissociation)/10
+        self.get_dt()
         self.t = 1E-10
+
+    def get_dt(self):
+        self.dt = min(self.t_desorption, self.t_diffusion, self.t_dissociation)/5
 
     # Computational methods
     def check_cells_filled(self):
@@ -240,7 +249,9 @@ class Process():
 
         :return:
         """
-
+        # What here actually done is marking the filled cell as solid and ghost cell and then updating surface,
+        # semi-surface, ghosts and precursor to describe the surface geometry around the newly filled cell.
+        # The approach is cell-centric, which means all the surroundings are processed
         nd = (self.__deposit_reduced_3d >= 1).nonzero()
         new_deposits = [(nd[0][i], nd[1][i], nd[2][i]) for i in range(nd[0].shape[0])]
         for cell in new_deposits:
@@ -260,6 +271,7 @@ class Process():
 
             # Creating a view with the 1st nearest neighbors to the deposited cell
             z_min, z_max, y_min, y_max, x_min, x_max = 0, 0, 0, 0, 0, 0
+            # Taking into account cases when the cell is at the edge:
             if cell[0] - 1 < 0:
                 z_min = 0
                 neibs_sides = self.__neibs_sides[1:, :, :]
@@ -331,6 +343,7 @@ class Process():
             surf_kern = self.__surface_reduced_3d[neighbors_1st]
             # Creating condition array
             condition = np.logical_and(deposit_kern == 0, neibs_sides)  # True for elements that are not deposited and are side neighbors
+            # Updating main arrays
             semi_s_kern[condition] = False
             surf_kern[condition] = True
             condition = np.logical_and(np.logical_and(deposit_kern == 0, surf_kern == 0), neibs_edges)  # True for elements that are not deposited, not surface cells and are edge neighbors
@@ -393,8 +406,7 @@ class Process():
         :param beam_matrix: flat surface electron flux array
         :return:
         """
-        k1 = self.__precursor_density_increment(precursor, beam_matrix,
-                                                self.dt)  # this is actually an array of k1 coefficients
+        k1 = self.__precursor_density_increment(precursor, beam_matrix, self.dt)  # this is actually an array of k1 coefficients
         k2 = self.__precursor_density_increment(precursor, beam_matrix, self.dt / 2, k1 / 2)
         k3 = self.__precursor_density_increment(precursor, beam_matrix, self.dt / 2, k2 / 2)
         k4 = self.__precursor_density_increment(precursor, beam_matrix, self.dt, k3)
@@ -446,7 +458,7 @@ class Process():
         :return: to grid array
         """
 
-        # Debugging note: it would be more elegant to just use numpy.roll() on the ghosts_bool to assign neighboring values
+        # Debugging note_: it would be more elegant to just use numpy.roll() on the ghosts_bool to assign neighboring values
         # to ghost cells. But Numpy doesn't retain array structure when utilizing boolean index streaming. It rather extracts all the cells
         # (that correspond to True in our case) and processes them as a flat array. It caused the shifted values for ghost cells to
         # be assigned to the previous(first) layer, which was not processed by numpy.roll() when it rolled backwards.
@@ -530,6 +542,9 @@ class Process():
         #     return evaluate_cached(expressions["laplace2"], local_dict={'dt_D_div': dt*D/div, 'grid_out':grid_out}, casting='same_kind')
 
     # Data maintenance methods
+    # These methods represent an optimization path that provides up to 100x speed up
+    # 1. By selecting and processing chunks of arrays (views) that are effectively changing
+    # 2. By preparing indexes for arrays
     def update_helper_arrays(self):
         """
         Define new views to data arrays, create axillary indexes and flatten beam_matrix array
@@ -545,14 +560,14 @@ class Process():
 
     def __update_views_3d(self):
         """
-        Update view-arrays in accordance with the current irradiated
+        Update view-arrays in accordance with the currently irradiated area
 
         :return:
         """
         # This is a part of a helper routine destined to reduce the number of cells processed on every iteration
         # All the methods operating on main arrays (deposit, precursor, etc) use a corresponding view
         #  on the necessary array.
-        # '3D view' taken here can be referred to as a volume that encapsulates all cells that have been irradiated
+        # '3D view' mentioned here can be referred to as a volume that encapsulates all cells that have been irradiated
         self.__deposit_reduced_3d = self.deposit[self.irradiated_area_3D]
         self.__precursor_reduced_3d = self.precursor[self.irradiated_area_3D]
         self.__surface_reduced_3d = self.surface[self.irradiated_area_3D]
@@ -570,7 +585,7 @@ class Process():
         # All the methods operating on main arrays (deposit, precursor, etc) use a corresponding view
         #  on the necessary array.
         # '2D view' taken here can be referred to as a volume that encapsulates
-        #  the whole surface of the deposited structure
+        #  the whole surface of the deposited structure. This means it takes a view only along the z-axis.
         self.__precursor_reduced_2d = self.precursor[self.irradiated_area_2D]
         self.__surface_reduced_2d = self.surface[self.irradiated_area_2D]
         self.__semi_surface_reduced_2d = self.semi_surface[self.irradiated_area_2D]
@@ -586,7 +601,7 @@ class Process():
         """
         self.__fix_bad_cells()
         indices = np.nonzero(self.__beam_matrix_reduced_2d)
-        y_start, y_end, x_start, x_end = indices[1].min(), indices[1].max(), indices[2].min(), indices[2].max()
+        y_start, y_end, x_start, x_end = indices[1].min(), indices[1].max()+1, indices[2].min(), indices[2].max()+1
         self.irradiated_area_3D = np.s_[self.structure.substrate_height:self.max_z, y_start:y_end, x_start:x_end]  # a slice of the currently irradiated area
         self.__update_views_3d()
 
@@ -635,8 +650,8 @@ class Process():
     def __fix_bad_cells(self):
         # Temporary fix
         # Very rarely Monte Carlo primary electron simulation produces duplicate coordinates,
-        # that lead to division by zero and then to type size overflow,
-        # which although does not raise exceptions in Cython.
+        # that lead to division by zero(distance=0) and then to type size overflow(infinity),
+        # which does not raise exceptions in Cython.
         # This results in random cells having huge negative numbers
         self.__beam_matrix_reduced_2d[self.__beam_matrix_reduced_2d < 0] = 0
 
@@ -680,50 +695,6 @@ class Process():
     def printing(self, x, y, dwell_time):
         pass
 
-
-def open_stream_file(offset=1.5):
-    """
-    Open stream file and define enclosing array bounds
-
-    STUB: just not ready yet
-
-    :param offset:
-    :return: normalized directives, dimensions of the enclosing volume
-    """
-    file = fd.askopenfilename()
-    data = None
-
-    # Opening file and parsing text
-    with open(file, encoding='utf-8', errors='ignore') as f:
-        text = f.readlines(hint=10)
-        if text[0] != 's16':
-            raise Exception('Not a valid stream file!')
-            return 0
-        delim = ' ' # delimiter between the columns
-        header = 2 # number of lines to skip in the beginning
-        columns = (0,1,2) # numbers of columns to get
-        # Defult columns:
-        # 0 – Dwell time
-        # 1 – x-position
-        # 2 – y-position
-        data = np.genfromtxt(f, dtype=np.float64, comments='#', delimiter=delim, skip_header=header, usecols=columns, invalid_raise=False)
-
-    # Determining chamber dimensions
-    x_max, x_min = data[1].max(), data[1].min()
-    x_dim = x_max - x_min
-    x_min -= x_dim * offset
-    x_max += x_dim * offset
-    y_max, y_min = data[2].max(), data[2].min()
-    y_dim = y_max - y_min
-    y_min -= y_dim * offset
-    y_max += y_dim * offset
-    z_dim = max(x_dim, y_dim)*2
-
-    # Getting local coordinates
-    data[1] -= x_min
-    data[2] -= y_min
-
-    return data, (z_dim, y_dim, x_dim)
 
 
 # @jit(nopython=True, parallel=True)
@@ -1260,12 +1231,13 @@ def buffer_constants(precursor: dict, settings: dict, sim_params: dict):
     p_out = 2 * math.sqrt(D * t_out) / beam_FWHM
 
     # Initializing framework
-    dt = sim_params["time_step"]
+    # dt = sim_params["time_step"]
     cell_dimension = sim_params["cell_dimension"]  # side length of a square cell, nm
 
     t_flux = 1 / (sigma + f)  # dissociation event time
     diffusion_dt = math.pow(cell_dimension * cell_dimension, 2) / (2 * D * (
             cell_dimension * cell_dimension + cell_dimension * cell_dimension))  # maximum stability
+    dt = np.min([t_flux, diffusion_dt, tau])
 
     # Parameters for Monte-Carlo simulation
     mc_config = {'name': precursor["deposit"], 'E0': settings["beam_energy"], 'Emin': settings["minimum_energy"],
@@ -1279,7 +1251,7 @@ def buffer_constants(precursor: dict, settings: dict, sim_params: dict):
     equation_values = {'F': settings["precursor_flux"], 'n0': precursor["max_density"],
                        'sigma': precursor["cross_section"], 'tau': precursor["residence_time"] * 1E-6,
                        'V': precursor["dissociated_volume"], 'D': precursor["diffusion_coefficient"],
-                       'dt': sim_params["time_step"]}
+                       'dt': dt}
     # Stability time steps
     timings = {'t_diff': diffusion_dt, 't_flux': t_flux, 't_desorption': tau, 'dt': dt}
 
@@ -1298,7 +1270,7 @@ def printing(loops=1, dwell_time=1):
 
 
 
-    structure, mc_config, equation_values, timings = initialize_framework(True)
+    structure, mc_config, equation_values, timings = initialize_framework(False)
 
     F = equation_values['F']
     n0 = equation_values['n0']
@@ -1339,7 +1311,7 @@ def printing(loops=1, dwell_time=1):
 
     sim = etraj3d.cache_params(mc_config, deposit, surface_bool)
 
-    y0, x0 = structure.ydim / 2, structure.xdim / 2
+    y0, x0 = structure.ydim / 2 * structure.cell_dimension, structure.xdim / 2 * structure.cell_dimension
 
 
     y_start, y_end, x_start, x_end = 0, 0, 0, 0
@@ -1351,12 +1323,12 @@ def printing(loops=1, dwell_time=1):
 
     flag = True
     # precursor[sub_h, 30, 30] = 0.01
-    render = vr.Render(structure.cell_dimension)
-    render._add_3Darray(precursor, 0.0000001, 1, opacity=1, nan_opacity=1, scalar_name='Precursor',
-                       button_name='precursor', cmap='plasma')
-    render.show(interactive_update=True, cam_pos=[(206.34055818793468, 197.6510638707941, 100.47106597548205),
-                                                  (0.0, 0.0, 0.0),
-                                                  (-0.23307751464125356, -0.236197909312718, 0.9433373838690787)])
+    # render = vr.Render(structure.cell_dimension)
+    # render._add_3Darray(precursor, 0.0000001, 1, opacity=1, nan_opacity=1, scalar_name='Precursor',
+    #                    button_name='precursor', cmap='plasma')
+    # render.show(interactive_update=True, cam_pos=[(206.34055818793468, 197.6510638707941, 100.47106597548205),
+    #                                               (0.0, 0.0, 0.0),
+    #                                               (-0.23307751464125356, -0.236197909312718, 0.9433373838690787)])
     frame_rate = 0.5
     frame = 0
     time_step = 60 # s
@@ -1370,36 +1342,36 @@ def printing(loops=1, dwell_time=1):
     a = 1
     start_time = timeit.default_timer()
     time_stamp = timeit.default_timer()
-    def show_threaded(frame, i, redraw_flag):
-        frame += frame_rate
-        i += 1
-        if redraw_flag:
-            render.p.clear()
-            total_dep_cells.append(np.count_nonzero(deposit[deposit < 0]) - init_cells)
-            growth_rate.append((total_dep_cells[i] - total_dep_cells[i - 1]) / (time_stamp - time_step + 0.001) * 60 * 60)
-            render._add_3Darray(precursor, 0.0000001, 1, opacity=0.5, show_edges=True, exclude_zeros=False,
-                                scalar_name='Precursor',
-                                button_name='precursor', cmap='plasma')
-            render.meshes_count += 1
-            # render.add_3Dar1ray(deposit, structure.cell_dimension, -2, -0.5, 0.7, scalar_name='Deposit',
-            #            button_name='Deposit', color='white', show_scalar_bar=False)
-            render.p.add_text(f'Time: {str(datetime.timedelta(seconds=int(time_stamp)))} \n'
-                              f'Sim. time: {(t):.8f} s \n'
-                              f'Speed: {(t / time_stamp):.8f} \n'  # showing time passed
-                              f'Relative growth rate: {int(total_dep_cells[i] / time_stamp * 60 * 60)} cell/h \n'  # showing average growth rate
-                              f'Real growth rate: {int(total_dep_cells[i] / t * 60)} cell/min \n',
-                              position='upper_left',
-                              font_size=12)  # showing average growth rate
-            render.p.add_text(f'Cells: {total_dep_cells[i]} \n'  # showing total number of deposited cells
-                              f'Height: {max_z * structure.cell_dimension} nm \n', position='upper_right',
-                              font_size=12)  # showing current height of the structure
-            redraw_flag = False
-        else:
-            # render.p.mesh['precursor'] = precursor[precursor!=0]
-            render.p.update_scalars(precursor[precursor > 0])
-            render.p.update_scalar_bar_range(clim=[precursor[precursor > 0].min(), precursor.max()])
-        render.p.update()
-        return frame, redraw_flag
+    # def show_threaded(frame, i, redraw_flag):
+    #     frame += frame_rate
+    #     i += 1
+    #     if redraw_flag:
+    #         render.p.clear()
+    #         total_dep_cells.append(np.count_nonzero(deposit[deposit < 0]) - init_cells)
+    #         growth_rate.append((total_dep_cells[i] - total_dep_cells[i - 1]) / (time_stamp - time_step + 0.001) * 60 * 60)
+    #         render._add_3Darray(precursor, 0.0000001, 1, opacity=0.5, show_edges=True, exclude_zeros=False,
+    #                             scalar_name='Precursor',
+    #                             button_name='precursor', cmap='plasma')
+    #         render.meshes_count += 1
+    #         # render.add_3Dar1ray(deposit, structure.cell_dimension, -2, -0.5, 0.7, scalar_name='Deposit',
+    #         #            button_name='Deposit', color='white', show_scalar_bar=False)
+    #         render.p.add_text(f'Time: {str(datetime.timedelta(seconds=int(time_stamp)))} \n'
+    #                           f'Sim. time: {(t):.8f} s \n'
+    #                           f'Speed: {(t / time_stamp):.8f} \n'  # showing time passed
+    #                           f'Relative growth rate: {int(total_dep_cells[i] / time_stamp * 60 * 60)} cell/h \n'  # showing average growth rate
+    #                           f'Real growth rate: {int(total_dep_cells[i] / t * 60)} cell/min \n',
+    #                           position='upper_left',
+    #                           font_size=12)  # showing average growth rate
+    #         render.p.add_text(f'Cells: {total_dep_cells[i]} \n'  # showing total number of deposited cells
+    #                           f'Height: {max_z * structure.cell_dimension} nm \n', position='upper_right',
+    #                           font_size=12)  # showing current height of the structure
+    #         redraw_flag = False
+    #     else:
+    #         # render.p.mesh['precursor'] = precursor[precursor!=0]
+    #         render.p.update_scalars(precursor[precursor > 0])
+    #         render.p.update_scalar_bar_range(clim=[precursor[precursor > 0].min(), precursor.max()])
+    #     render.p.update()
+    #     return frame, redraw_flag
 
     for l in tqdm(range(0, loops)):  # loop repeats
         # if timeit.default_timer() >= start_time:
@@ -1470,6 +1442,11 @@ def open_params():
 
 profiler = line_profiler.LineProfiler()
 # profiled_func = profiler(laplace_term_rolling)
+# profiled_func = profiler(laplace_term_stencil)
+# profiled_func = profiler(printing)
+# profiled_func = profiler(deposition)
+# profiled_func = profiler(update_surface)
+# profiled_func = profiler(precursor_density)
 
 if __name__ == '__main__':
     # precursor_cfg, tech_cfg, sim_cfg = open_params()

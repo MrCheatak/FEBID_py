@@ -363,6 +363,9 @@ def show_animation(directory=''):
     :param directory: folder with vtk files
     :return:
     """
+    #TODO: this function could be a standalone app that allows playing series of snapshots as animation
+    # Possible features: stop/play button, next/previous snapshot, selection of layers, animation export(?)
+    # also it could import and show secondary electron flux distribution
     a=0
     if not directory:
         directory = fd.askdirectory()
@@ -371,18 +374,18 @@ def show_animation(directory=''):
     cell_dim, deposit, substrate, surface_bool, semi_surface_bool, ghosts_bool = open_deposited_structure(os.path.join(directory, files[0]))
     render = Render(cell_dim)
     substrate[np.isnan(substrate)] = 0 # setting all NAN values to 0
-    render._add_3Darray(substrate, 0.0001, 1, opacity=1, nan_opacity=1, clim=[0, 1], scalar_name='Precursor',button_name='Precursor', cmap='plasma')
+    render._add_3Darray(substrate, 0.00000001, 1, opacity=0.5, show_edges=True, exclude_zeros=False, scalar_name='Precursor',button_name='Precursor', cmap='plasma')
     render.show(interactive_update=True, cam_pos=[(206.34055818793468, 197.6510638707941, 100.47106597548205),
                                                   (0.0, 0.0, 0.0),
                                                   (-0.23307751464125356, -0.236197909312718, 0.9433373838690787)])
-    init_layer = deposit.shape[1] * deposit.shape[2] * np.nonzero(deposit)[0].max() # substrate layer
+    init_layer =np.count_nonzero(deposit==-2) # substrate layer
     total_dep_cells = [np.count_nonzero(deposit[deposit<0])-init_layer] # total number of fully deposited cells
     growth_rate=[] # growth rate on each step
     for i in range(1, len(files)):
         # filename = os.path.join(directory, filename)
         # os.renames(filename, filename.replace('.0',''))
         # with pv.read(os.path.join(directory, filename)) as vtk_obj:
-        cell_dim, deposit, substrate, surface_bool, semi_surface_bool, ghosts_bool = open_deposited_structure(pv.read(os.path.join(directory, files[i])))
+        cell_dim, deposit, substrate, surface_bool, semi_surface_bool, ghosts_bool = open_deposited_structure((os.path.join(directory, files[i])))
         total_dep_cells.append(np.count_nonzero(deposit[deposit<0])-init_layer)
         growth_rate.append((total_dep_cells[i]-total_dep_cells[i-1])/((times[i]-times[i-1]).total_seconds())*60*60)
         # render.add_3Darray(deposit, cell_dim,-2, -0.001, 0.7, scalar_name='Solid Deposit', button_name='Deposit')
@@ -392,16 +395,37 @@ def show_animation(directory=''):
         substrate[np.isnan(substrate)] = 0
         # if i == 0:
         # render.p.clear()
-        render._add_3Darray(substrate, 0.0001, 1, opacity=1, nan_opacity=1, clim=[0,1], scalar_name='Precursor', button_name='Precursor', cmap='plasma') # adding structure
+        render._add_3Darray(substrate, 0.00000001, 1, opacity=1, show_edges=True, exclude_zeros=False, scalar_name='Precursor', button_name='Precursor', cmap='plasma') # adding structure
         render.p.add_text(str(times[i]-times[0])) # showing time passed
-        render.p.add_text(f'Cells: {total_dep_cells[i]}' # showing total number of deposited cells
-                          f'Height: {int(np.nonzero(deposit)[0].max()*cell_dim)} nm'# showing current height of the structure
-                          f'Growth rate: {int(np.asarray(growth_rate).mean())} cell/h' # showing average growth rate
-                          f'Frame {i}/{len(files)}', position='upper_right', font_size=font_size)
+        render.p.add_text(f'Cells: {total_dep_cells[i]} \n' # showing total number of deposited cells
+                          f'Height: {int(np.nonzero(deposit)[0].max()*cell_dim)} nm \n'# showing current height of the structure
+                          f'Growth rate: {int(np.asarray(growth_rate).mean())} cell/h \n' # showing average growth rate
+                          f'Frame {i}/{len(files)} \n', position='upper_right', font_size=font_size)
         # else:
         #     render.p.update_scalars(substrate.ravel(), render=True)
         render.update(force_redraw=True) # redrawing scene
-        # input()
+    else:
+        cell_dim, deposit, substrate, surface_bool, semi_surface_bool, ghosts_bool = open_deposited_structure(
+            (os.path.join(directory, files[-1])))
+        total_dep_cells.append(np.count_nonzero(deposit[deposit < 0]) - init_layer)
+        growth_rate.append(
+            (total_dep_cells[-1] - total_dep_cells[-2]) / ((times[-1] - times[-2]).total_seconds()) * 60 * 60)
+        # render.add_3Darray(deposit, cell_dim,-2, -0.001, 0.7, scalar_name='Solid Deposit', button_name='Deposit')
+        # render.add_3Darray(deposit, cell_dim, 0.001, 1, 0.7, scalar_name='Surface Deposit', button_name='Deposit(S)')
+        # substrate[substrate < 0] = 0
+        # substrate[substrate > 1] = 0
+        substrate[np.isnan(substrate)] = 0
+        # if i == 0:
+        # render.p.clear()
+        render._add_3Darray(substrate, 0.00000001, 1, opacity=1, show_edges=True, exclude_zeros=False,
+                            scalar_name='Precursor', button_name='Precursor', cmap='plasma')  # adding structure
+        render.p.add_text(str(times[-1] - times[0]))  # showing time passed
+        render.p.add_text(f'Cells: {total_dep_cells[i-1]} \n'  # showing total number of deposited cells
+                          f'Height: {int(np.nonzero(deposit)[0].max() * cell_dim)} nm \n'  # showing current height of the structure
+                          f'Growth rate: {int(np.asarray(growth_rate).mean())} cell/h \n'  # showing average growth rate
+                          f'Frame {i}/{len(files)} \n', position='upper_right', font_size=font_size)
+        render.show(interactive_update=False)
+    input()
 
 
 def open_file(directory=''):
