@@ -16,17 +16,21 @@ import yaml
 from VTK_Rendering import open_deposited_structure
 from Structure import Structure
 
+
 class MainPannel(QMainWindow, UI_MainPanel):
-    def __init__(self, parent=None):
+    def __init__(self, test_kwargs=None, parent=None):
         super().__init__(parent)
         self.setupUi(self)
         self.show()
 
         # Parameters
-        self.structure_source = 'vtk'
-        self.pattern_source = 'simple'
+        self.structure_source = 'vtk' # vtk, geom or auto
+        self.pattern_source = 'simple' # simple or stream_file
         self.vtk_filename = ''
         self.geom_parameters_filename = ''
+        self.stream_file_filename = ''
+        self.beam_parameters_filename = ''
+        self.precursor_parameters_filename = ''
         self.vtk_choice_to_gray = [self.l_width, self.l_width_mc, self.l_height,self.l_height_mc,
                                    self.l_length,self.l_length_mc, self.l_cell_size, self.l_cell_size_mc,
                                    self.l_substrate_height, self.l_substrate_height_mc,
@@ -41,9 +45,8 @@ class MainPannel(QMainWindow, UI_MainPanel):
         self.open_geom_parameters_file_button_mc.setDisabled(True)
         for obj in self.vtk_choice_to_disable:
             obj.setDisabled(True)
-        # filename = '/Users/sandrik1742/Documents/PycharmProjects/FEBID/Experiment runs/gr=0/0k_of_500_loops_k_gr0 14:10:52.vtk'
-        # self.open_vtk_file(filename)
-        # g_p_filename =
+        if test_kwargs:
+            self.inject_parameters(test_kwargs)
 
     def vtk_chosen(self):
         # For both tabs:
@@ -185,12 +188,11 @@ class MainPannel(QMainWindow, UI_MainPanel):
             return
         try:
             params = yaml.load(open(file), Loader=yaml.Loader)
-            cell_dim = params['cell_dimension']
-            xdim = str(int(params['width']*cell_dim))
-            ydim = str(int(params['length']*cell_dim))
-            zdim = str(int(params['height']*cell_dim))
-            cell_dim = str(cell_dim)
-            substrate_height = str(int(params['substrate_height']))
+            cell_dim = str(params['cell_dimension'])
+            xdim = str(params['width'])
+            ydim = str(params['length'])
+            zdim = str(params['height'])
+            substrate_height = str(params['substrate_height'])
             self.input_geom_param_width.setText(xdim)
             self.input_geom_param_width_mc.setText(xdim)
             self.input_geom_param_length.setText(ydim)
@@ -209,6 +211,7 @@ class MainPannel(QMainWindow, UI_MainPanel):
         file,_ = QtWidgets.QFileDialog.getOpenFileName()
         if not file:
             return
+        self.stream_file_filename = file
         self.stream_file_filename_display.setText(file)
     def open_beam_parameters_file(self, file=''):
         file,_ = QtWidgets.QFileDialog.getOpenFileName()
@@ -222,10 +225,10 @@ class MainPannel(QMainWindow, UI_MainPanel):
             self.gauss_dev.setText(str(params['gauss_dev']))
             self.beam_parameters_filename_display.setText(file)
             self.beam_parameters_filename_display_mc.setText(file)
+            self.beam_parameters_filename = file
         except Exception as e:
             print("Was unable to open .yaml beam parameters file. Following error occurred:")
             print(e.args)
-
     def open_precursor_parameters_file(self, file=''):
         file,_ = QtWidgets.QFileDialog.getOpenFileName()
         if not file:
@@ -234,15 +237,65 @@ class MainPannel(QMainWindow, UI_MainPanel):
             params = yaml.load(open(file), Loader=yaml.Loader)
             self.precursor_parameters_filename_display.setText(file)
             self.precursor_parameters_filename_display_mc.setText(file)
+            self.precursor_parameters_filename = file
         except Exception as e:
             print("Was unable to open .yaml precursor parameters file. Following error occurred:")
             print(e.args)
 
-    def start_febid(self):
-        pass
+    def start_febid(self, ):
+        # Creating a simulation volume
+        structure = Structure()
+        if self.structure_source == 'vtk': # opening from a .vtk file
+            structure.load_from_vtk(pv.read(self.vtk_filename))
+        if self.structure_source == 'geom': # creating from geometry parameters
+            try:
+                cell_dimension = int(self.input_cell_size.text())
+                xdim = int(self.input_geom_param_width.text())//cell_dimension
+                ydim = int(self.input_geom_param_length.text())//cell_dimension
+                zdim = int(self.input_geom_param_height.text())//cell_dimension
+                substrate_height = int(self.input_substrate_height.text())//cell_dimension
+                structure.create_from_parameters(cell_dimension, xdim, ydim, zdim, substrate_height)
+            except Exception as e:
+                self.view_message('Error occurred while fetching geometry parameters for the simulation volume. \n '
+                                  'Check values and try again.')
+                print(e.args)
+                return
+        if self.structure_source == 'auto': # defining it later based on a stream-file
+            pass
+
+        # Defining printing path
+        printing_path = None
+        if self.pattern_source == 'pattern': # creating printing path based on the figure and parameters
+            try:
+                pattern = self.pattern_selection.currentText()
+                p1 = float(self.input_param1.text())
+                p2 = float(self.input_param2.text()) if self.pattern_selection.currentIndex() in [0, 1, 2] else None
+                dwell_time = int(self.input_dwell_time.text())
+                pitch = int(self.input_pitch.text())
+                repeats = int(self.input_repeats.text())
+                # printing_path = generate_path(pattern, dwell_time, loops, p1, p2, pitch)
+            except Exception as e:
+                self.view_message('Error occurred while creating a printing path. \n Check values and try again.')
+                print(e.args)
+                return
+        if self.pattern_source == 'stream_file': # importing printing path from stream_file
+            # printing_path = open_stream_file(self.stream_file_filename)
+            # structure.create_from_parameters()
+            pass
+
+        # Opening beam and precursor files
+        beam_params = yaml.load(open(self.beam_parameters_filename), Loader=yaml.Loader)
+        precursor_parameters = yaml.load(open(self.precursor_parameters_filename, 'r', encoding='UTF-8'), Loader=yaml.Loader)
+
+        # Starting the process
+        # febid_core.run_febid(structure, printing path, beam_parameters, precursor_parameters)
+
+        return
+
     def start_mc(self):
         pass
 
+    # Utilities
     def change_color(self, labels: Union[list,QtWidgets.QLabel], color='gray'):
         if type(labels) is list:
             for label in labels:
@@ -253,7 +306,6 @@ class MainPannel(QMainWindow, UI_MainPanel):
             pallet = labels.palette()
             pallet.setColor(QtGui.QPalette.WindowText, QtGui.QColor(color))
             labels.setPalette(pallet)
-
     def check_input(self):
         lineEdit = self.sender()
         text = lineEdit.text()
@@ -267,18 +319,30 @@ class MainPannel(QMainWindow, UI_MainPanel):
             self.view_message('Input is invalid.')
             lineEdit.clear()
         a=0
-
     def is_float(self, element) -> bool:
         try:
             float(element)
             return True
         except ValueError:
             return False
-
     def view_message(self, message="An error occurred."):
         msgBox = QtWidgets.QMessageBox()
         msgBox.setText(message)
         msgBox.exec()
+
+    # Testing
+    def inject_parameters(self, kwargs):
+        # TODO: testing function is undone
+        attrs = vars(self).keys()
+        for attr_name, attr_value in kwargs.items():
+            try:
+                if attr_name in attrs:
+                    self.__setattr__(attr_name, attr_value)
+            except Exception as e:
+                print(f'Error occurred while setting attribute {attr_name}')
+        # Insert all other arguments into the corresponding fields
+        self.input_param1.setText(str(kwargs['p1']))
+
 
 class Warning(QDialog, UI_Warning):
     def __init__(self, message="An error occurred.", parent=None):
@@ -289,7 +353,14 @@ class Warning(QDialog, UI_Warning):
 
 
 if __name__ == "__main__":
+    test_kwargs = {'structure_source':'geom', 'vtk_filename': '/Users/sandrik1742/Documents/PycharmProjects/FEBID/tests/Pillar.vtk',
+                   'width':200, 'length':200, 'height':400, 'cell_dim':2, 'substrate_height': 8,
+                   'pattern_source': 'simple', 'p1':100, 'p2':100, 'dwell_time':100, 'pitch':1, 'repeats': 1000,
+                   'steam_file_filename': '/Users/sandrik1742/Documents/PycharmProjects/FEBID/Stream_file_generators/Cylinder.txt',
+                   'beam_parameters_filename':'/Users/sandrik1742/Documents/PycharmProjects/FEBID/source/Parameters.yml',
+                   'precursor_parameters_filename': '/Users/sandrik1742/Documents/PycharmProjects/FEBID/source/Me3PtCpMe.yml'
+                   }
     app = QApplication(sys.argv)
-    win1 = MainPannel()
+    win1 = MainPannel(test_kwargs)
     sys.exit(app.exec())
 
