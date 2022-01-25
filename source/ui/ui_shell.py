@@ -31,16 +31,30 @@ class MainPannel(QMainWindow, UI_MainPanel):
         self.stream_file_filename = ''
         self.beam_parameters_filename = ''
         self.precursor_parameters_filename = ''
+        self.save_directory = ''
+        # Groups of controls on the panel for quick Enabling/Disabling
         self.vtk_choice_to_gray = [self.l_width, self.l_width_mc, self.l_height,self.l_height_mc,
                                    self.l_length,self.l_length_mc, self.l_cell_size, self.l_cell_size_mc,
                                    self.l_substrate_height, self.l_substrate_height_mc,
-                                   self.l_nm_1, self.l_nm_2, self.l_nm_3,
-                                   self.l_nm_1_mc, self.l_nm_2_mc, self.l_nm_3_mc]
+                                   self.l_dimensions_units, self.l_cell_size_units, self.l_substrate_height_units,
+                                   self.l_dimensions_units_mc, self.l_cell_size_units_mc, self.l_substrate_height_units_mc,]
         self.vtk_choice_to_disable = [self.input_geom_param_width, self.input_geom_param_width_mc,
                                       self.input_geom_param_length, self.input_geom_param_length_mc,
                                       self.input_geom_param_height, self.input_geom_param_height_mc,
                                       self.input_cell_size, self.input_cell_size_mc,
                                       self.input_substrate_height, self.input_substrate_height_mc]
+        self.simple_pattern_controls = [self.pattern_selection,
+                                        self.l_param1, self.input_param1, self.l_param1_units,
+                                        self.l_param2, self.input_param2, self.l_param2_units,
+                                        self.l_dwell_time, self.input_dwell_time, self.l_dwell_time_units,
+                                        self.l_pitch, self.input_pitch, self.l_pitc_units,
+                                        self.l_repeats, self.input_repeats]
+        self.cell_size_controls = [self.l_cell_size, self.input_cell_size, self.l_cell_size_units]
+        self.cell_size_controls_mc = [self.l_cell_size_mc, self.input_cell_size_mc, self.l_cell_size_units_mc]
+        self.substrate_height_controls = [self.l_substrate_height, self.input_substrate_height, self.l_substrate_height_units]
+        self.substrate_height_controls_mc = [self.l_substrate_height_mc, self.input_substrate_height_mc, self.l_substrate_height_units_mc]
+        self.pattern_param1_controls = self.simple_pattern_controls[1:4]
+        self.pattern_param2_controls = self.simple_pattern_controls[4:7]
         self.open_geom_parameters_file_button.setDisabled(True)
         self.open_geom_parameters_file_button_mc.setDisabled(True)
         for obj in self.vtk_choice_to_disable:
@@ -82,6 +96,8 @@ class MainPannel(QMainWindow, UI_MainPanel):
             obj.setEnabled(True)
         for obj in self.vtk_choice_to_gray:
             obj.setEnabled(True)
+        self.choice_simple_pattern.setChecked(True)
+        self.simple_pattern_chosen()
 
     def auto_chosen(self):
         self.structure_source = 'auto'
@@ -92,58 +108,45 @@ class MainPannel(QMainWindow, UI_MainPanel):
         self.open_geom_parameters_file_button.setDisabled(True)
         self.open_geom_parameters_file_button_mc.setDisabled(True)
         for obj in self.vtk_choice_to_disable:
-            obj.setReadOnly(True)
+            # obj.setReadOnly(True)
             obj.setDisabled(True)
         for obj in self.vtk_choice_to_gray:
             obj.setDisabled(True)
+        self.set_params_ui(self.cell_size_controls, enable=True)
+        self.set_params_ui(self.substrate_height_controls, enable=True)
+        self.choice_stream_file.setChecked(True)
+        self.stream_file_chosen()
 
     def simple_pattern_chosen(self):
         self.pattern_source = 'simple'
-        self.pattern_selection.setEnabled(True)
-        self.l_param1.setEnabled(True)
-        self.input_param1.setEnabled(True)
-        self.pattern_selection_changed()
+        for obj in self.simple_pattern_controls:
+            obj.setEnabled(True)
         self.open_stream_file_button.setDisabled(True)
         self.stream_file_filename_display.setDisabled(True)
 
     def stream_file_chosen(self):
         self.pattern_source = 'stream_file'
+        for obj in self.simple_pattern_controls:
+            obj.setEnabled(False)
         self.open_stream_file_button.setEnabled(True)
         self.stream_file_filename_display.setEnabled(True)
-        self.pattern_selection_changed(disable_all=True)
-        self.pattern_selection.setDisabled(True)
 
-    def pattern_selection_changed(self, disable_all=False):
-        if self.pattern_selection.currentIndex() == 0: # Point
-            self.l_param1.setText('x:')
-            self.l_param2.setText('y:')
-            self.l_param2.setEnabled(True)
-            self.input_param2.setEnabled(True)
-        if self.pattern_selection.currentIndex() == 1: # Rectangle
-            self.l_param1.setText('a:')
-            self.l_param2.setText('b:')
-            self.l_param2.setEnabled(True)
-            self.input_param2.setEnabled(True)
-        if self.pattern_selection.currentIndex() == 2: # Square
-            self.l_param1.setText('a:')
-            self.l_param2.setText('b:')
-            self.l_param2.setDisabled(True)
-            self.input_param2.setDisabled(True)
-        if self.pattern_selection.currentIndex() == 3: # Triangle
-            self.l_param1.setText('a:')
-            self.l_param2.setText('')
-            self.l_param2.setDisabled(True)
-            self.input_param2.setDisabled(True)
-        if self.pattern_selection.currentIndex() == 4: # Circle
-            self.l_param1.setText('r:')
-            self.l_param2.setText('')
-            self.l_param2.setDisabled(True)
-            self.input_param2.setDisabled(True)
-        if disable_all:
-            self.l_param1.setDisabled(True)
-            self.l_param2.setDisabled(True)
-            self.input_param1.setDisabled(True)
-            self.input_param2.setDisabled(True)
+    def pattern_selection_changed(self, current=False):
+        if current == 'Point':
+            self.set_params_ui(self.pattern_param1_controls, 'x:', True)
+            self.set_params_ui(self.pattern_param2_controls, 'y:', True)
+        if current == 'Rectangle':
+            self.set_params_ui(self.pattern_param1_controls, 'a:', True)
+            self.set_params_ui(self.pattern_param2_controls, 'b:', True)
+        if current == 'Square':
+            self.set_params_ui(self.pattern_param1_controls, 'a:', True)
+            self.set_params_ui(self.pattern_param2_controls, 'b:', False)
+        if current == 'Triangle':
+            self.set_params_ui(self.pattern_param1_controls, 'a:', True)
+            self.set_params_ui(self.pattern_param2_controls, ' ', False)
+        if current == 'Circle':
+            self.set_params_ui(self.pattern_param1_controls, 'r:', True)
+            self.set_params_ui(self.pattern_param2_controls, ' ', False)
 
     def open_vtk_file(self, file=''):
         # For both tabs:
@@ -242,7 +245,50 @@ class MainPannel(QMainWindow, UI_MainPanel):
             print("Was unable to open .yaml precursor parameters file. Following error occurred:")
             print(e.args)
 
-    def start_febid(self, ):
+    def change_state_save_sim_data(self, param=None):
+        switch = True if param else False
+        self.input_sim_data_interval.setEnabled(switch)
+        self.l_sim_data_interval.setEnabled(switch)
+        self.l_sim_data_interval_units.setEnabled(switch)
+        if switch or self.checkbox_save_snapshots.isChecked():
+            self.input_unique_filename.setEnabled(True)
+            self.l_unique_name.setEnabled(True)
+            self.open_save_folder_button.setEnabled(True)
+            self.save_folder_display.setEnabled(True)
+        else:
+            self.input_unique_filename.setEnabled(False)
+            self.l_unique_name.setEnabled(False)
+            self.open_save_folder_button.setEnabled(False)
+            self.save_folder_display.setEnabled(False)
+
+    def change_state_save_snapshots(self, param=None):
+        switch = True if param else False
+        self.input_snapshot_interval.setEnabled(switch)
+        self.l_snapshot_interval.setEnabled(switch)
+        self.l_snapshot_interval_units.setEnabled(switch)
+        if switch or self.checkbox_save_snapshots.isChecked():
+            self.input_unique_filename.setEnabled(True)
+            self.l_unique_name.setEnabled(True)
+            self.open_save_folder_button.setEnabled(True)
+            self.save_folder_display.setEnabled(True)
+        else:
+            self.input_unique_filename.setEnabled(False)
+            self.l_unique_name.setEnabled(False)
+            self.open_save_folder_button.setEnabled(False)
+            self.save_folder_display.setEnabled(False)
+
+    def open_save_directory(self): #implement
+        directory = QtWidgets.QFileDialog.getExistingDirectory()
+        if directory:
+            self.save_folder_display.setText(directory)
+
+    def tab_switched(self, current):
+        if current == 0:
+            self.resize(self.width(), 630)
+        if current == 1:
+            self.resize(self.width(), 500)
+
+    def start_febid(self):
         # Creating a simulation volume
         structure = Structure()
         if self.structure_source == 'vtk': # opening from a .vtk file
@@ -287,8 +333,19 @@ class MainPannel(QMainWindow, UI_MainPanel):
         beam_params = yaml.load(open(self.beam_parameters_filename), Loader=yaml.Loader)
         precursor_parameters = yaml.load(open(self.precursor_parameters_filename, 'r', encoding='UTF-8'), Loader=yaml.Loader)
 
+        # Collecting parameters of file saving
+        saving_params = {'monitoring': None, 'snapshot': None, 'name': None, 'directory': None}
+        flag1, flag2 = self.checkbox_save_simulation_data.isChecked(), self.checkbox_save_simulation_data.isChecked()
+        if flag1:
+            saving_params['monitoring'] = float(self.input_sim_data_interval.text())
+        if flag2:
+            saving_params['snapshot'] = float(self.input_snapshot_interval.text())
+        if flag1 or flag2:
+            saving_params['name'] = self.input_unique_filename.text()
+            saving_params['directory'] = self.save_directory
+
         # Starting the process
-        # febid_core.run_febid(structure, printing path, beam_parameters, precursor_parameters)
+        # febid_core.run_febid(structure, printing path, beam_parameters, precursor_parameters, saving_params)
 
         return
 
@@ -296,6 +353,11 @@ class MainPannel(QMainWindow, UI_MainPanel):
         pass
 
     # Utilities
+    def set_params_ui(self, param, name=None, enable=True):
+        if name:
+            param[0].setText(name)
+        for element in param:
+            element.setEnabled(enable)
     def change_color(self, labels: Union[list,QtWidgets.QLabel], color='gray'):
         if type(labels) is list:
             for label in labels:

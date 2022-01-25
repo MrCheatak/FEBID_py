@@ -6,8 +6,8 @@
    <rect>
     <x>0</x>
     <y>0</y>
-    <width>616</width>
-    <height>506</height>
+    <width>615</width>
+    <height>630</height>
    </rect>
   </property>
   <property name="windowTitle">
@@ -34,7 +34,7 @@
          </rect>
         </property>
         <property name="title">
-         <string>Initial conditions</string>
+         <string>Simulation volume</string>
         </property>
         <widget class="QRadioButton" name="choice_geom_parameters_file">
          <property name="geometry">
@@ -116,31 +116,6 @@
           <string>200</string>
          </property>
         </widget>
-        <widget class="QLineEdit" name="input_geom_param_height">
-         <property name="geometry">
-          <rect>
-           <x>492</x>
-           <y>56</y>
-           <width>45</width>
-           <height>21</height>
-          </rect>
-         </property>
-         <property name="inputMask">
-          <string/>
-         </property>
-         <property name="text">
-          <string>400</string>
-         </property>
-         <property name="maxLength">
-          <number>5</number>
-         </property>
-         <property name="readOnly">
-          <bool>true</bool>
-         </property>
-         <property name="placeholderText">
-          <string>400</string>
-         </property>
-        </widget>
         <widget class="QLineEdit" name="input_geom_param_length">
          <property name="geometry">
           <rect>
@@ -154,6 +129,31 @@
           <string/>
          </property>
          <property name="text">
+          <string>400</string>
+         </property>
+         <property name="maxLength">
+          <number>5</number>
+         </property>
+         <property name="readOnly">
+          <bool>true</bool>
+         </property>
+         <property name="placeholderText">
+          <string>400</string>
+         </property>
+        </widget>
+        <widget class="QLineEdit" name="input_geom_param_height">
+         <property name="geometry">
+          <rect>
+           <x>492</x>
+           <y>56</y>
+           <width>45</width>
+           <height>21</height>
+          </rect>
+         </property>
+         <property name="inputMask">
+          <string/>
+         </property>
+         <property name="text">
           <string>200</string>
          </property>
          <property name="maxLength">
@@ -166,7 +166,7 @@
           <string>200</string>
          </property>
         </widget>
-        <widget class="QLabel" name="l_nm_1">
+        <widget class="QLabel" name="l_dimensions_units">
          <property name="geometry">
           <rect>
            <x>540</x>
@@ -288,7 +288,7 @@
           <string>2</string>
          </property>
         </widget>
-        <widget class="QLabel" name="l_nm_2">
+        <widget class="QLabel" name="l_cell_size_units">
          <property name="geometry">
           <rect>
            <x>346</x>
@@ -301,11 +301,11 @@
           <string>nm</string>
          </property>
         </widget>
-        <widget class="QLabel" name="l_nm_3">
+        <widget class="QLabel" name="l_substrate_height_units">
          <property name="geometry">
           <rect>
            <x>540</x>
-           <y>94</y>
+           <y>96</y>
            <width>19</width>
            <height>16</height>
           </rect>
@@ -411,7 +411,7 @@
          <property name="geometry">
           <rect>
            <x>442</x>
-           <y>24</y>
+           <y>26</y>
            <width>43</width>
            <height>21</height>
           </rect>
@@ -455,11 +455,6 @@
          </item>
          <item>
           <property name="text">
-           <string>Triangle (equilateral)</string>
-          </property>
-         </item>
-         <item>
-          <property name="text">
            <string>Circle</string>
           </property>
          </item>
@@ -468,7 +463,7 @@
          <property name="geometry">
           <rect>
            <x>270</x>
-           <y>28</y>
+           <y>30</y>
            <width>37</width>
            <height>16</height>
           </rect>
@@ -484,7 +479,7 @@
          <property name="geometry">
           <rect>
            <x>318</x>
-           <y>24</y>
+           <y>26</y>
            <width>45</width>
            <height>21</height>
           </rect>
@@ -503,7 +498,7 @@
          <property name="geometry">
           <rect>
            <x>392</x>
-           <y>28</y>
+           <y>30</y>
            <width>41</width>
            <height>16</height>
           </rect>
@@ -633,11 +628,11 @@
           <string>1000</string>
          </property>
         </widget>
-        <widget class="QLabel" name="l_nm_4">
+        <widget class="QLabel" name="l_param1_units">
          <property name="geometry">
           <rect>
            <x>366</x>
-           <y>28</y>
+           <y>30</y>
            <width>19</width>
            <height>16</height>
           </rect>
@@ -646,11 +641,11 @@
           <string>nm</string>
          </property>
         </widget>
-        <widget class="QLabel" name="l_nm_5">
+        <widget class="QLabel" name="l_param2_units">
          <property name="geometry">
           <rect>
            <x>488</x>
-           <y>28</y>
+           <y>30</y>
            <width>19</width>
            <height>16</height>
           </rect>
@@ -659,11 +654,11 @@
           <string>nm</string>
          </property>
         </widget>
-        <widget class="QLabel" name="l_nm_6">
+        <widget class="QLabel" name="l_dwell_time_units">
          <property name="geometry">
           <rect>
            <x>140</x>
-           <y>60</y>
+           <y>62</y>
            <width>19</width>
            <height>16</height>
           </rect>
@@ -672,11 +667,11 @@
           <string>µs</string>
          </property>
         </widget>
-        <widget class="QLabel" name="l_nm_7">
+        <widget class="QLabel" name="l_pitc_units">
          <property name="geometry">
           <rect>
-           <x>264</x>
-           <y>60</y>
+           <x>262</x>
+           <y>62</y>
            <width>19</width>
            <height>16</height>
           </rect>
@@ -787,7 +782,7 @@
         <property name="geometry">
          <rect>
           <x>244</x>
-          <y>374</y>
+          <y>500</y>
           <width>113</width>
           <height>45</height>
          </rect>
@@ -795,6 +790,205 @@
         <property name="text">
          <string>Start</string>
         </property>
+       </widget>
+       <widget class="QGroupBox" name="groupBox_7">
+        <property name="geometry">
+         <rect>
+          <x>10</x>
+          <y>370</y>
+          <width>573</width>
+          <height>117</height>
+         </rect>
+        </property>
+        <property name="title">
+         <string>Save file</string>
+        </property>
+        <widget class="QCheckBox" name="checkbox_save_simulation_data">
+         <property name="geometry">
+          <rect>
+           <x>14</x>
+           <y>30</y>
+           <width>157</width>
+           <height>20</height>
+          </rect>
+         </property>
+         <property name="text">
+          <string>Save simulation data</string>
+         </property>
+         <property name="checked">
+          <bool>true</bool>
+         </property>
+        </widget>
+        <widget class="QCheckBox" name="checkbox_save_snapshots">
+         <property name="geometry">
+          <rect>
+           <x>14</x>
+           <y>58</y>
+           <width>181</width>
+           <height>20</height>
+          </rect>
+         </property>
+         <property name="text">
+          <string>Save structure snapshots</string>
+         </property>
+         <property name="checked">
+          <bool>true</bool>
+         </property>
+        </widget>
+        <widget class="QLabel" name="l_sim_data_interval">
+         <property name="geometry">
+          <rect>
+           <x>202</x>
+           <y>32</y>
+           <width>39</width>
+           <height>16</height>
+          </rect>
+         </property>
+         <property name="text">
+          <string>every</string>
+         </property>
+        </widget>
+        <widget class="QLabel" name="l_sim_data_interval_units">
+         <property name="geometry">
+          <rect>
+           <x>286</x>
+           <y>32</y>
+           <width>25</width>
+           <height>16</height>
+          </rect>
+         </property>
+         <property name="text">
+          <string>min</string>
+         </property>
+        </widget>
+        <widget class="QLineEdit" name="input_sim_data_interval">
+         <property name="geometry">
+          <rect>
+           <x>240</x>
+           <y>28</y>
+           <width>43</width>
+           <height>21</height>
+          </rect>
+         </property>
+         <property name="text">
+          <string>1</string>
+         </property>
+         <property name="maxLength">
+          <number>4</number>
+         </property>
+         <property name="placeholderText">
+          <string>1</string>
+         </property>
+        </widget>
+        <widget class="QLineEdit" name="input_snapshot_interval">
+         <property name="geometry">
+          <rect>
+           <x>240</x>
+           <y>56</y>
+           <width>43</width>
+           <height>21</height>
+          </rect>
+         </property>
+         <property name="text">
+          <string>10</string>
+         </property>
+         <property name="maxLength">
+          <number>4</number>
+         </property>
+         <property name="placeholderText">
+          <string>10</string>
+         </property>
+        </widget>
+        <widget class="QLabel" name="l_snapshot_interval">
+         <property name="geometry">
+          <rect>
+           <x>202</x>
+           <y>60</y>
+           <width>39</width>
+           <height>16</height>
+          </rect>
+         </property>
+         <property name="text">
+          <string>every</string>
+         </property>
+        </widget>
+        <widget class="QLabel" name="l_snapshot_interval_units">
+         <property name="geometry">
+          <rect>
+           <x>286</x>
+           <y>60</y>
+           <width>25</width>
+           <height>16</height>
+          </rect>
+         </property>
+         <property name="text">
+          <string>min</string>
+         </property>
+        </widget>
+        <widget class="QLineEdit" name="input_unique_filename">
+         <property name="geometry">
+          <rect>
+           <x>418</x>
+           <y>42</y>
+           <width>143</width>
+           <height>21</height>
+          </rect>
+         </property>
+         <property name="inputMask">
+          <string/>
+         </property>
+         <property name="text">
+          <string/>
+         </property>
+         <property name="maxLength">
+          <number>32</number>
+         </property>
+         <property name="placeholderText">
+          <string>experiment_1</string>
+         </property>
+        </widget>
+        <widget class="QLabel" name="l_unique_name">
+         <property name="geometry">
+          <rect>
+           <x>330</x>
+           <y>44</y>
+           <width>83</width>
+           <height>16</height>
+          </rect>
+         </property>
+         <property name="text">
+          <string>unique name:</string>
+         </property>
+        </widget>
+        <widget class="QPushButton" name="open_save_folder_button">
+         <property name="geometry">
+          <rect>
+           <x>12</x>
+           <y>82</y>
+           <width>113</width>
+           <height>32</height>
+          </rect>
+         </property>
+         <property name="text">
+          <string>Open folder</string>
+         </property>
+        </widget>
+        <widget class="QLineEdit" name="save_folder_display">
+         <property name="geometry">
+          <rect>
+           <x>132</x>
+           <y>86</y>
+           <width>429</width>
+           <height>21</height>
+          </rect>
+         </property>
+         <property name="readOnly">
+          <bool>true</bool>
+         </property>
+         <property name="placeholderText">
+          <string>Select directory...</string>
+         </property>
+        </widget>
        </widget>
       </widget>
       <widget class="QWidget" name="tab_2">
@@ -811,7 +1005,7 @@
          </rect>
         </property>
         <property name="title">
-         <string>Initial conditions</string>
+         <string>Simulation volume</string>
         </property>
         <widget class="QRadioButton" name="choice_geom_parameters_file_mc">
          <property name="geometry">
@@ -858,7 +1052,7 @@
         <widget class="QLineEdit" name="input_geom_param_width_mc">
          <property name="geometry">
           <rect>
-           <x>296</x>
+           <x>298</x>
            <y>56</y>
            <width>45</width>
            <height>21</height>
@@ -877,7 +1071,7 @@
         <widget class="QLineEdit" name="input_geom_param_height_mc">
          <property name="geometry">
           <rect>
-           <x>488</x>
+           <x>492</x>
            <y>56</y>
            <width>45</width>
            <height>21</height>
@@ -896,7 +1090,7 @@
         <widget class="QLineEdit" name="input_geom_param_length_mc">
          <property name="geometry">
           <rect>
-           <x>392</x>
+           <x>396</x>
            <y>56</y>
            <width>45</width>
            <height>21</height>
@@ -912,7 +1106,7 @@
           <string>200</string>
          </property>
         </widget>
-        <widget class="QLabel" name="l_nm_1_mc">
+        <widget class="QLabel" name="l_dimensions_units_mc">
          <property name="geometry">
           <rect>
            <x>540</x>
@@ -959,12 +1153,12 @@
           <rect>
            <x>258</x>
            <y>60</y>
-           <width>37</width>
+           <width>41</width>
            <height>16</height>
           </rect>
          </property>
          <property name="text">
-          <string>width</string>
+          <string>Width:</string>
          </property>
         </widget>
         <widget class="QLabel" name="l_length_mc">
@@ -972,12 +1166,12 @@
           <rect>
            <x>348</x>
            <y>60</y>
-           <width>41</width>
+           <width>49</width>
            <height>16</height>
           </rect>
          </property>
          <property name="text">
-          <string>length</string>
+          <string>Length:</string>
          </property>
         </widget>
         <widget class="QLabel" name="l_height_mc">
@@ -985,12 +1179,12 @@
           <rect>
            <x>446</x>
            <y>60</y>
-           <width>41</width>
+           <width>45</width>
            <height>16</height>
           </rect>
          </property>
          <property name="text">
-          <string>height</string>
+          <string>Height:</string>
          </property>
         </widget>
         <widget class="QLabel" name="l_cell_size_mc">
@@ -1028,7 +1222,7 @@
           <string>2</string>
          </property>
         </widget>
-        <widget class="QLabel" name="l_nm_2_mc">
+        <widget class="QLabel" name="l_cell_size_units_mc">
          <property name="geometry">
           <rect>
            <x>126</x>
@@ -1073,7 +1267,7 @@
           <string>4</string>
          </property>
         </widget>
-        <widget class="QLabel" name="l_nm_3_mc">
+        <widget class="QLabel" name="l_substrate_height_units_mc">
          <property name="geometry">
           <rect>
            <x>328</x>
@@ -1401,7 +1595,7 @@
          </rect>
         </property>
         <property name="title">
-         <string>Beam and precursor</string>
+         <string>Precursor parameters</string>
         </property>
         <widget class="QPushButton" name="open_precursor_parameters_file_button_mc">
          <property name="geometry">
@@ -1450,7 +1644,7 @@
         <property name="geometry">
          <rect>
           <x>244</x>
-          <y>368</y>
+          <y>366</y>
           <width>113</width>
           <height>45</height>
          </rect>
@@ -1469,7 +1663,7 @@
     <rect>
      <x>0</x>
      <y>0</y>
-     <width>616</width>
+     <width>615</width>
      <height>22</height>
     </rect>
    </property>
@@ -1766,7 +1960,7 @@
   </connection>
   <connection>
    <sender>pattern_selection</sender>
-   <signal>currentIndexChanged(int)</signal>
+   <signal>currentTextChanged(QString)</signal>
    <receiver>MainWindow</receiver>
    <slot>pattern_selection_changed()</slot>
    <hints>
@@ -1803,8 +1997,8 @@
    <slot>start_febid()</slot>
    <hints>
     <hint type="sourcelabel">
-     <x>292</x>
-     <y>453</y>
+     <x>307</x>
+     <y>562</y>
     </hint>
     <hint type="destinationlabel">
      <x>8</x>
@@ -1824,23 +2018,7 @@
     </hint>
     <hint type="destinationlabel">
      <x>424</x>
-     <y>-1</y>
-    </hint>
-   </hints>
-  </connection>
-  <connection>
-   <sender>input_geom_param_length</sender>
-   <signal>editingFinished()</signal>
-   <receiver>MainWindow</receiver>
-   <slot>check_input()</slot>
-   <hints>
-    <hint type="sourcelabel">
-     <x>432</x>
-     <y>121</y>
-    </hint>
-    <hint type="destinationlabel">
-     <x>527</x>
-     <y>-1</y>
+     <y>0</y>
     </hint>
    </hints>
   </connection>
@@ -1851,8 +2029,24 @@
    <slot>check_input()</slot>
    <hints>
     <hint type="sourcelabel">
-     <x>535</x>
-     <y>118</y>
+     <x>543</x>
+     <y>130</y>
+    </hint>
+    <hint type="destinationlabel">
+     <x>527</x>
+     <y>0</y>
+    </hint>
+   </hints>
+  </connection>
+  <connection>
+   <sender>input_geom_param_length</sender>
+   <signal>editingFinished()</signal>
+   <receiver>MainWindow</receiver>
+   <slot>check_input()</slot>
+   <hints>
+    <hint type="sourcelabel">
+     <x>454</x>
+     <y>130</y>
     </hint>
     <hint type="destinationlabel">
      <x>609</x>
@@ -1867,11 +2061,11 @@
    <slot>check_input()</slot>
    <hints>
     <hint type="sourcelabel">
-     <x>306</x>
-     <y>165</y>
+     <x>321</x>
+     <y>166</y>
     </hint>
     <hint type="destinationlabel">
-     <x>612</x>
+     <x>611</x>
      <y>130</y>
     </hint>
    </hints>
@@ -1883,8 +2077,8 @@
    <slot>check_input()</slot>
    <hints>
     <hint type="sourcelabel">
-     <x>506</x>
-     <y>156</y>
+     <x>521</x>
+     <y>166</y>
     </hint>
     <hint type="destinationlabel">
      <x>607</x>
@@ -2148,6 +2342,102 @@
     </hint>
    </hints>
   </connection>
+  <connection>
+   <sender>checkbox_save_simulation_data</sender>
+   <signal>stateChanged(int)</signal>
+   <receiver>MainWindow</receiver>
+   <slot>change_state_save_sim_data(int)</slot>
+   <hints>
+    <hint type="sourcelabel">
+     <x>49</x>
+     <y>470</y>
+    </hint>
+    <hint type="destinationlabel">
+     <x>7</x>
+     <y>485</y>
+    </hint>
+   </hints>
+  </connection>
+  <connection>
+   <sender>checkbox_save_snapshots</sender>
+   <signal>stateChanged(int)</signal>
+   <receiver>MainWindow</receiver>
+   <slot>change_state_save_snapshots(int)</slot>
+   <hints>
+    <hint type="sourcelabel">
+     <x>59</x>
+     <y>496</y>
+    </hint>
+    <hint type="destinationlabel">
+     <x>7</x>
+     <y>525</y>
+    </hint>
+   </hints>
+  </connection>
+  <connection>
+   <sender>input_sim_data_interval</sender>
+   <signal>editingFinished()</signal>
+   <receiver>MainWindow</receiver>
+   <slot>check_input()</slot>
+   <hints>
+    <hint type="sourcelabel">
+     <x>277</x>
+     <y>461</y>
+    </hint>
+    <hint type="destinationlabel">
+     <x>30</x>
+     <y>572</y>
+    </hint>
+   </hints>
+  </connection>
+  <connection>
+   <sender>input_snapshot_interval</sender>
+   <signal>editingFinished()</signal>
+   <receiver>MainWindow</receiver>
+   <slot>check_input()</slot>
+   <hints>
+    <hint type="sourcelabel">
+     <x>284</x>
+     <y>493</y>
+    </hint>
+    <hint type="destinationlabel">
+     <x>108</x>
+     <y>576</y>
+    </hint>
+   </hints>
+  </connection>
+  <connection>
+   <sender>tabWidget</sender>
+   <signal>currentChanged(int)</signal>
+   <receiver>MainWindow</receiver>
+   <slot>tab_switched(int)</slot>
+   <hints>
+    <hint type="sourcelabel">
+     <x>262</x>
+     <y>43</y>
+    </hint>
+    <hint type="destinationlabel">
+     <x>6</x>
+     <y>48</y>
+    </hint>
+   </hints>
+  </connection>
+  <connection>
+   <sender>open_save_folder_button</sender>
+   <signal>clicked()</signal>
+   <receiver>MainWindow</receiver>
+   <slot>open_save_directory()</slot>
+   <hints>
+    <hint type="sourcelabel">
+     <x>87</x>
+     <y>520</y>
+    </hint>
+    <hint type="destinationlabel">
+     <x>6</x>
+     <y>556</y>
+    </hint>
+   </hints>
+  </connection>
  </connections>
  <slots>
   <slot>vtk_chosen()</slot>
@@ -2169,5 +2459,9 @@
   <slot>start_febid()</slot>
   <slot>start_mc()</slot>
   <slot>check_input()</slot>
+  <slot>change_state_save_sim_data(int)</slot>
+  <slot>change_state_save_snapshots(int)</slot>
+  <slot>tab_switched(int)</slot>
+  <slot>open_save_directory()</slot>
  </slots>
 </ui>
