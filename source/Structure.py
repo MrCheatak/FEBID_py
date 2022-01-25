@@ -32,8 +32,9 @@ class Structure():
         self.d_empty = deposit_empty
         self.d_full_s = deposit_full_substrate
         self.d_full_d = deposit_full_deponat
+        self.initialized = False
 
-    def load_from_vtk(self, vtk_obj: pv.UniformGrid):
+    def load_from_vtk(self, vtk_obj: pv.DataSet):
         """
         Frame initializer. Either a vtk object should be specified or initial conditions given.
 
@@ -66,10 +67,14 @@ class Structure():
                 sys.exit("Exiting.")
         else:
             self.cell_dimension = vtk_obj.spacing[0]
-        self.cell_dimension = (self.cell_dimension)
+        self.cell_dimension = int(self.cell_dimension)
         self.zdim, self.ydim, self.xdim = vtk_obj.dimensions[2] - 1, vtk_obj.dimensions[1] - 1, vtk_obj.dimensions[
             0] - 1
         self.shape = (self.zdim, self.ydim, self.xdim)
+        self.zdim_abs = self.zdim * self.cell_dimension
+        self.ydim_abs = self.ydim * self.cell_dimension
+        self.xdim_abs = self.xdim * self.cell_dimension
+        self.shape_abs = (self.zdim_abs, self.ydim_abs, self.xdim_abs)
         if 'surface_bool' in vtk_obj.array_names:  # checking if it is a complete result of a deposition process
             print(f'VTK file is FEBID file, reading arrays...')
             self.deposit = np.asarray(vtk_obj.cell_arrays['deposit'].reshape(
@@ -110,6 +115,8 @@ class Structure():
             self.substrate_height = 0
         self.precursor[self.precursor<0] = 0
 
+        self.initialized = True
+
     def create_from_parameters(self, cell_dim=5, width=50, length=50, height=100, substrate_height=4, nr=0):
         self.cell_dimension = cell_dim
         self.zdim, self.ydim, self.xdim = height, width, length
@@ -127,7 +134,15 @@ class Structure():
         self.ghosts_bool = np.zeros((self.zdim + substrate_height, self.ydim, self.xdim), dtype=bool)
         self.define_surface()
         self.define_ghosts()
+        self.zdim, self.ydim, self.xdim = self.deposit.shape
+        self.shape = (self.zdim, self.ydim, self.xdim)
+        self.zdim_abs = self.zdim * self.cell_dimension
+        self.ydim_abs = self.ydim * self.cell_dimension
+        self.xdim_abs = self.xdim * self.cell_dimension
+        self.shape_abs = (self.zdim_abs, self.ydim_abs, self.xdim_abs)
         self.t = 0
+
+        self.initialized = True
 
     def flush_structure(self):
         """

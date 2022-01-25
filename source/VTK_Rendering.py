@@ -61,13 +61,12 @@ class Render:
         :param ghosts: if True, color ghost cells
         :return:
         """
-
         if struct:
             self._add_3Darray(structure.deposit, -2, -0.01, False, opacity=1, show_edges=True, scalar_name='Structure', button_name='Structure', color='white')
         if deposit:
             self._add_3Darray(structure.deposit, 0.00001, 1, False, opacity=1, show_edges=True, scalar_name='Surface deposit', button_name='Deposit', cmap='viridis')
         if precursor:
-            self._add_3Darray(precursor, 0.00001, 1, False, opacity=1, show_edges=True, scalar_name="Surface precursor density", button_name='Precursor', cmap='plasma')
+            self._add_3Darray(structure.precursor, 0.00001, 1, False, opacity=1, show_edges=True, scalar_name="Surface precursor density", button_name='Precursor', cmap='plasma')
         if surface:
             self._add_3Darray(structure.surface_bool, 1, 1, False, opacity=0.7, show_edges=True, scalar_name="Semi surface prec. density", button_name='Surface', color='red')
         if semi_surface:
@@ -75,6 +74,12 @@ class Render:
         if ghosts:
             self._add_3Darray(structure.ghosts_bool, 1, 1, False, opacity = 0.7, show_edges=True, scalar_name='ghosts', button_name="Ghosts", color='brown')
 
+        init_layer = np.count_nonzero(structure.deposit == -2)  # substrate layer
+        total_dep_cells = np.count_nonzero(structure.deposit[structure.deposit < 0]) - init_layer  # total number of fully deposited cells
+        self.p.add_text(f'Cells: {total_dep_cells} \n'  # showing total number of deposited cells
+                        f'Height: {int(np.nonzero(structure.deposit)[0].max() * structure.cell_dimension)} nm \n'                           # showing current height of the structure
+                        f'Deposited volume: {total_dep_cells * structure.cell_dimension**3} nm^3\n',
+                        position='upper_right', font_size=self.font)
         cam_pos = [(463.14450307610286, 271.1171723376318, 156.56895424388603),
                    (225.90027381807235, 164.9577775224395, 71.42188811921902),
                    (-0.27787912231751677, -0.1411181984824172, 0.950194110399093)]
@@ -295,7 +300,7 @@ class Render:
         self.p.update(stime=time, force_redraw=force_redraw)
         self.y_pos -= self.size*self.meshes_count
         self.meshes_count = 0
-        self.p.clear()
+        # self.p.clear()
 
 
 def numpy_to_vtk(arr, cell_dim, data_name='scalar', grid=None, unstructured=True):
@@ -342,7 +347,7 @@ def save_deposited_structure(structure, filename=None):
     # Eventually, vtk does not save those new attributes
     vtk_obj.save(f'{filename}_{time.strftime("%H:%M:%S", time.localtime())}.vtk')
 
-def open_deposited_structure(filename=None):
+def open_deposited_structure(filename=None, return_structure=False):
     vtk_obj = pv.read(filename)
     structure = Structure()
     cell_dimension = vtk_obj.spacing[0]
@@ -352,7 +357,10 @@ def open_deposited_structure(filename=None):
     semi_surface_bool = np.asarray(vtk_obj.cell_data['semi_surface_bool'].reshape((vtk_obj.dimensions[2] - 1, vtk_obj.dimensions[1] - 1, vtk_obj.dimensions[0] - 1)))
     ghosts_bool = np.asarray(vtk_obj.cell_data['ghosts_bool'].reshape((vtk_obj.dimensions[2] - 1, vtk_obj.dimensions[1] - 1, vtk_obj.dimensions[0] - 1)))
 
-    return (cell_dimension, deposit, substrate, surface_bool, semi_surface_bool, ghosts_bool)
+    if return_structure:
+        return structure
+    else:
+        return (cell_dimension, deposit, substrate, surface_bool, semi_surface_bool, ghosts_bool)
 
 
 def show_animation(directory=''):

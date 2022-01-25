@@ -110,7 +110,7 @@ class Process():
     """
     def __init__(self, structure, mc_config, equation_values, timings, time_spent=datetime.datetime.now(), deposition_scaling=1, name=None):
         if not name:
-            self.name = 'experiment_id_'+str(np.random.randint(000000, 999999, 1)[0])
+            self.name = str(np.random.randint(000000, 999999, 1)[0])
         else:
             self.name = name
         # Declaring necessary  properties
@@ -134,6 +134,7 @@ class Process():
         self.__surface_reduced_3d = None
         self.__semi_surface_reduced_3d = None
         self.__surface_all_reduced_3d = None
+        self.__ghosts_reduced_3d = None
         self.__ghosts_reduced_2d = None
         self.__beam_matrix_reduced_2d = None
 
@@ -259,7 +260,7 @@ class Process():
             surplus = self.__deposit_reduced_3d[cell] - 1 # saving deposit overfill to distribute among the neighbors later
             self.__deposit_reduced_3d[cell] = -1  # a fully deposited cell is always a minus unity
             self.__precursor_reduced_3d[cell] = 0
-            self.__ghosts_reduced_2d[cell] = True  # deposited cell belongs to ghost shell
+            self.__ghosts_reduced_3d[cell] = True  # deposited cell belongs to ghost shell
             self.__surface_reduced_3d[cell] = False  # rising the surface one cell up (new cell)
             self.redraw = True
 
@@ -274,38 +275,38 @@ class Process():
             # Taking into account cases when the cell is at the edge:
             if cell[0] - 1 < 0:
                 z_min = 0
-                neibs_sides = self.__neibs_sides[1:, :, :]
-                neibs_edges = self.__neibs_edges[1:, :, :]
+                neibs_sides = neibs_sides[1:, :, :]
+                neibs_edges = neibs_edges[1:, :, :]
             else:
                 z_min = cell[0] - 1
             if cell[0] + 2 > self.__deposit_reduced_3d.shape[0]:
                 z_max = self.__deposit_reduced_3d.shape[0]
-                neibs_sides = self.__neibs_sides[:1, :, :]
-                neibs_edges = self.__neibs_edges[:1, :, :]
+                neibs_sides = neibs_sides[:1, :, :]
+                neibs_edges = neibs_edges[:1, :, :]
             else:
                 z_max = cell[0] + 2
             if cell[1] - 1 < 0:
                 y_min = 0
-                neibs_sides = self.__neibs_sides[:, 1:, :]
-                neibs_edges = self.__neibs_edges[:, 1:, :]
+                neibs_sides = neibs_sides[:, 1:, :]
+                neibs_edges = neibs_edges[:, 1:, :]
             else:
                 y_min = cell[1] - 1
             if cell[1] + 2 > self.__deposit_reduced_3d.shape[1]:
                 y_max = self.__deposit_reduced_3d.shape[1]
-                neibs_sides = self.__neibs_sides[:, :1, :]
-                neibs_edges = self.__neibs_edges[:, :1, :]
+                neibs_sides = neibs_sides[:, :1, :]
+                neibs_edges = neibs_edges[:, :1, :]
             else:
                 y_max = cell[1] + 2
             if cell[2] - 1 < 0:
                 x_min = 0
-                neibs_sides = self.__neibs_sides[:, :, 1:]
-                neibs_edges = self.__neibs_edges[:, :, 1:]
+                neibs_sides = neibs_sides[:, :, 1:]
+                neibs_edges = neibs_edges[:, :, 1:]
             else:
                 x_min = cell[2] - 1
             if cell[2] + 2 > self.__deposit_reduced_3d.shape[2]:
                 x_max = self.__deposit_reduced_3d.shape[2]
-                neibs_sides = self.__neibs_sides[:, :, :1]
-                neibs_edges = self.__neibs_edges[:, :, :1]
+                neibs_sides = neibs_sides[:, :, :1]
+                neibs_edges = neibs_edges[:, :, :1]
             else:
                 x_max = cell[2] + 2
             # neighbors_1st = s_[cell[0]-1:cell[0]+2, cell[1]-1:cell[1]+2, cell[2]-1:cell[2]+2]
@@ -348,19 +349,19 @@ class Process():
             surf_kern[condition] = True
             condition = np.logical_and(np.logical_and(deposit_kern == 0, surf_kern == 0), neibs_edges)  # True for elements that are not deposited, not surface cells and are edge neighbors
             semi_s_kern[condition] = True
-            ghosts_kern = self.__ghosts_reduced_2d[neighbors_1st]
+            ghosts_kern = self.__ghosts_reduced_3d[neighbors_1st]
             ghosts_kern[...] = False
             deposit_kern[surf_kern] += surplus/np.count_nonzero(surf_kern) # distributing among the neighbors
 
             surf_kern = self.__surface_reduced_3d[neighbors_2nd]
             semi_s_kern = self.__semi_surface_reduced_3d[neighbors_2nd]
-            ghosts_kern = self.__ghosts_reduced_2d[neighbors_2nd]
+            ghosts_kern = self.__ghosts_reduced_3d[neighbors_2nd]
             condition = np.logical_and(surf_kern == 0, semi_s_kern == 0)  # True for elements that are neither surface nor semi-surface cells
             ghosts_kern[condition] = True
 
             self.__deposit_reduced_3d[cell] = -1  # a fully deposited cell is always a minus unity
             self.__precursor_reduced_3d[cell] = 0
-            self.__ghosts_reduced_2d[cell] = True  # deposited cell belongs to ghost shell
+            self.__ghosts_reduced_3d[cell] = True  # deposited cell belongs to ghost shell
             self.__surface_reduced_3d[cell] = False  # rising the surface one cell up (new cell)
             precursor_kern = self.__precursor_reduced_3d[neighbors_2nd]
             precursor_kern[semi_s_kern] += 0.000001  # only for plotting purpose (to pass vtk threshold filter)
@@ -573,6 +574,7 @@ class Process():
         self.__surface_reduced_3d = self.surface[self.irradiated_area_3D]
         self.__semi_surface_reduced_3d = self.semi_surface[self.irradiated_area_3D]
         self.__surface_all_reduced_3d = self._surface_all[self.irradiated_area_3D]
+        self.__ghosts_reduced_3d = self.ghosts[self.irradiated_area_3D]
         self.__beam_matrix_reduced_3d = self.beam_matrix[self.irradiated_area_3D]
 
     def __update_views_2d(self):

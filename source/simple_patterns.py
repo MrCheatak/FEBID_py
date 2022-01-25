@@ -5,7 +5,7 @@ import tkinter.filedialog as fd
 import numpy as np
 
 
-def open_stream_file(file='', offset=1.5):
+def open_stream_file(file=None, offset=1.5):
     """
     Open stream file and define enclosing array bounds
 
@@ -53,10 +53,12 @@ def open_stream_file(file='', offset=1.5):
     # Getting local coordinates
     data[:, 0] /= 1E10  # converting [0.1 ns] to [s]
     data[:, 1] -= x_min
+    data[:, 1] += (x_dim - data[:, 1].max())/ 2 # shifting path center to the center of the chamber
     data[:, 2] -= y_min
+    data[:, 2] += (y_dim - data[:, 2].max())/ 2 # shifting path center to the center of the chamber
     data = np.roll(data, -1, 1)
 
-    return data, (z_dim, y_dim, x_dim)
+    return data, np.array([z_dim, y_dim, x_dim], dtype=int)
 
 
 def generate_pattern(pattern, loops, dwell_time, x, y, params, step=1):
@@ -72,34 +74,36 @@ def generate_pattern(pattern, loops, dwell_time, x, y, params, step=1):
     :param step: distance between each point
     :return:
     """
+    pattern = pattern.casefold()
     path = None
     if pattern == 'point':
         path = generate_point(loops, dwell_time, x, y)
     if pattern == 'line':
-        path = generate_line(loops, dwell_time, x, y, *params)
+        path = generate_line(loops, dwell_time, x, y, *params, step=step)
     if pattern == 'circle':
-        path = generate_circle(loops, dwell_time, x, y, *params)
+        path = generate_circle(loops, dwell_time, x, y, *params, step=step)
     if pattern == 'square':
-        path = generate_square(loops, dwell_time, x, y, *params)
+        path = generate_square(loops, dwell_time, x, y, *params, step=step)
     if pattern == 'rectangle':
-        path = generate_square(loops, dwell_time, x, y, *params)
+        path = generate_square(loops, dwell_time, x, y, *params, step=step)
 
     return path
 
 
 def generate_point(loops, dwell_time, x, y):
-    loop = np.asarray([x, y, dwell_time]).reshape(1, 3)
-    path = np.tile(loop, (loops, 1))
+    # loop = np.asarray([x, y, dwell_time]).reshape(1, 3)
+    # path = np.tile(loop, (loops, 1))
+    path = np.asarray([x, y, loops * dwell_time]).reshape(1, 3)
     return path
 
 
-def generate_circle(loops, dwell_time, x, y, radius, step=1):
-    angle_step = step / radius
+def generate_circle(loops, dwell_time, x, y, diameter, step=1):
+    angle_step = step / diameter / 2
     n = int(np.pi * 2 // angle_step)
     loop = np.zeros((n, 3))
     stub = np.arange(angle_step, np.pi * 2, angle_step)
-    loop[:, 0] = radius * np.sin(stub) + y
-    loop[:, 1] = radius * np.cos(stub) + x
+    loop[:, 0] = diameter / 2 * np.sin(stub) + y
+    loop[:, 1] = diameter / 2 * np.cos(stub) + x
     loop[:, 2] = dwell_time
     path = np.tile(loop, (loops, 1))
     a = 0

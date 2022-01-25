@@ -256,7 +256,6 @@ def initialize_framework(from_file=False, precursor=None, settings=None, sim_par
     return structure, precursor, settings, sim_params
 
 
-
 def buffer_constants(precursor: dict, settings: dict, cell_dimension: int):
     """
     Calculate necessary constants and prepare parameters for modules
@@ -346,17 +345,35 @@ def start_from_command_line():
 
     run_febid(structure, precursor_params, settings, sim_params, path)
 
+def run_febid_interface(structure, precursor_params, settings, sim_params, path, saving_params):
 
-def run_febid_test(geom, path, dwell_time, loops, files, name, kwargs):
+    if saving_params['monitoring']:
+        dump_stats = True
+        stats_rate = saving_params['monitoring'] * 60
+    else:
+        dump_stats = False
+        stats_rate = math.inf
+    if saving_params['snapshot']:
+        dump_vtk = True
+        dump_rate = saving_params['snapshot'] * 60
+    else:
+        dump_vtk = False
+        dump_rate = math.inf
+    kwargs = dict(location=saving_params['filename'], stats_rate=stats_rate,
+                  dump_rate=dump_rate, render=True, frame_rate=1, refresh_rate=0.5)
+    run_febid(structure, precursor_params, settings, sim_params, path, dump_stats, kwargs)
+
+def run_febid_test(geom, path, dwell_time, loops, files, kwargs):
 
     x,y = geom[0]//2 * geom[4], geom[1]//2 * geom[4] # center
     path = sp.generate_pattern(path[0], loops, dwell_time, x, y, path[1:])
 
     structure, precursor_params, settings, sim_params = initialize_framework(False, files['precursor'], files['settings'], geom_params=geom)
-    run_febid(structure, precursor_params, settings, sim_params, path, True, name, kwargs)
+    saving_params = {}
+    run_febid(structure, precursor_params, settings, sim_params, path, True, kwargs)
 
 
-def run_febid(structure, precursor_params, settings, sim_params, path, gather_stats=False, name='', monitor_kwargs=None):
+def run_febid(structure, precursor_params, settings, sim_params, path, gather_stats=False, monitor_kwargs=None):
     """
     Create necessary objects and start the FEBID process
 
@@ -367,18 +384,14 @@ def run_febid(structure, precursor_params, settings, sim_params, path, gather_st
     :param path: stream file filename
     :return:
     """
-    try:
-        _ = monitor_kwargs['location']
-    except KeyError:
-        monitor_kwargs['location'] = os.getcwd()
     mc_config, equation_values, timings, nr = buffer_constants(precursor_params, settings, sim_params['cell_dimension'])
-    process_obj = Process(structure, mc_config, equation_values, timings, name=name, deposition_scaling=8)
     stats = None
     if gather_stats:
-        stats = Statistics(os.path.join(monitor_kwargs['location'], name))
+        stats = Statistics(monitor_kwargs['location'])
         stats.get_params(precursor_params,'Precursor parameters')
         stats.get_params(settings, 'Beam parameters and settings')
         stats.get_params(sim_params, 'Simulation volume parameters')
+    process_obj = Process(structure, mc_config, equation_values, timings, deposition_scaling=8)
     sim = etraj3d.cache_params(mc_config, process_obj.deposit, process_obj.surface)
     total_iters = int(np.sum(path[:,2])/process_obj.dt)
     printing = Thread(target=print_all, args=[path, process_obj, sim])
@@ -429,7 +442,7 @@ def print_step(y, x, dwell_time, pr:Process, sim, t=None):
         t.update(1)
 
 
-def monitoring(pr:Process, l, stats:Statistics = None, location=None, stats_rate=60, dump_vtk=False, dump_rate=60, render=False, frame_rate=1, refresh_rate=0.5):
+def monitoring(pr:Process, l, stats:Statistics = None, location=None, stats_rate=60, dump_rate=60, render=False, frame_rate=1, refresh_rate=0.5):
     """
     A daemon process function to manage statistics gathering and graphics update
 
@@ -459,7 +472,7 @@ def monitoring(pr:Process, l, stats:Statistics = None, location=None, stats_rate
     # Recording start time
     time_step = 60
     pr.start_time = datetime.datetime.now()
-    time_spent = frame = dump_time = timeit.default_timer()
+    start_time = time_spent = frame = dump_time = stats_time = timeit.default_timer()
     # Initializing graphical monitoring
     rn = None
     if render:
@@ -471,9 +484,9 @@ def monitoring(pr:Process, l, stats:Statistics = None, location=None, stats_rate
                                                       (-0.23307751464125356, -0.236197909312718, 0.9433373838690787)])
     else:
         frame = np.inf # current time is always less than infinity
-    if not stats:
+    if not stats_rate:
         stats_rate = np.inf
-    if not dump_vtk:
+    if not dump_rate:
         dump_rate = np.inf
 
     # Event loop
@@ -484,13 +497,14 @@ def monitoring(pr:Process, l, stats:Statistics = None, location=None, stats_rate
             print(f'Time passed: {time_spent}, Av.speed: {l/time_spent}')
         if now > frame: # graphical
             frame += frame_rate
-            update_graphical(rn,pr,time_step, time_spent)
-        if now > stats_rate:
+            update_graphical(rn,pr,time_step, now - start_time)
+        if now > stats_time :
+            stats_time += stats_rate
             stats.append((pr.t, np.count_nonzero(pr.deposit==-1), pr.deposition_scaling))
             stats.save_to_file()
-        if now > dump_rate:
+        if now > dump_time:
             dump_time += dump_rate
-            dump_structure(pr.structure, os.path.join(location, pr.name))
+            dump_structure(pr.structure, f'{location}_')
         time.sleep(refresh_rate)
     
 def update_graphical(rn:vr.Render, pr:Process, time_step, time_spent):
@@ -511,6 +525,10 @@ def update_graphical(rn:vr.Render, pr:Process, time_step, time_spent):
         rn._add_3Darray(pr.precursor, 0.00000001, 1, opacity=0.5, show_edges=True, exclude_zeros=False,
                             scalar_name='Precursor',
                             button_name='precursor', cmap='plasma')
+        try:
+            rn.p.update_scalar_bar_range(clim=[pr.precursor[pr.precursor > 0.00001].min(), pr.precursor.max()])
+        except Exception as e:
+            pass
         rn.meshes_count += 1
         # rn.add_3Darray(deposit, structure.cell_dimension, -2, -0.5, 0.7, scalar_name='Deposit',
         #            button_name='Deposit', color='white', show_scalar_bar=False)
@@ -528,8 +546,8 @@ def update_graphical(rn:vr.Render, pr:Process, time_step, time_spent):
     else:
         # rn.p.mesh['precursor'] = precursor[precursor!=0]
         rn.p.update_scalars(pr.precursor[pr.precursor > 0])
-        rn.p.update_scalar_bar_range(clim=[pr.precursor[pr.precursor>0].min(), pr.precursor.max()])
-    rn.p.update()
+        rn.p.update_scalar_bar_range(clim=[pr.precursor[pr.precursor>0.00001].min(), pr.precursor.max()])
+    rn.update()
     return pr.redraw
 
 
