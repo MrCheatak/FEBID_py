@@ -172,6 +172,7 @@ def rerun_simulation(y0, x0, deposit, surface, sim:et.ETrajectory, dt):
     sim.grid = deposit
     sim.surface = surface
     sim.map_wrapper(y0, x0)
+    sim.map_wrapper_cy(y0, x0)
     # sim.save_passes(f'{sim.N} passes', 'pickle')
     t = timeit.default_timer() - start
     # print(f'\n{sim.N} trajectories took {t} s')
