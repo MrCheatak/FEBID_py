@@ -371,6 +371,15 @@ class Process():
             self.irradiated_area_2D = np.s_[self.structure.substrate_height-1:self.max_z, :, :] # a volume encapsulating the whole surface
             self.__update_views_2d()
 
+        if self.max_z + 5 > self.structure.shape[0]:
+            # Here the Structure is extended in height
+            # and all the references to the data arrays are renewed
+            shape_old = self.structure.shape
+            self.structure.resize_structure(200)
+            beam_matrix = self.beam_matrix # taking care of the beam_matrix, because __set_structure creates it empty
+            self.__set_structure(self.structure)
+            self.beam_matrix[:shape_old[0], :shape_old[1], :shape_old[2]] = beam_matrix
+            # Basically, none of the slices have to be updated, because they use indexes, not references.
         return False
 
     def deposition(self):

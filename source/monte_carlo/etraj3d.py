@@ -169,6 +169,8 @@ def rerun_simulation(y0, x0, deposit, surface, sim:et.ETrajectory, dt):
     :return:
     """
     start = timeit.default_timer()
+    sim.grid = deposit
+    sim.surface = surface
     sim.map_wrapper(y0, x0)
     # sim.save_passes(f'{sim.N} passes', 'pickle')
     t = timeit.default_timer() - start

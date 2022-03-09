@@ -5,16 +5,19 @@ import tkinter.filedialog as fd
 import numpy as np
 
 
-def open_stream_file(file=None, offset=1.5):
+def open_stream_file(file=None, offset=2, scale_factor=1):
     """
-    Open stream file and define enclosing array bounds
+    Open stream file, convert to nm and define enclosing volume dimensions.
+        A valid stream-file should consist of 3 columns and start with 's16' line.
 
     :param file: path to the stream-file
     :param offset: determines a margin around the printing path
-    :return: normalized directives, dimensions of the enclosing volume
+    :return: normalized directives in nm and s, dimensions of the enclosing volume in nm
     """
     if not file:
-        file = fd.askopenfilename()
+        raise FileNotFoundError
+        # print('Specify a stream file:')
+        # file = fd.askopenfilename(title='Open stream-file')
     data = None
 
     # Opening file and parsing text
@@ -36,43 +39,66 @@ def open_stream_file(file=None, offset=1.5):
                              invalid_raise=False)
         print('Done!')
 
-    # Determining chamber dimensions
-    offset -= 1
+    # Determining volume dimensions with an offset
+    # offset -= 1
     x_max, x_min = data[:, 1].max(), data[:, 1].min()
-    x_dim = x_max - x_min
-    x_min -= x_dim * offset
-    x_max += x_dim * offset
-    x_dim = x_max - x_min
+    x_dim = (x_max - x_min) * offset
+    x_delta = (x_max - x_min) * (offset - 1) / 2
     y_max, y_min = data[:, 2].max(), data[:, 2].min()
-    y_dim = y_max - y_min
-    y_min -= y_dim * offset
-    y_max += y_dim * offset
-    y_dim = y_max - y_min
+    y_dim = (y_max - y_min) * offset
+    y_delta = (y_max - y_min) * (offset - 1) / 2
     z_dim = max(x_dim, y_dim) * 2
 
+    if x_dim < 1000 or y_dim < 1000: # checking if both dimensions are at least 100 nm
+        if x_dim < 1000:
+            x_dim = ((y_dim/2)//10)*10
+            x_delta = x_dim/2
+        if y_dim < 1000:
+            y_dim = ((x_dim/2)//10)*10
+            y_delta =  y_dim/2
     # Getting local coordinates
-    data[:, 0] /= 1E10  # converting [0.1 ns] to [s]
-    data[:, 1] -= x_min
-    data[:, 1] += (x_dim - data[:, 1].max())/ 2 # shifting path center to the center of the chamber
-    data[:, 2] -= y_min
-    data[:, 2] += (y_dim - data[:, 2].max())/ 2 # shifting path center to the center of the chamber
+    data[:, 0] /= 1E6  # converting [0.1 ns] to [s]
+    data[:, 1] -= x_min - x_delta
+    data[:, 1] /= 10 # converting [0.1 nm] to [nm]
+    # data[:, 1] += (x_dim - data[:, 1].max())/ 2 # shifting path center to the center of the volume
+    data[:, 2] -= y_min - y_delta
+    data[:, 2] /= 10
+    # data[:, 2] += (y_dim - data[:, 2].max())/ 2 # shifting path center to the center of the volume
     data = np.roll(data, -1, 1)
 
-    return data, np.array([z_dim, y_dim, x_dim], dtype=int)
+    # Summing dwell time of consecutive points with same coordinates
+    p_d = np.diff(data[:, (0, 1)], axis=0).astype(bool)
+    p_d = p_d[:, 0] + p_d[:, 1]
+    a = []
+    i = 0
+    while i < p_d.shape[0] - 1:
+        b = np.copy(data[i])
+        while not p_d[i] and i < p_d.shape[0] - 1:
+            b[2] += data[i, 2]
+            i += 1
+        a.append(b)
+        i += 1
+    data = np.asarray(a)
+
+    if scale_factor:
+        data[:, 2] /= scale_factor
+
+    return data, np.array([z_dim/10, y_dim/10, x_dim/10], dtype=int)
 
 
 def generate_pattern(pattern, loops, dwell_time, x, y, params, step=1):
     """
-    Generate stream file - like directions for printing one of the simple patterns
+    Generate a stream-file for a simple figure.
 
     :param pattern: name of a shape: point, line, square, rectangle, circle
     :param loops: amount of passes
-    :param dwell_time: time spent on each point
-    :param x: center x position of the shape
-    :param y: center y position of the shape
-    :param params: shape parameters
-    :param step: distance between each point
-    :return:
+    :param dwell_time: time spent on each point, s
+    :param x: center x position of the figure, nm
+    :param y: center y position of the figure, nm
+    :param params: figure parameters, nm;
+        (length) for line, (diameter) for circle, (edge length) for cube
+    :param step: distance between each point, nm
+    :return: array(x positions[nm], y positions[nm], dwell time[s])
     """
     pattern = pattern.casefold()
     path = None
@@ -97,7 +123,7 @@ def generate_point(loops, dwell_time, x, y):
     return path
 
 
-def generate_circle(loops, dwell_time, x, y, diameter, step=1):
+def generate_circle(loops, dwell_time, x, y, diameter, _, step=1):
     angle_step = step / diameter / 2
     n = int(np.pi * 2 // angle_step)
     loop = np.zeros((n, 3))
@@ -137,7 +163,7 @@ def generate_square(loops, dwell_time, x, y, side_a, side_b=None, step=1):
     return path
 
 
-def generate_line(loops, dwell_time, x, y, line, step=1):
+def generate_line(loops, dwell_time, x, y, line, _, step=1):
     start = x - line / 2
     end = x + line / 2
     path = np.empty((int(line / step * 2) - 2, 3))
