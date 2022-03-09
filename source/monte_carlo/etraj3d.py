@@ -17,8 +17,8 @@ import line_profiler
 # Local packages
 from Structure import Structure
 import VTK_Rendering as vr
-import etrajectory as et
-import etrajmap3d as map3d
+from monte_carlo import etrajectory as et
+from monte_carlo import etrajmap3d as map3d
 
 # TODO: implement a global flag for collecting data(Se trajes) for plotting
 
@@ -127,8 +127,14 @@ def read_param(name, expected_type, message="Inappropriate input for ", check_st
             continue
 
 
-def plot(m3d:map3d.ETrajMap3d, sim:et.ETrajectory=math.nan): # plot energy loss and all trajectories
+def plot(m3d:map3d.ETrajMap3d, sim:et.ETrajectory): # plot energy loss and all trajectories
+    """
+    Show the structure with surface electron flux and electron trajectories
 
+    :param m3d:
+    :param sim:
+    :return:
+    """
     render = vr.Render(sim.cell_dim)
     pe_trajectories = np.asarray(sim.passes)
     render.show_mc_result(sim.grid, pe_trajectories, m3d.DE, m3d.flux, m3d.coords_all)
@@ -155,8 +161,8 @@ def rerun_simulation(y0, x0, deposit, surface, sim:et.ETrajectory, dt):
     """
     Rerun simulation using existing MC simulation instance
 
-    :param y0: beam y-position
-    :param x0: beam x-position
+    :param y0: beam y-position, absolute
+    :param x0: beam x-position, absolute
     :param deposit: array representing solid structure
     :param surface: array representing surface shape
     :param sim: MC simulation instance
@@ -166,29 +172,23 @@ def rerun_simulation(y0, x0, deposit, surface, sim:et.ETrajectory, dt):
     sim.map_wrapper(y0, x0)
     # sim.save_passes(f'{sim.N} passes', 'pickle')
     t = timeit.default_timer() - start
-    print(f'\n{sim.N} trajectories took {t} s')
-    print(f'Energy deposition took: \t SE preparation took: \t Flux counting took:')
-    m3d = map3d.ETrajMap3d(deposit, surface, sim)
+    # print(f'\n{sim.N} trajectories took {t} s')
+    # print(f'Energy deposition took: \t SE preparation took: \t Flux counting took:')
+    sim.m3d = map3d.ETrajMap3d(deposit, surface, sim)
+    m3d = sim.m3d
     start = timeit.default_timer()
-    # profiler = line_profiler.LineProfiler()
-    # profiled_func = profiler(m3d.map_follow)
-    # try:
-    #     profiled_func(sim.passes, 1)
-    # finally:
-    #     profiler.print_stats()
-    m3d.map_follow(sim.passes, 1)
+    m3d.map_follow(sim.passes)
     t = timeit.default_timer() - start
-    print(f' =  {t} s')
     # plot(m3d, sim)
+    if m3d.flux.max() > 10000*m3d.amplifying_factor:
+        print(f' Encountered infinity in the beam matrix: {np.nonzero(m3d.flux>10000*m3d.amplifying_factor)}')
+        m3d.flux[m3d.flux>10000*m3d.amplifying_factor] = 0
+    if m3d.flux.min() < 0:
+        print(f'Encountered negative in beam matrix: {np.nonzero(m3d.flux<0)}')
+        m3d.flux[m3d.flux<0] = 0
     return np.int32(m3d.flux/m3d.amplifying_factor*sim.norm_factor/(dt*sim.cell_dim*sim.cell_dim))
 
 
-
-
 if __name__ == '__main__':
-    sys.argv=input("Input: ").split(' ')
-    # if len(sys.argv) != 5:
-    #     print('Usage: python3 etraj3d.py <vti file> <cfg file> <show plot (y/n)> <pickle trajectories (y/n)>')
-    #     hockeystick.vti hockeystick.cfg y y
-    #     print('Exit.')
-    #     exit(0)
+    print("Current script does not have an entry point.....")
+    input('Press Enter to exit.')

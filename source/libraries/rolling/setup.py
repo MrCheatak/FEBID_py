@@ -14,7 +14,6 @@ if sys.platform is 'darwin':  # darwin == OSX
 ext_module = [Extension("roll", ['roll.pyx'],
                   include_dirs=["/usr/local/opt/llvm/include"],
                   library_dirs=["/usr/local/opt/llvm/lib"],
-                  language="c",
                   extra_compile_args=["-w", "-fopenmp"],
                   extra_link_args=["-lomp"]
                   )]

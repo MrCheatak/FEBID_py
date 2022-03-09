@@ -6,6 +6,7 @@
 # Default packages
 import os, sys
 import random as rnd
+import warnings
 from math import *
 import multiprocessing
 
@@ -16,19 +17,48 @@ import numpy as np
 import pickle
 import timeit
 import line_profiler
+import traceback as tb
 
 # Local packages
 from libraries.ray_traversal import traversal
+from monte_carlo.compiled import etrajectory_c
 
 
 class ETrajectory(object):
+    """
+    A class responsible for the generation and scattering of electron trajectories
+    """
     def __init__(self, name='noname'):
         self.name = name
-        self.passes = []
+        self.passes = [] # keeps the last result of the electron trajectory simulation
         self.NA = 6.022141E23 # Avogadro number
         rnd.seed()
 
+        # Beam properties
+        self.E0 = 0 # energy of the beam, keV
+        self.Emin = 0 # cut-off energy for electrons, keV
+        self.sigma = 0 # standard Gaussian deviation
+        self.N = 0 # number of electron trajectories to simulate
+
+        # Solid structure properties
+        self.grid = None # 3D array representing a solid structure 
+        self.surface = None # 3D array representing a surface of the solid structure
+        self.cell_dim = 1 # dimension of a single cell
+        self.deponat = Element() # deponat material properties
+        self.substrate = substrates['Au'] # substrate material properties
+        self.material = None # material in the current point
+
+        self.z0, self.y0, self.x0 = 0, 0, 0
+        self.zdim, self.ydim, self.xdim = 0, 0, 0
+        self.zdim_abs, self.ydim_abs, self.xdim_abs = 0, 0, 0
+        self.ztop = 0
+
+        self.norm_factor = 0 # a ratio of the actual number of electrons emitted to the number of electrons simulated
+
     class Electron():
+        """
+        A class representing a single electron with its properties and methods to define its scattering vector.
+        """
         def __init__(self, x, y, parent):
             # Python uses dictionaries to represent class attributes, which causes significant memory usage
             # __slots__ attribute forces Python to use a small array for attribute storage, which reduces amount
@@ -115,7 +145,8 @@ class ETrajectory(object):
 
         def check_boundaries(self, z=0, y=0, x=0):
             """
-            Check if the given (z,y,x) position is inside the simulation chamber
+            Check if the given (z,y,x) position is inside the simulation chamber.
+            If bounds are crossed, return corrected position
 
             :param z:
             :param y:
@@ -222,7 +253,7 @@ class ETrajectory(object):
         #TODO: material tracking can be more universal
         # instead of using deponat and substrate variables, there can be a dictionary, where substrate is always last
         self.E0 = params['E0']
-        self.Emin = params['Emin'] # cut-off energy for PE, keV
+        self.Emin = params['Emin']
         self.grid = deposit
         self.surface = surface
         self.cell_dim = params['cell_dim']
@@ -262,13 +293,16 @@ class ETrajectory(object):
 
 
     def rnd_gauss_xy(self, x0, y0, N):
-        '''Gauss-distributed (x, y) positions.
-           sigma: standard deviation
-           n: number of positions
-           Returns lists of n x and y coordinates which are gauss-distributed.
-        '''
+        """
+        Gauss-distributed (x, y) positions.
+
+        :param y0: y-position of the beam, nm
+        :param x0: x-position of the beam, nm
+        :param N: number of positions to create
+        """
         # x, y = [], []
         if N==0: N=self.N
+        i=0
         while True:
             r = np.random.normal(0, self.sigma, N)
             phi = np.random.uniform(0, 2 * pi - np.finfo(float).tiny, N)
@@ -276,25 +310,35 @@ class ETrajectory(object):
             x = r*np.cos(phi) + x0
             y = r*np.sin(phi) + y0
             try:
-                if x.max()>self.xdim_abs:
-                    x = np.take(x, (x<self.xdim_abs).nonzero()[0])
-                if x.min() < 0:
-                    x = np.take(x, (x>0).nonzero()[0])
-                if y.max() > self.ydim_abs:
-                    y = np.take(y, (y<self.ydim_abs).nonzero()[0])
-                if y.min() < 0:
-                    y = np.take(y, (y>0).nonzero()[0])
+                if x.max()>self.xdim_abs or y.max()>self.ydim_abs:
+                    condition = np.logical_and(x<self.xdim_abs, y<self.ydim_abs)
+                    x = x[condition]
+                    y = y[condition]
+                if x.min() <= 0 or y.min() <= 0:
+                    condition = np.logical_and(x > 0, y > 0)
+                    x = x[condition]
+                    y = y[condition]
             except:
+                i += 1
+                if i > 10000:
+                    raise OverflowError("Stuck in an endless loop in Gauss distribution creation. \n Terminating.")
                 continue
             if x.size > 0 and y.size > 0:
-                return (x, y)
+                if x.shape[0] != y.shape[0]:
+                    print(f'x and y shape mismatch in \'rnd_gauss_xy\'')
+                    raise ValueError
+                return x, y
+            i += 1
+            if i > 10000:
+                raise OverflowError("Stuck in an endless loop in Gauss distribution creation. \n Terminating.")
 
     def run(self, i0, j0, N=0):
         """
-        Runs Monte-Carlo electron scattering simulation for the given structure
+        Run Monte-Carlo electron scattering simulation for the given structure with multiprocessing
 
-        :param Emin: cut-off energy
-        :param passes:
+        :param i0: y-position, array
+        :param j0: x-position, array
+        :param N: number of electrons
         :return:
         """
         """
@@ -306,11 +350,11 @@ class ETrajectory(object):
         1. With the given beam position(x,y) a Gauss distribution is mapped. 
             Beam origin is always at the top of the chamber and thus the first trajectory piece is a straight line down to the surface(solid)
         2. Then trajectories are mapped and their energy losses per trajectory step are calculated
-            Trajectories are no longer mapped fully, but only until electron exits chamber or energy
+            Trajectories are no longer mapped fully, but only until electron exits chamber(99% of cases) or looses all energy
 
         """
 
-        y0, x0 = self.rnd_gauss_xy(i0*self.cell_dim, j0*self.cell_dim, N)  # generate gauss-distributed beam positions
+        y0, x0 = self.rnd_gauss_xy(i0, j0, N)  # generate gauss-distributed beam positions
         self.passes[:] = [] # prepare a list for energies and trajectories
         print("\nGenerating trajectories")
         # for x,y in tqdm(zip(x0,y0)):
@@ -322,7 +366,7 @@ class ETrajectory(object):
         # Launching a processes manager:
         with multiprocessing.Pool(8) as pool:
             results = pool.starmap(self.map_wrapper, zip(x, y))
-        # COllectings results:
+        # Collecting results:
         for p in results:
             self.passes += p
         # print(f'Done')
@@ -334,10 +378,19 @@ class ETrajectory(object):
         # self.prep_plot_traj() # view trajectories
 
     def map_wrapper(self, y0, x0, N=0):
+        """
+        Create normally distributed electron positions and run trajectory mapping
+
+        :param y0: y-position of the beam, nm
+        :param x0: x-position of the beam, nm
+        :param N: number of electrons to create
+        :return:
+        """
+        self.__calculate_attributes()
         passes = []
         if N == 0:
             N = self.N
-        x0, y0 = self.rnd_gauss_xy(x0 * self.cell_dim, y0 * self.cell_dim, N)  # generate gauss-distributed beam positions
+        x0, y0 = self.rnd_gauss_xy(x0, y0, N)  # generate gauss-distributed beam positions
         # profiler = line_profiler.LineProfiler()
         # profiled_func = profiler(self.map_trajectory)
         # try:
@@ -350,14 +403,54 @@ class ETrajectory(object):
         # self.__inspect_passes(True, True)
         return passes
 
-    def map_trajectory(self, x0, y0):
+    def map_wrapper_cy(self, y0, x0, N=0):
+        """
+        Create normally distributed electron positions and run trajectory mapping in Cython
 
-        # TODO: Vectorize !
-        # TODO: if electron escapes
+        :param y0: y-position of the beam, nm
+        :param x0: x-position of the beam, nm
+        :param N: number of electrons to create
+        :return:
+        """
+        passes = []
+        if N == 0:
+            N = self.N
+        x0, y0 = self.rnd_gauss_xy(x0, y0, N)  # generate gauss-distributed beam positions
+        # profiler = line_profiler.LineProfiler()
+        # profiled_func = profiler(self.map_trajectory)
+        # try:
+        #     profiled_func(x0, y0)
+        # finally:
+        #     profiler.print_stats()
+        flag = True
+        while flag:
+            flag = False
+            try:
+                self.passes = passes = etrajectory_c.start_sim(self.E0, self.Emin, y0, x0, self.cell_dim, self.grid, self.surface.view(dtype=np.uint8), [self.substrate, self.deponat])
+            except Exception as e:
+                warnings.warn(f'An error occurred while generating trajectories: {e.args}')
+                tb.print_exc()
+                flag = True
+        # for x,y in zip(x0,y0):
+        #     passes.append(self.map_trajectory(x,y))
+        # self.__inspect_passes(True, True)
+        return passes
+
+    def map_trajectory(self, x0, y0):
+        """
+        Simulate trajectory of the electrons with a specified starting position.
+
+        :param x0: x-positions of the electrons
+        :param y0: y-positions of the electrons
+        :return:
+        """
         self.passes = []
         self.ztop = np.nonzero(self.surface)[0].max()
-
+        count = -1
+        print('\nStarting PE trajectories mapping...')
         for x,y in zip(x0,y0):
+            count += 1
+            # print(f'{count}', end=' ')
             flag = False
             self.E = self.E0  # getting initial beam energy
             trajectories = []  # trajectory will be a sequence of points
@@ -370,7 +463,7 @@ class ETrajectory(object):
             trajectories.append(coords.coordinates)  # every time starting from the beam origin (a bit above the highest point of the structure)
             energies.append(self.E0)  # and with the beam energy
             coords.coordinates = coords.coordinates
-            # To get started, we need to know what kind of cell we're in
+            # To get started, we need to know what kind of cell(material) we're in
             i, j, k = coords.indices
             if self.grid[i, j, k] > -1:  # if current cell is not deposit or substrate, electron flies straight to the surface
                 coords.point_prev[0] = coords.z_prev = coords.z
@@ -386,87 +479,273 @@ class ETrajectory(object):
                 self.material = self.substrate
 
             # Generating trajectory
-            while (coords.E > self.Emin):  # going on with every electron until energy is depleted or escaping chamber
-                # a = self._getAlpha(coords)
-                # step = -self._getLambda_el(coords, a) * log( rnd.uniform(0.00001, 1))  # actual distance an electron travels
-                # Getting Alpha value and electron path length
-                a, step = self._get_alpha_and_step(coords)
-                # Next coordinates:
-                check = coords.get_next_point(a, step)
-                # First thing to do: boundary check
-                # check = coords.check_boundaries()
-                # Trimming new segment and heading for finishing the trajectory
-                if check is False:
-                    flag = True
-                    step = traversal.det_1d(coords.direction) # recalculating step length
-                # What cell are we in now?
-                i,j,k = coords.indices# + coords.index_corr()
-                # If its a solid cell, get energy loss and continue
-                if self.grid[i,j,k] < 0 :
-                    # coords.E += self._getELoss(coords) * step
-                    coords.E += traversal.get_Eloss(coords.E, self.material.Z, self. material.rho, self.material.A, self.material.J, step)
-                    trajectories.append(coords.coordinates)  # saving current point
-                    energies.append(coords.E)
-                    mask.append(1)
-                    # Getting material in the new point
-                    if self.grid[i,j,k] != self.material.mark:
-                        if self.grid[i, j, k] == -2:  # current cell is substrate
-                            self.material = self.substrate
-                        if self.grid[i, j, k] == -1:  # current cell is deponat
-                            self.material = self.deponat
-                # If next cell is empty(non solid),
-                # first find the intersection with the surface
-                # then either with walls or next solid cell
-                else:
-                    flag, crossing, crossing1 = self.get_next_crossing(coords)
-                    coords.coordinates = crossing
-                    coords.E += self._getELoss(coords) * traversal.det_1d(coords.point-coords.point_prev)
-                    trajectories.append(coords.coordinates)  # saving current point
-                    energies.append(coords.E)  # saving electron energy at this point
-                    if flag == 2: # if electron escapes chamber without crossing surface (should not happen ideally!)
-                        mask.append(0)
-                    if flag < 2: # if electron crossed the surface
+            try:
+                while coords.E > self.Emin:  # going on with every electron until energy is depleted or escaping chamber
+                    # a = self._getAlpha(coords)
+                    # step = -self._getLambda_el(coords, a) * log( rnd.uniform(0.00001, 1))  # actual distance an electron travels
+                    # Getting Alpha value and electron path length
+                    a, step = self._get_alpha_and_step(coords)
+                    # Next coordinates:
+                    check = coords.get_next_point(a, step)
+                    # First thing to do: boundary check
+                    # check = coords.check_boundaries()
+                    # Trimming new segment and heading for finishing the trajectory
+                    if check is False:
+                        flag = True
+                        step = traversal.det_1d(coords.direction) # recalculating step length
+                    # What cell are we in now?
+                    i,j,k = coords.indices # + coords.index_corr()
+                    # If its a solid cell, get energy loss and continue
+                    if self.grid[i,j,k] < 0:
+                        # coords.E += self._getELoss(coords) * step
+                        coords.E += traversal.get_Eloss(coords.E, self.material.Z, self.material.rho, self.material.A, self.material.J, step)
+                        trajectories.append(coords.coordinates)  # saving current point
+                        energies.append(coords.E)
                         mask.append(1)
-                        coords.coordinates = crossing1
+                        # Getting material in the new point
+                        if self.grid[i,j,k] != self.material.mark:
+                            if self.grid[i, j, k] == -2:  # current cell is substrate
+                                self.material = self.substrate
+                            if self.grid[i, j, k] == -1:  # current cell is deponat
+                                self.material = self.deponat
+                    # If next cell is empty(non solid),
+                    # first find the intersection with the surface
+                    # then either with walls or next solid cell
+                    else:
+                        # print('N.', end='')
+                        flag, crossing, crossing1 = self.get_next_crossing(coords)
+                        # print('f', end='|')
+                        coords.coordinates = crossing
+                        coords.E += self._getELoss(coords) * traversal.det_1d(coords.point-coords.point_prev)
                         trajectories.append(coords.coordinates)  # saving current point
                         energies.append(coords.E)  # saving electron energy at this point
-                        mask.append(0)
-                        # if flag == 1: # if electron escapes after crossing surface and traversing void
-                        #     mask.append(0)
-                        # else: # if electron meets a solid cell
-                        #     mask.append(1)
+                        if flag == 2: # if electron escapes chamber without crossing surface (should not happen ideally!)
+                            mask.append(0)
+                        if flag < 2: # if electron crossed the surface
+                            mask.append(1)
+                            coords.coordinates = crossing1
+                            trajectories.append(coords.coordinates)  # saving current point
+                            energies.append(coords.E)  # saving electron energy at this point
+                            mask.append(0)
+                            # if flag == 1: # if electron escapes after crossing surface and traversing void
+                            #     mask.append(0)
+                            # else: # if electron meets a solid cell
+                            #     mask.append(1)
 
-                # <editor-fold desc="Accurate tracking of material">
-                ############ Enable this snippet instead of the code after getting index,
-                ############ if interfaces between solid materials have to be tracked precisely.
-                ############ It only misses the 'get_crossing_point' function implementation,
-                ############ that looks for the next cell with different material.
-                #                 if self.grid[i,j,k] == self.material.mark:
-                #                     coords.E += self._getELoss(coords) * step
-                #                 elif self.grid[i,j,k] != self.material.mark and self.grid[i,j,k] < 0:
-                #                     coords.coordinates = self.get_crossing_point(coords, self.material.mark)
-                #                     coords.E += self._getELoss(coords) * coords.corr_step()
-                #                     # Determining material of the current voxel
-                #                     if self.grid[i, j, k] == -2:  # current cell is substrate
-                #                         self.material = self.substrate
-                #                     if self.grid[i, j, k] == -1:  # current cell is deponat
-                #                         self.material = self.deponat
-                #                     flag = False
-                #                     trajectories.append(coords.coordinates)  # saving current point
-                #                     energies.append(coords.E)  # saving electron energy at this point
-                #                     mask.append(1)
-                #                 else:  # checking if the cell is void
-                #                     flag, crossing = self.get_next_crossing(coords)
-                #                     coords.coordinates = crossing
-                #                     trajectories.append(coords.coordinates)  # saving current point
-                #                     energies.append(coords.E)  # saving electron energy at this point
-                #                     mask.append(0)
-                # </editor-fold>
+                    # <editor-fold desc="Accurate tracking of material">
+                    ############ Enable this snippet instead of the code after getting index,
+                    ############ if interfaces between solid materials have to be tracked precisely.
+                    ############ It only misses the 'get_crossing_point' function implementation,
+                    ############ that looks for the next cell with different material.
+                    #                 if self.grid[i,j,k] == self.material.mark:
+                    #                     coords.E += self._getELoss(coords) * step
+                    #                 elif self.grid[i,j,k] != self.material.mark and self.grid[i,j,k] < 0:
+                    #                     coords.coordinates = self.get_crossing_point(coords, self.material.mark)
+                    #                     coords.E += self._getELoss(coords) * coords.corr_step()
+                    #                     # Determining material of the current voxel
+                    #                     if self.grid[i, j, k] == -2:  # current cell is substrate
+                    #                         self.material = self.substrate
+                    #                     if self.grid[i, j, k] == -1:  # current cell is deponat
+                    #                         self.material = self.deponat
+                    #                     flag = False
+                    #                     trajectories.append(coords.coordinates)  # saving current point
+                    #                     energies.append(coords.E)  # saving electron energy at this point
+                    #                     mask.append(1)
+                    #                 else:  # checking if the cell is void
+                    #                     flag, crossing = self.get_next_crossing(coords)
+                    #                     coords.coordinates = crossing
+                    #                     trajectories.append(coords.coordinates)  # saving current point
+                    #                     energies.append(coords.E)  # saving electron energy at this point
+                    #                     mask.append(0)
+                    # </editor-fold>
 
-                if flag > 0: # finishing trajectory mapping if electron is beyond chamber walls
-                    flag = False
-                    break
-            self.passes.append((trajectories, energies, mask))  # collecting mapped trajectories and energies
+                    if flag > 0: # finishing trajectory mapping if electron is beyond chamber walls
+                        flag = False
+                        break
+                self.passes.append((trajectories, energies, mask))  # collecting mapped trajectories and energies
+            except Exception as e:
+                print(e.args)
+                tb.print_exc()
+                print(f'Current electron properties: ', end='\n\t')
+                print(*vars(coords).items(), sep='\n\t')
+                print(f'Generated trajectory:', end='\n\t')
+                print(*zip(trajectories, energies,mask), sep='\n\t')
+                try:
+                    print(f'Last indices: {i, j, k}')
+                except:
+                    pass
+        print('\nFinished PE sim')
+        return self.passes
+
+    def map_trajectory_verbose(self, x0, y0):
+        print('Starting PE simulation...')
+        self.passes = []
+        self.ztop = np.nonzero(self.surface)[0].max()
+        i = -1
+        for x, y in zip(x0, y0):
+            i +=1
+            print(f'Trajectory {i}, coordinates: {x, y}')
+            flag = False
+            self.E = self.E0  # getting initial beam energy
+            trajectories = []  # trajectory will be a sequence of points
+            energies = []
+            mask = []
+            # Due to memory race problem, all the variables that are changing(coordinates, energy) have been moved to a separate class,
+            # that gets instanced for every trajectory and thus for every process
+            coords = self.Electron(x, y, self)
+            # Getting initial point. It is set to the top of the chamber
+            print(f'Recording first coordinates: {coords.coordinates}')
+            trajectories.append(coords.coordinates)  # every time starting from the beam origin (a bit above the highest point of the structure)
+            print(f'Recording first energy: {self.E0}')
+            energies.append(self.E0)  # and with the beam energy
+            coords.coordinates = coords.coordinates
+            # To get started, we need to know what kind of cell(material) we're in
+            i, j, k = coords.indices
+            print(f'Initial indices: {i, j, k}')
+            if self.grid[i, j, k] > -1:  # if current cell is not deposit or substrate, electron flies straight to the surface
+                print(f'Current cell is void: {self.grid[i,j,k]}. Flying through...')
+                print(f'Setting z-coordinate as previous one: {coords.z} <— {coords.z_prev}')
+                coords.point_prev[0] = coords.z_prev = coords.z
+                # Finding the highest solid cell
+                coords.point[0] = coords.z = np.amax((self.grid[:, j, k] < 0).nonzero()[0],
+                                                     initial=0) * self.cell_dim + self.cell_dim  # addition here is required to position at the top of the incident solid cell
+                print(f'Got new z coordinate at the surface: {coords.z}')
+                print(f'Recording coordinates: {coords.coordinates}')
+                trajectories.append(coords.coordinates)  # saving current point
+                print(f'Recording energy: {coords.E}')
+                energies.append(coords.E)
+                print(f'Recording mask: 0')
+                mask.append(0)
+                # Finish trajectory if electron does not meet any solid cell
+                if coords.z == self.cell_dim:  # if there are no solid cells along the trajectory, we same bottom point and move on to the next trajectory
+                    print(f'Electron did not hit any surface, terminating trajectory.')
+                    self.passes.append((trajectories, energies, mask))
+                    continue
+                print(f'Setting current material as substrate: {self.substrate.name}')
+                self.material = self.substrate
+
+            # Generating trajectory
+            try:
+                print(f'Starting scattering loop...')
+                while coords.E > self.Emin:  # going on with every electron until energy is depleted or escaping chamber
+                    print(f'Current coordinates and energy: {coords.coordinates, coords.E}')
+                    # a = self._getAlpha(coords)
+                    # step = -self._getLambda_el(coords, a) * log( rnd.uniform(0.00001, 1))  # actual distance an electron travels
+                    # Getting Alpha value and electron path length
+                    a, step = self._get_alpha_and_step(coords)
+                    print(f'Got alpha and step: {a, step}')
+                    # Next coordinates:
+                    check = coords.get_next_point(a, step)
+                    print(f'Got new direction and coordinates: {coords.direction, coords.coordinates} <— {coords.coordinates_prev}')
+                    # First thing to do: boundary check
+                    # check = coords.check_boundaries()
+                    # Trimming new segment and heading for finishing the trajectory
+                    if check is False:
+                        flag = True
+                        step = traversal.det_1d(coords.direction)  # recalculating step length
+                        print(f'Recalculating step after correction: {step}')
+                    # What cell are we in now?
+                    i, j, k = coords.indices  # + coords.index_corr()
+                    print(f'Getting current index and cell type: {i, j, k} cell value {self.grid[i, j, k]}')
+                    # If its a solid cell, get energy loss and continue
+                    if self.grid[i, j, k] < 0:
+                        print(f'Cell is solid...')
+                        # coords.E += self._getELoss(coords) * step
+                        coords.E += traversal.get_Eloss(coords.E, self.material.Z, self.material.rho, self.material.A,
+                                                        self.material.J, step)
+                        print(f'Getting new energy with losses: {coords.E}')
+                        trajectories.append(coords.coordinates)  # saving current point
+                        energies.append(coords.E)
+                        mask.append(1)
+                        print(f'Recording coordinates, energy and mask: {coords.coordinates, coords.E} 1')
+                        # Getting material in the new point
+                        if self.grid[i, j, k] != self.material.mark:
+                            print(f'Material in the current cell is different...', end='')
+                            if self.grid[i, j, k] == -2:  # current cell is substrate
+                                print(f'its substrate.')
+                                self.material = self.substrate
+                            if self.grid[i, j, k] == -1:  # current cell is deponat
+                                print(f'its deponat.')
+                                self.material = self.deponat
+                    # If next cell is empty(non solid),
+                    # first find the intersection with the surface
+                    # then either with walls or next solid cell
+                    else:
+                        print(f'Cell is not solid...flying through....')
+                        flag, crossing, crossing1 = self.get_next_crossing(coords)
+                        if flag == 0:
+                            print(f'Electron has crossed solid/surface in {crossing} and then hit solid in {crossing1}')
+                        if flag == 1:
+                            print(f'Electron has crossed solid/surface in {crossing} and then exited the volume in {crossing1}')
+                        if flag == 2:
+                            print(f'Warning! Electron has NOT crossed solid/surface and exited the volume in {crossing1}.')
+                        print(f'Setting next scattering point: {crossing} <— {coords.coordinates} <— {coords.coordinates_prev}')
+                        coords.coordinates = crossing
+                        coords.E += self._getELoss(coords) * traversal.det_1d(coords.point - coords.point_prev)
+                        print(f'Getting new energy with losses: {coords.E}')
+                        trajectories.append(coords.coordinates)  # saving current point
+                        energies.append(coords.E)  # saving electron energy at this point
+                        print(f'Recording coordinates, energy and mask: {coords.coordinates, coords.E} ', end='')
+                        if flag == 2:  # if electron escapes chamber without crossing surface (should not happen ideally!)
+                            print(f'0')
+                            mask.append(0)
+                        if flag < 2:  # if electron crossed the surface
+                            print(f'1')
+                            mask.append(1)
+                            print(f'Setting next scattering point: {crossing1} <— {coords.coordinates} <— {coords.coordinates_prev}')
+                            coords.coordinates = crossing1
+                            trajectories.append(coords.coordinates)  # saving current point
+                            energies.append(coords.E)  # saving electron energy at this point
+                            mask.append(0)
+                            print(f'Recording coordinates, energy and mask: {coords.coordinates, coords.E, 0} ')
+                            # if flag == 1: # if electron escapes after crossing surface and traversing void
+                            #     mask.append(0)
+                            # else: # if electron meets a solid cell
+                            #     mask.append(1)
+
+                    # <editor-fold desc="Accurate tracking of material">
+                    ############ Enable this snippet instead of the code after getting index,
+                    ############ if interfaces between solid materials have to be tracked precisely.
+                    ############ It only misses the 'get_crossing_point' function implementation,
+                    ############ that looks for the next cell with different material.
+                    #                 if self.grid[i,j,k] == self.material.mark:
+                    #                     coords.E += self._getELoss(coords) * step
+                    #                 elif self.grid[i,j,k] != self.material.mark and self.grid[i,j,k] < 0:
+                    #                     coords.coordinates = self.get_crossing_point(coords, self.material.mark)
+                    #                     coords.E += self._getELoss(coords) * coords.corr_step()
+                    #                     # Determining material of the current voxel
+                    #                     if self.grid[i, j, k] == -2:  # current cell is substrate
+                    #                         self.material = self.substrate
+                    #                     if self.grid[i, j, k] == -1:  # current cell is deponat
+                    #                         self.material = self.deponat
+                    #                     flag = False
+                    #                     trajectories.append(coords.coordinates)  # saving current point
+                    #                     energies.append(coords.E)  # saving electron energy at this point
+                    #                     mask.append(1)
+                    #                 else:  # checking if the cell is void
+                    #                     flag, crossing = self.get_next_crossing(coords)
+                    #                     coords.coordinates = crossing
+                    #                     trajectories.append(coords.coordinates)  # saving current point
+                    #                     energies.append(coords.E)  # saving electron energy at this point
+                    #                     mask.append(0)
+                    # </editor-fold>
+
+                    if flag > 0:  # finishing trajectory mapping if electron is beyond chamber walls
+                        print(f'Finishing trajectory.')
+                        flag = False
+                        break
+                self.passes.append((trajectories, energies, mask))  # collecting mapped trajectories and energies
+            except Exception:
+                tb.print_exc()
+                print(f'Current electron properties: ', end='\n\t')
+                print(*vars(coords).items(), sep='\n\t')
+                print(f'Generated trajectory:', end='\n\t')
+                print(*zip(trajectories, energies, mask), sep='\n\t')
+                try:
+                    print(f'Last indices: {i, j, k}')
+                except:
+                    pass
+            i += 1
         return self.passes
 
     def get_crossing_point(self, coords, curr_material):
@@ -557,17 +836,21 @@ class ETrajectory(object):
         :return:
         """
         i = 0
-        for p in self.passes:
-            points = p[0]
-            energies = p[1]
-            f = open(fname + '_{:05d}'.format(i), 'w')
+        with open(fname, mode='w') as f:
             f.write('# ' + self.name + '\n')
-            f.write('# x/nm\t y/nm\t z/nm\t E/keV\n')
-            for pt, e in zip(points, energies):
-                f.write('{:f}\t'.format(pt[0]) + '{:f}\t'.format(pt[1]) +
-                  '{:f}\t'.format(pt[2]) + '{:f}\t'.format(e) + '\n')
-            f.close()
-            i += 1
+            for p in self.passes:
+                f.write(f'# Trajectory {i} \n')
+                points = p[0]
+                energies = p[1]
+                mask = p[2]
+                mask.insert(0, nan)
+                # f = open(fname + '_{:05d}'.format(i), 'w')
+                f.write('# x/nm\t\t y/nm\t\t z/nm\t\t E/keV\t\t mask\n')
+                for pt, e, m in zip(points, energies, mask):
+                    f.write('{:f}\t'.format(pt[0]) + '{:f}\t'.format(pt[1]) +
+                      '{:f}\t'.format(pt[2]) + '{:f}\t'.format(e) + str(m) + '\n')
+                # f.close()
+                i += 1
 
     def __save_passes_obj(self, fname):
         """
@@ -657,7 +940,7 @@ class ETrajectory(object):
         a, step = traversal.get_alpha_and_lambda(coords.E, self.material.Z, self.material.rho, self.material.A)
         # NOTE: excluding unity to prevent segments with zero length (log(1)=0).
         #  Not only they are practically useless, but also cause bugs due to division by zero
-        step *= -log(rnd.uniform(0.00001, 0.99999))
+        step *= -log(rnd.uniform(0.00001, 0.9999))
         return a, step
 
     def _getJ(self, Z=0):
@@ -706,7 +989,6 @@ class ETrajectory(object):
         # sigma = self._getSigma()
         return self.material.A/(self.NA*self.material.rho*1.0E-21*self._getSigma(coords, a))
 
-
     def _getLambda_in(self, material=nan, Emin=0.1):
         mfp1, mfp2, mfp3 = 0,0,0
         FSE = False # enable tracking of secondary electrons
@@ -722,11 +1004,6 @@ class ETrajectory(object):
                 mfp3 = mfp1 # considering only elastic MFP
 
         return mfp3
-
-
-    def _getCxCyCz(self):
-        r = sqrt(self.x**2 + self.y**2 + self.z**2)
-        return (self.x/r,self.y/r,self.z/r)
 
     def _getELoss(self, coords, material=nan, E=0): # in keV/nm
         """
@@ -771,11 +1048,12 @@ class Element:
             return self.__add__(other)
 
 substrates = {}
-substrates["Au"] = Element(name='Au', Z=79, A=196.967, rho=19.32, e=35, lambda_escape=0.5)
-substrates["Si"] = Element(name='Si', Z=14, A=29.09, rho=2.33, e=90, lambda_escape=2.7)
+substrates['Au'] = Element(name='Au', Z=79, A=196.967, rho=19.32, e=35, lambda_escape=0.5)
+substrates['Si'] = Element(name='Si', Z=14, A=29.09, rho=2.33, e=90, lambda_escape=2.7)
 
 
 
 if __name__ == "__main__":
-    params = {}
+    print("Current script does not have an entry point.....")
+    input('Press Enter to exit.')
 

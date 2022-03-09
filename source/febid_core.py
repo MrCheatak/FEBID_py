@@ -31,7 +31,7 @@ from tqdm import tqdm
 # Local packages
 from Process import Structure, Process
 import VTK_Rendering as vr
-import etraj3d, etrajectory, etrajmap3d
+from monte_carlo import etraj3d
 import simple_patterns as sp
 
 # It is assumed, that surface cell is a cell with a fully deposited cell(or substrate) under it and thus able produce deposit under irradiation.
