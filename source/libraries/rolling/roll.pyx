@@ -124,7 +124,7 @@ cdef void stencil_cy(double[:,:,::1] grid_out, double[:,:,::1] grid, int[:] z_in
             cond = 0
         else:
             # Z - axis
-            if z>zdim-1:
+            if z>zdim-2:
                 zero_count  += 1
             else:
                 if grid[z + 1, y, x] != 0:
