@@ -91,7 +91,7 @@
           <string>Open file</string>
          </property>
         </widget>
-        <widget class="QLineEdit" name="input_geom_param_width">
+        <widget class="QLineEdit" name="input_width">
          <property name="geometry">
           <rect>
            <x>298</x>
@@ -116,7 +116,7 @@
           <string>200</string>
          </property>
         </widget>
-        <widget class="QLineEdit" name="input_geom_param_length">
+        <widget class="QLineEdit" name="input_length">
          <property name="geometry">
           <rect>
            <x>396</x>
@@ -141,7 +141,7 @@
           <string>400</string>
          </property>
         </widget>
-        <widget class="QLineEdit" name="input_geom_param_height">
+        <widget class="QLineEdit" name="input_height">
          <property name="geometry">
           <rect>
            <x>492</x>
@@ -441,6 +441,11 @@
          <item>
           <property name="text">
            <string>Point</string>
+          </property>
+         </item>
+         <item>
+          <property name="text">
+           <string>Line</string>
           </property>
          </item>
          <item>
@@ -861,7 +866,7 @@
           <string>min</string>
          </property>
         </widget>
-        <widget class="QLineEdit" name="input_sim_data_interval">
+        <widget class="QLineEdit" name="input_simulation_data_interval">
          <property name="geometry">
           <rect>
            <x>240</x>
@@ -880,7 +885,7 @@
           <string>1</string>
          </property>
         </widget>
-        <widget class="QLineEdit" name="input_snapshot_interval">
+        <widget class="QLineEdit" name="input_structure_snapshot_interval">
          <property name="geometry">
           <rect>
            <x>240</x>
@@ -925,7 +930,7 @@
           <string>min</string>
          </property>
         </widget>
-        <widget class="QLineEdit" name="input_unique_filename">
+        <widget class="QLineEdit" name="input_unique_name">
          <property name="geometry">
           <rect>
            <x>418</x>
@@ -990,6 +995,38 @@
          </property>
         </widget>
        </widget>
+       <widget class="QCheckBox" name="checkbox_show">
+        <property name="geometry">
+         <rect>
+          <x>404</x>
+          <y>510</y>
+          <width>133</width>
+          <height>20</height>
+         </rect>
+        </property>
+        <property name="text">
+         <string>Show the process</string>
+        </property>
+        <property name="checked">
+         <bool>true</bool>
+        </property>
+       </widget>
+       <widget class="QCheckBox" name="checkbox_load_last_session">
+        <property name="geometry">
+         <rect>
+          <x>410</x>
+          <y>0</y>
+          <width>133</width>
+          <height>16</height>
+         </rect>
+        </property>
+        <property name="text">
+         <string>Load_last session</string>
+        </property>
+        <property name="checked">
+         <bool>false</bool>
+        </property>
+       </widget>
       </widget>
       <widget class="QWidget" name="tab_2">
        <attribute name="title">
@@ -1049,7 +1086,7 @@
           <string>Open file</string>
          </property>
         </widget>
-        <widget class="QLineEdit" name="input_geom_param_width_mc">
+        <widget class="QLineEdit" name="input_width_mc">
          <property name="geometry">
           <rect>
            <x>298</x>
@@ -1068,7 +1105,7 @@
           <string>200</string>
          </property>
         </widget>
-        <widget class="QLineEdit" name="input_geom_param_height_mc">
+        <widget class="QLineEdit" name="input_height_mc">
          <property name="geometry">
           <rect>
            <x>492</x>
@@ -1087,7 +1124,7 @@
           <string>400</string>
          </property>
         </widget>
-        <widget class="QLineEdit" name="input_geom_param_length_mc">
+        <widget class="QLineEdit" name="input_length_mc">
          <property name="geometry">
           <rect>
            <x>396</x>
@@ -2007,7 +2044,7 @@
    </hints>
   </connection>
   <connection>
-   <sender>input_geom_param_width</sender>
+   <sender>input_width</sender>
    <signal>editingFinished()</signal>
    <receiver>MainWindow</receiver>
    <slot>check_input()</slot>
@@ -2023,7 +2060,7 @@
    </hints>
   </connection>
   <connection>
-   <sender>input_geom_param_height</sender>
+   <sender>input_height</sender>
    <signal>editingFinished()</signal>
    <receiver>MainWindow</receiver>
    <slot>check_input()</slot>
@@ -2039,7 +2076,7 @@
    </hints>
   </connection>
   <connection>
-   <sender>input_geom_param_length</sender>
+   <sender>input_length</sender>
    <signal>editingFinished()</signal>
    <receiver>MainWindow</receiver>
    <slot>check_input()</slot>
@@ -2119,7 +2156,7 @@
    </hints>
   </connection>
   <connection>
-   <sender>input_geom_param_width_mc</sender>
+   <sender>input_width_mc</sender>
    <signal>editingFinished()</signal>
    <receiver>MainWindow</receiver>
    <slot>check_input()</slot>
@@ -2135,7 +2172,7 @@
    </hints>
   </connection>
   <connection>
-   <sender>input_geom_param_length_mc</sender>
+   <sender>input_length_mc</sender>
    <signal>editingFinished()</signal>
    <receiver>MainWindow</receiver>
    <slot>check_input()</slot>
@@ -2151,7 +2188,7 @@
    </hints>
   </connection>
   <connection>
-   <sender>input_geom_param_height_mc</sender>
+   <sender>input_height_mc</sender>
    <signal>editingFinished()</signal>
    <receiver>MainWindow</receiver>
    <slot>check_input()</slot>
@@ -2375,7 +2412,7 @@
    </hints>
   </connection>
   <connection>
-   <sender>input_sim_data_interval</sender>
+   <sender>input_simulation_data_interval</sender>
    <signal>editingFinished()</signal>
    <receiver>MainWindow</receiver>
    <slot>check_input()</slot>
@@ -2391,7 +2428,7 @@
    </hints>
   </connection>
   <connection>
-   <sender>input_snapshot_interval</sender>
+   <sender>input_structure_snapshot_interval</sender>
    <signal>editingFinished()</signal>
    <receiver>MainWindow</receiver>
    <slot>check_input()</slot>
@@ -2438,6 +2475,38 @@
     </hint>
    </hints>
   </connection>
+  <connection>
+   <sender>checkbox_show</sender>
+   <signal>stateChanged(int)</signal>
+   <receiver>MainWindow</receiver>
+   <slot>change_state_show_process(int)</slot>
+   <hints>
+    <hint type="sourcelabel">
+     <x>436</x>
+     <y>577</y>
+    </hint>
+    <hint type="destinationlabel">
+     <x>608</x>
+     <y>571</y>
+    </hint>
+   </hints>
+  </connection>
+  <connection>
+   <sender>checkbox_load_last_session</sender>
+   <signal>stateChanged(int)</signal>
+   <receiver>MainWindow</receiver>
+   <slot>change_state_load_last_session(int)</slot>
+   <hints>
+    <hint type="sourcelabel">
+     <x>458</x>
+     <y>63</y>
+    </hint>
+    <hint type="destinationlabel">
+     <x>607</x>
+     <y>32</y>
+    </hint>
+   </hints>
+  </connection>
  </connections>
  <slots>
   <slot>vtk_chosen()</slot>
@@ -2463,5 +2532,7 @@
   <slot>change_state_save_snapshots(int)</slot>
   <slot>tab_switched(int)</slot>
   <slot>open_save_directory()</slot>
+  <slot>change_state_show_process(int)</slot>
+  <slot>change_state_load_last_session(int)</slot>
  </slots>
 </ui>

@@ -6,15 +6,12 @@
 #
 ####################################################################
 # Default packages
-import ast
 import datetime
 import math
 import os, sys
 import random as rnd
 import time
 import warnings
-from typing import Optional
-from copy import copy
 import timeit
 from threading import Thread
 from tkinter import filedialog as fd
@@ -28,10 +25,8 @@ import pandas as pd
 import openpyxl
 # import matplotlib.pyplot as plt
 # from matplotlib import cm
-import scipy.constants as scpc
 import yaml
 from tqdm import tqdm
-import line_profiler
 
 # Local packages
 from Process import Structure, Process
@@ -53,21 +48,24 @@ class ThreadWithResult(Thread):
             self.result = target(*args, **kwargs)
         super().__init__(group=group, target=function, name=name, daemon=daemon)
 
+
 class Statistics():
     """
-    Class implementing statistics gathering and saving(to excel)
-    Report contains following columns:
+    Class implementing statistics gathering and saving(to excel).
+
+        Report contains following columns:
 
     Time, Time passed, Simulation time, Simulation speed, N of cells(filled), Growth speed, Simulation growth speed
 
-    Additionally, initial simulation parameters are added to 3 separate sheets
+        Additionally, initial simulation parameters are added to 3 separate sheets
     """
+
     def __init__(self, filename=f'run_id{rnd.randint(100000, 999999)}'):
         self.filename = filename
         self.columns = ['Time', 'Time passed', 'Sim.time', 'Sim.speed', 'N of cells', 'Growth speed', "Sim.growth rate"]
         self.units = ['', 's', 's', '', '', '1/s', '1/s']
         self.data = pd.DataFrame(columns=self.columns)
-        self.data.loc[0] = [pd.Timestamp.now(),0,0,0,0,0,0]
+        self.data.loc[0] = [pd.Timestamp.now(), 0, 0, 0, 0, 0, 0]
         self.step = self.data.copy()
         self.parameters = []
         self.parameters_units = []
@@ -79,7 +77,7 @@ class Statistics():
     def shape(self):
         return self.data.shape
 
-    def get_params(self, arg:dict, name:str):
+    def get_params(self, arg: dict, name: str):
         """
         Collect initial parameters
 
@@ -93,18 +91,19 @@ class Statistics():
 
     def append(self, stats):
         """
-        Add a new record in the statistics
-        :param stats: a collection of
+        Add a new record to the statistics
+
+        :param stats: current simulation time and current number of deposited cells
         :return:
         """
         self.dt = 0
         self.av_temperature = 0
         try:
-            stats = (pd.Timestamp.now(), stats[0], stats[1], stats[2])
+            stats = (pd.Timestamp.now(), stats[0], stats[1])
             time_passed = (stats[0] - self.data.at[0, self.columns[0]]).total_seconds()
-            sim_speed = stats[1]/time_passed
-            growth_speed = stats[2]/time_passed*60*60
-            growth_rate = stats[2]/stats[1]
+            sim_speed = stats[1] / time_passed
+            growth_speed = stats[2] / time_passed * 60 * 60
+            growth_rate = stats[2] / stats[1]
             # self.step = pd.Series({self.columns[1]:stats[0], self.columns[3]:stats[1]}, name=pd.Timestamp.now())
             # self.step.loc[self.shape[0]] = (stats[0], time_passed, stats[1], sim_speed, stats[2], growth_speed, growth_rate, stats[3])
             self.data.loc[self.shape[0]] = (stats[0], time_passed, stats[1], sim_speed, stats[2], growth_speed, growth_rate)
@@ -112,7 +111,6 @@ class Statistics():
             print(e.args)
 
         # self.data = self.data.append(self.step) # DataFrame.append() is not an in-place method like list.append()
-
 
     def plot(self, x, y):
         """
@@ -127,13 +125,12 @@ class Statistics():
         self._calculate_columns()
         self.plot(x=x, y=y)
 
-
     def save_to_file(self):
         """
         Write collected statistics to an excel file.
 
         If file does not exist, it is automatically created
-        If file does exist, only sheets with the names used here are overwritten
+        If file does exist, sheets with the names used here are overwritten
         """
         filename = self.filename + '.xlsx'
         vals = [c1 + ', ' + c2 for c1, c2 in zip(self.columns, self.units)]
@@ -148,13 +145,13 @@ class Statistics():
             try:
                 with pd.ExcelWriter(filename, engine='openpyxl', mode='a', if_sheet_exists='replace') as writer:
                     writer.book = openpyxl.load_workbook(filename)
-                    if sheet_name in writer.sheets:
+                    if sheet_name in writer.book.sheetnames:
                         del writer.book[sheet_name]
                         wks = writer.book.create_sheet(sheet_name)
                         writer.sheets[sheet_name] = wks
                     data.to_excel(writer, sheet_name=sheet_name)
                     for params in self.parameters:
-                        if params.name in writer.sheets:
+                        if params.name in writer.book.sheetnames:
                             del writer.book[params.name]
                             wks = writer.book.create_sheet(params.name)
                             writer.sheets[params.name] = wks
@@ -168,20 +165,26 @@ class Statistics():
         self.__get_sim_speed()
         self.__get_growth_speed()
         self.__get_sim_growth_rate()
+
     def __get_time_passed(self):
-        self.data.iloc[1:,self.columns[1]] = self.data.loc[1:, 'Time'] - self.data.loc[:-1, 'Time']
+        self.data.iloc[1:, self.columns[1]] = self.data.loc[1:, 'Time'] - self.data.loc[:-1, 'Time']
+
     def __get_sim_speed(self):
         self.data.iloc['Sim.speed'] = self.data['Sim.time'] / self.data['Time']
+
     def __get_growth_speed(self):
         self.data['Growth rate'] = self.data['N of cells'] / self.data['Time'].get_total_hours
+
     def __get_sim_growth_rate(self):
         self.data['Sim.growth rate'] = self.data['N of cells'] / self.data['Sim.time'].get_total_hours
 
+
 ################################
 
-def initialize_framework(from_file=False, precursor=None, settings=None, sim_params=None, vtk_file=None, geom_params=None):
+def initialize_framework(from_file=False, precursor=None, settings=None, sim_params=None, vtk_file=None,
+                         geom_params=None):
     """
-        Fetch parameters from input configuration files and prepare data framework
+        Open simulation configuration files and prepare data framework
 
     :param from_file: True to load structure from vtk file
     :param precursor: path to a file with precursor properties
@@ -198,16 +201,19 @@ def initialize_framework(from_file=False, precursor=None, settings=None, sim_par
     # sim_params = None
     try:
         if precursor is None:
-            precursor = yaml.load(open(fd.askopenfilename(), 'r'), Loader=yaml.Loader) # Precursor and substrate properties(substrate here is the top layer)
+            precursor = yaml.load(open(fd.askopenfilename(), 'r'),
+                                  Loader=yaml.Loader)  # Precursor and substrate properties(substrate here is the top layer)
         else:
             precursor = yaml.load(open(precursor, 'r'), Loader=yaml.Loader)
         if settings is None:
-            settings = yaml.load(open(fd.askopenfilename(), 'r'), Loader=yaml.Loader) # Parameters of the beam, dwell time and precursor flux
+            settings = yaml.load(open(fd.askopenfilename(), 'r'),
+                                 Loader=yaml.Loader)  # Parameters of the beam, dwell time and precursor flux
         else:
             settings = yaml.load(open(settings, 'r'), Loader=yaml.Loader)
         if not from_file:
             if sim_params is None and geom_params is None:
-                sim_params = yaml.load(open(fd.askopenfilename(), 'r'), Loader=yaml.Loader)  # Size of the chamber, cell size and time step
+                sim_params = yaml.load(open(fd.askopenfilename(), 'r'),
+                                       Loader=yaml.Loader)  # Size of the chamber, cell size and time step
             elif geom_params is not None:
                 sim_params = dict()
                 sim_params['width'] = geom_params[0]
@@ -224,8 +230,6 @@ def initialize_framework(from_file=False, precursor=None, settings=None, sim_par
         print(e.args)
         sys.exit('An error occurred while reading one of the parameter files')
 
-    #TODO: remove dt from the input parameters and move timings calculation to Process class
-
     structure = Structure()
     vtk_obj = None
     if from_file:
@@ -233,23 +237,23 @@ def initialize_framework(from_file=False, precursor=None, settings=None, sim_par
             if vtk_file is None:
                 print(f'Specify .vtk structure file:')
                 vtk_file = fd.askopenfilename()
-            # vtk_file = '/Users/sandrik1742/Documents/PycharmProjects/FEBID/source/Profiling/Pillar_s.vtk'
             vtk_obj = pv.read(vtk_file)
             if not vtk_obj:
                 raise RuntimeError
         except Exception as e:
-            print((e.args))
+            print(e.args)
             sys.exit("An error occurred while reading the VTK file")
         structure.load_from_vtk(vtk_obj=vtk_obj)
         sim_params = dict()
-        sim_params['width'] = structure.shape[2]*structure.cell_dimension
-        sim_params['length'] = structure.shape[1]*structure.cell_dimension
-        sim_params['height'] = structure.shape[0]*structure.cell_dimension
+        sim_params['width'] = structure.shape[2] * structure.cell_dimension
+        sim_params['length'] = structure.shape[1] * structure.cell_dimension
+        sim_params['height'] = structure.shape[0] * structure.cell_dimension
         sim_params['cell_dimension'] = structure.cell_dimension
-        sim_params['substrate_height'] = structure.substrate_height*structure.cell_dimension
+        sim_params['substrate_height'] = structure.substrate_height * structure.cell_dimension
     else:
         try:
-            structure.create_from_parameters(sim_params['cell_dimension'], sim_params['width'], sim_params['length'], sim_params['height'], sim_params['substrate_height'])
+            structure.create_from_parameters(sim_params['cell_dimension'], sim_params['width'], sim_params['length'],
+                                             sim_params['height'], sim_params['substrate_height'])
         except:
             sys.exit("An error occurred while reading initial geometry parameters file")
 
@@ -265,14 +269,16 @@ def buffer_constants(precursor: dict, settings: dict, cell_dimension: int):
     :param cell_dimension: side length of a square cell, nm
     :return:
     """
+
+    elementary_charge = 1.60217662e-19
     # td = settings["dwell_time"]  # dwell time of a beam, s
     Ie = settings["beam_current"]  # beam current, A
     beam_FWHM = 2.36 * settings["gauss_dev"]  # electron beam diameter, nm
     F = settings[
         "precursor_flux"]  # precursor flux at the surface, 1/(nm^2*s)   here assumed a constant, but may be dependent on time and position
     effective_diameter = beam_FWHM * 3.3  # radius of an area which gets 99% of the electron beam
-    f = Ie / scpc.elementary_charge / (
-                math.pi * beam_FWHM * beam_FWHM / 4)  # electron flux at the surface, 1/(nm^2*s)
+    f = Ie / elementary_charge / (
+            math.pi * beam_FWHM * beam_FWHM / 4)  # electron flux at the surface, 1/(nm^2*s)
     e = precursor["SE_emission_activation_energy"]
     l = precursor["SE_mean_free_path"]
 
@@ -305,7 +311,7 @@ def buffer_constants(precursor: dict, settings: dict, cell_dimension: int):
                  'Z': precursor["average_element_number"],
                  'A': precursor["average_element_mol_mass"], 'rho': precursor["average_density"],
                  'I0': settings["beam_current"], 'sigma': settings["gauss_dev"],
-                 'N': Ie * dt / scpc.elementary_charge, 'sub': settings["substrate_element"],
+                 'N': Ie * dt / elementary_charge, 'sub': settings["substrate_element"],
                  'cell_dim': cell_dimension,
                  'e': precursor["SE_emission_activation_energy"], 'l': precursor["SE_mean_free_path"]}
     # Parameters for reaction-equation solver
@@ -316,7 +322,7 @@ def buffer_constants(precursor: dict, settings: dict, cell_dimension: int):
     # Stability time steps
     timings = {'t_diff': diffusion_dt, 't_flux': t_flux, 't_desorption': tau, 'dt': dt}
 
-# effective_radius_relative = math.floor(effective_diameter / cell_dimension / 2)
+    # effective_radius_relative = math.floor(effective_diameter / cell_dimension / 2)
     return mc_config, equation_values, timings, nr
 
 
@@ -341,82 +347,92 @@ def start_from_command_line():
         path = sp.generate_pattern(path[0], 100000000, 1e-4, x, y, None)
     else:
         path, shape = sp.open_stream_file(path)
-        structure.create_from_parameters(2, int(shape[2])//2, int(shape[1])//2, int(shape[0])//2, 4)
+        structure.create_from_parameters(2, int(shape[2]) // 2, int(shape[1]) // 2, int(shape[0]) // 2, 4)
 
     run_febid(structure, precursor_params, settings, sim_params, path)
 
-def run_febid_interface(structure, precursor_params, settings, sim_params, path, saving_params):
+
+def run_febid_interface(structure, precursor_params, settings, sim_params, path, saving_params, rendering):
 
     if saving_params['monitoring']:
         dump_stats = True
-        stats_rate = saving_params['monitoring'] * 60
+        stats_rate = saving_params['monitoring']
     else:
         dump_stats = False
         stats_rate = math.inf
     if saving_params['snapshot']:
         dump_vtk = True
-        dump_rate = saving_params['snapshot'] * 60
+        dump_rate = saving_params['snapshot']
     else:
         dump_vtk = False
         dump_rate = math.inf
+
     kwargs = dict(location=saving_params['filename'], stats_rate=stats_rate,
-                  dump_rate=dump_rate, render=True, frame_rate=1, refresh_rate=0.5)
+                  dump_rate=dump_rate, render=rendering['show_process'],
+                  frame_rate=rendering['frame_rate'], refresh_rate=0.5)
     run_febid(structure, precursor_params, settings, sim_params, path, dump_stats, kwargs)
 
+
 def run_febid_test(geom, path, dwell_time, loops, files, kwargs):
+    x, y = geom[0] // 2 * geom[4], geom[1] // 2 * geom[4]  # center
+    path = sp.generate_pattern(path[0], loops, dwell_time, x, y, path[1:], step=2)
 
-    x,y = geom[0]//2 * geom[4], geom[1]//2 * geom[4] # center
-    path = sp.generate_pattern(path[0], loops, dwell_time, x, y, path[1:])
-
-    structure, precursor_params, settings, sim_params = initialize_framework(False, files['precursor'], files['settings'], geom_params=geom)
+    structure, precursor_params, settings, sim_params = initialize_framework(False, files['precursor'],
+                                                                             files['settings'], geom_params=geom)
     saving_params = {}
     run_febid(structure, precursor_params, settings, sim_params, path, True, kwargs)
 
 
 def run_febid(structure, precursor_params, settings, sim_params, path, gather_stats=False, monitor_kwargs=None):
     """
-    Create necessary objects and start the FEBID process
+        Create necessary objects and start the FEBID process
 
     :param structure: structure object
-    :param mc_config: parameters for MC simulation
-    :param equation_values: parameters for Process
-    :param timings: stability times
-    :param path: stream file filename
+    :param precursor_params: precursor properties
+    :param settings: beam and precursor flux settings
+    :param sim_params: simulation volume properties
+    :param path: printing path
+    :param gather_stats: True enables statistics gathering
+    :param monitor_kwargs: settings for the monitoring function
     :return:
     """
     mc_config, equation_values, timings, nr = buffer_constants(precursor_params, settings, sim_params['cell_dimension'])
     stats = None
     if gather_stats:
         stats = Statistics(monitor_kwargs['location'])
-        stats.get_params(precursor_params,'Precursor parameters')
+        stats.get_params(precursor_params, 'Precursor parameters')
         stats.get_params(settings, 'Beam parameters and settings')
         stats.get_params(sim_params, 'Simulation volume parameters')
-    process_obj = Process(structure, mc_config, equation_values, timings, deposition_scaling=8)
-    sim = etraj3d.cache_params(mc_config, process_obj.deposit, process_obj.surface)
-    total_iters = int(np.sum(path[:,2])/process_obj.dt)
+    process_obj = Process(structure, equation_values, timings)
+    sim = etraj3d.cache_params(mc_config, structure.deposit, structure.surface_bool)
+    total_iters = int(np.sum(path[:, 2]) / process_obj.dt)
     printing = Thread(target=print_all, args=[path, process_obj, sim])
     printing.start()
     monitoring(process_obj, total_iters, stats, **monitor_kwargs)
     printing.join()
-
+    print('Finished path.')
 
 def print_all(path, process_obj, sim):
     global flag
-    av_dwell_time = path[:,2].mean()
-    av_loops = int(path.shape[0]*av_dwell_time/process_obj.dt)
-    with tqdm(total=av_loops) as t:
-        for x, y, step in path:
-            process_obj.beam_matrix[:, :, :] = etraj3d.rerun_simulation(y, x, process_obj.deposit, process_obj.surface,
-                                                                        sim,
-                                                                        process_obj.dt)
-            process_obj.get_dt()
-            process_obj.update_helper_arrays()
-            print_step(y, x, step, process_obj, sim, t)
-            t.update(1)
+    start = 0
+    av_dwell_time = path[:, 2].mean()
+    # av_loops = int(path.shape[0] * av_dwell_time / process_obj.dt)
+    av_loops = path[:,2].sum() / process_obj.dt
+    total_time = path[:,2].sum()
+    t = tqdm(total=av_loops, desc='total', position=0)
+    for x, y, step in path[start:]:
+        process_obj.beam_matrix[:, :, :] = etraj3d.rerun_simulation(y, x, process_obj.deposit, process_obj.surface,
+                                                                    sim,
+                                                                    process_obj.dt)
+        process_obj.get_dt()
+        process_obj.update_helper_arrays()
+        av_loops = path[:,2].sum() / process_obj.dt
+        t.total = av_loops
+        print_step(y, x, step, process_obj, sim, t)
     flag = True
 
 
-def print_step(y, x, dwell_time, pr:Process, sim, t=None):
+def print_step(y, x, dwell_time, pr: Process, sim, t):
     """
     Run deposition on a single spot
 
@@ -427,22 +443,24 @@ def print_step(y, x, dwell_time, pr:Process, sim, t=None):
     :param sim: MC simulation object
     :return:
     """
-    loops = int(dwell_time/pr.dt)
-    if t is None:
-        t = tqdm(total=loops)
-    for l in range(0, loops):  # loop repeats
+    loops = int(dwell_time / pr.dt)
+    time = 0
+    while time < dwell_time:  # loop repeats
         pr.deposition()  # depositing on a selected area
         if pr.check_cells_filled():
-            pr.update_surface() # updating surface on a selected area
-            pr.beam_matrix = etraj3d.rerun_simulation(y,x, pr.deposit, pr.surface, sim, pr.dt)
+            pr.update_surface()  # updating surface on a selected area
+            pr.beam_matrix = etraj3d.rerun_simulation(y, x, pr.deposit, pr.surface, sim, pr.dt)
+            pr.get_dt()
             pr.update_helper_arrays()
             a = 1
         pr.precursor_density()
         pr.t += pr.dt
+        time += pr.dt
         t.update(1)
 
 
-def monitoring(pr:Process, l, stats:Statistics = None, location=None, stats_rate=60, dump_rate=60, render=False, frame_rate=1, refresh_rate=0.5):
+def monitoring(pr: Process, l, stats: Statistics = None, location=None, stats_rate=60, dump_rate=60, render=False,
+               frame_rate=1, refresh_rate=0.5):
     """
     A daemon process function to manage statistics gathering and graphics update
 
@@ -450,12 +468,10 @@ def monitoring(pr:Process, l, stats:Statistics = None, location=None, stats_rate
     :param l: approximate number of iterations
     :param stats: object for gathering monitoring data
     :param location: file saving directory
-    :param filename: unique name for the current session
-    :param stats_rate: statistics recording interval in seconds
-    :param dump_vtk: True will enable saving of the process state to .vtk file
-    :param dump_rate: dumping interval in seconds
+    :param stats_rate: statistics recording interval in seconds, None disables statistics recording
+    :param dump_rate: dumping interval in seconds, None disables structure dumping
     :param render: True will enable graphical monitoring of the process
-    :param frame_rate: rendering frame rate
+    :param frame_rate: redrawing delay
     :param refresh_rate: sleep time
     :return:
     """
@@ -467,47 +483,62 @@ def monitoring(pr:Process, l, stats:Statistics = None, location=None, stats_rate
     :return:
     """
 
-    global flag # This flag variable is used for the communication between current and the process thread.
-                # When deposition process thread finishes, it sets flag to False which will finish current thread
-    # Recording start time
+    global flag  # This flag variable is used for the communication between current and the process thread.
+    # When deposition process thread finishes, it sets flag to False which will finish current thread
+
     time_step = 60
     pr.start_time = datetime.datetime.now()
-    start_time = time_spent = frame = dump_time = stats_time = timeit.default_timer()
+    dump_time = stats_time = pr.t
+    time_spent = start_time = frame = timeit.default_timer()
     # Initializing graphical monitoring
     rn = None
     if render:
         rn = vr.Render(pr.structure.cell_dimension)
         rn._add_3Darray(pr.precursor, opacity=1, nan_opacity=1, scalar_name='Precursor',
-                            button_name='precursor', cmap='plasma')
+                        button_name='precursor', cmap='plasma')
         rn.show(interactive_update=True, cam_pos=[(206.34055818793468, 197.6510638707941, 100.47106597548205),
-                                                      (0.0, 0.0, 0.0),
-                                                      (-0.23307751464125356, -0.236197909312718, 0.9433373838690787)])
+                                                  (0.0, 0.0, 0.0),
+                                                  (-0.23307751464125356, -0.236197909312718, 0.9433373838690787)])
     else:
-        frame = np.inf # current time is always less than infinity
-    if not stats_rate:
+        frame = np.inf  # current time is always less than infinity
+    if not stats_rate or stats_rate == np.inf:
+        stats_time = np.inf
         stats_rate = np.inf
-    if not dump_rate:
+    else:
+        stats_rate = 1e-1 * stats_rate
+    if not dump_rate or dump_rate == np.inf:
+        dump_time = np.inf
         dump_rate = np.inf
-
+    else:
+        dump_rate = 1e-1 * dump_rate
     # Event loop
-    while not flag:
-        now = timeit.default_timer()
-        if now > time_spent: # overall time and speed
-            time_spent += time_step
-            print(f'Time passed: {time_spent}, Av.speed: {l/time_spent}')
-        if now > frame: # graphical
-            frame += frame_rate
-            update_graphical(rn,pr,time_step, now - start_time)
-        if now > stats_time :
-            stats_time += stats_rate
-            stats.append((pr.t, np.count_nonzero(pr.deposit==-1), pr.deposition_scaling))
-            stats.save_to_file()
-        if now > dump_time:
-            dump_time += dump_rate
-            dump_structure(pr.structure, f'{location}_')
-        time.sleep(refresh_rate)
-    
-def update_graphical(rn:vr.Render, pr:Process, time_step, time_spent):
+    with open('monitor.log', mode='a') as f:
+        f.write(f'Beginning monitor log, {time.strftime("%H:%M:%S", time.localtime())}:\n')
+        while not flag:
+            now = timeit.default_timer()
+            if now > time_spent:  # overall time and speed
+                time_spent += time_step
+                # print(f'Time passed: {time_spent}, Av.speed: {l / time_spent}')
+            if now > frame:  # graphical
+                frame += frame_rate
+                redrawed = update_graphical(rn, pr, time_step, now - start_time)
+                if redrawed:
+                    f.write(f'[{time.strftime("%H:%M:%S", time.localtime())}] Redrawed scene.\n')
+            if pr.t > stats_time:
+                stats_time += stats_rate
+                stats.append((pr.t, np.count_nonzero(pr.deposit == -1)))
+                stats.save_to_file()
+                f.write(f'[{time.strftime("%H:%M:%S", time.localtime())}] Recorded statistics.\n')
+            if pr.t > dump_time:
+                dump_time += dump_rate
+                dump_structure(pr.structure, f'{location}')
+                f.write(f'[{time.strftime("%H:%M:%S", time.localtime())}] Dumped structure.\n')
+            time.sleep(refresh_rate)
+    flag = False
+    print('Exiting monitoring.')
+
+
+def update_graphical(rn: vr.Render, pr: Process, time_step, time_spent):
     """
     Update the visual representation of the current process state
 
@@ -517,45 +548,53 @@ def update_graphical(rn:vr.Render, pr:Process, time_step, time_spent):
     :param time_spent:
     :return:
     """
+    redrawed = pr.redraw
     if pr.redraw:
         rn.p.clear()
         pr.n_filled_cells.append(np.count_nonzero(pr.deposit[pr.deposit < 0]) - pr.n_substrate_cells)
-        i = len(pr.n_filled_cells)-1
-        pr.growth_rate.append((pr.n_filled_cells[i] - pr.n_filled_cells[i - 1]) / (time_spent - time_step + 0.001) * 60 * 60)
+        i = len(pr.n_filled_cells) - 1
+        pr.growth_rate.append(
+            (pr.n_filled_cells[i] - pr.n_filled_cells[i - 1]) / (time_spent - time_step + 0.001) * 60 * 60)
         rn._add_3Darray(pr.precursor, 0.00000001, 1, opacity=0.5, show_edges=True, exclude_zeros=False,
-                            scalar_name='Precursor',
-                            button_name='precursor', cmap='plasma')
+                        scalar_name='Precursor',
+                        button_name='precursor', cmap='plasma')
         try:
             rn.p.update_scalar_bar_range(clim=[pr.precursor[pr.precursor > 0.00001].min(), pr.precursor.max()])
         except Exception as e:
+            print('An error occurred while redrawing the scene.')
+            print(e.args)
             pass
         rn.meshes_count += 1
         # rn.add_3Darray(deposit, structure.cell_dimension, -2, -0.5, 0.7, scalar_name='Deposit',
         #            button_name='Deposit', color='white', show_scalar_bar=False)
         rn.p.add_text(f'Time: {str(datetime.timedelta(seconds=int(time_spent)))} \n'
-                          f'Sim. time: {(pr.t):.8f} s \n'
-                          f'Speed: {(pr.t / time_spent):.8f} \n'  # showing time passed
-                          f'Relative growth rate: {int(pr.n_filled_cells[i] / time_spent * 60 * 60)} cell/h \n'  # showing average growth rate
-                          f'Real growth rate: {int(pr.n_filled_cells[i] / pr.t * 60)} cell/min \n',
-                          position='upper_left',
-                          font_size=12)  # showing average growth rate
+                      f'Sim. time: {(pr.t):.8f} s \n'
+                      f'Speed: {(pr.t / time_spent):.8f} \n'  # showing time passed
+                      f'Relative growth rate: {int(pr.n_filled_cells[i] * pr.cell_dimension**3 / time_spent * 60 * 60)} nm^3/h \n'  # showing average growth rate
+                      f'Av. real growth rate: {int(pr.n_filled_cells[i] * pr.cell_dimension**3 / pr.t)} nm^3/s \n',
+                      position='upper_left',
+                      font_size=12)  # showing average growth rate
         rn.p.add_text(f'Cells: {pr.n_filled_cells[i]} \n'  # showing total number of deposited cells
-                          f'Height: {(pr.max_z-pr.substrate_height) * pr.structure.cell_dimension} nm \n', position='upper_right',
-                          font_size=12)  # showing current height of the structure
+                      f'Height: {(pr.max_z - pr.substrate_height) * pr.structure.cell_dimension} nm \n',
+                      position='upper_right',
+                      font_size=12)  # showing current height of the structure
         pr.redraw = False
     else:
         # rn.p.mesh['precursor'] = precursor[precursor!=0]
-        rn.p.update_scalars(pr.precursor[pr.precursor > 0])
-        rn.p.update_scalar_bar_range(clim=[pr.precursor[pr.precursor>0.00001].min(), pr.precursor.max()])
+        try:
+            rn.p.update_scalars(pr.precursor[pr.precursor > 0])
+            rn.p.update_scalar_bar_range(clim=[pr.precursor[pr.precursor > 0.00001].min(), pr.precursor.max()])
+        except ValueError:
+            warnings.warn('Failed to update scalars due to possible desynchronization with the working thread.')
     rn.update()
-    return pr.redraw
+    return redrawed
 
 
-def dump_structure(structure:Structure, filename='FEBID_result'):
+def dump_structure(structure: Structure, filename='FEBID_result'):
     vr.save_deposited_structure(structure, filename)
 
 
-if __name__== '__main__':
+if __name__ == '__main__':
     print(f'##################### FEBID Simulator ###################### \n\n'
           f'Two modes are available: deposition process and Monte Carlo electron beam-matter simulation\n'
           f'Type \'febid\' to enter deposition mode or \'mc\' for electron trajectory simulation:')
@@ -565,6 +604,5 @@ if __name__== '__main__':
     if mode_choice == 'mc':
         print(f'Entering Monte Carlo electron beam-matter simulation module')
         etraj3d.mc_simulation()
-    if mode_choice =='febid':
+    if mode_choice == 'febid':
         start_from_command_line()
-

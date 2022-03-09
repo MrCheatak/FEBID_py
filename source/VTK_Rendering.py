@@ -20,6 +20,8 @@ from Structure import Structure
 
 #### Some colormap(cmap) names: viridis, inferno, plasma, coolwarm, cool, Spectral
 
+filename = ''
+
 class Render:
     """
     Class implementing rendering utilities for visualizing of Numpy data using Pyvista
@@ -62,17 +64,17 @@ class Render:
         :return:
         """
         if struct:
-            self._add_3Darray(structure.deposit, -2, -0.01, False, opacity=1, show_edges=True, scalar_name='Structure', button_name='Structure', color='white')
+            self._add_3Darray(structure.deposit, structure.deposit.min(), -0.01, False, opacity=1, clim=[-2,-1], below_color='red', show_edges=True, scalar_name='Structure', button_name='Structure', cmap='binary', n_colors=1, show_scalar_bar=False)
         if deposit:
-            self._add_3Darray(structure.deposit, 0.00001, 1, False, opacity=1, show_edges=True, scalar_name='Surface deposit', button_name='Deposit', cmap='viridis')
+            self._add_3Darray(structure.deposit, 0.00001, 1, False, opacity=1, clim=[0.00001,1], below_color='red', above_color='red', show_edges=True, scalar_name='Surface deposit', button_name='Deposit', cmap='viridis')
         if precursor:
             self._add_3Darray(structure.precursor, 0.00001, 1, False, opacity=1, show_edges=True, scalar_name="Surface precursor density", button_name='Precursor', cmap='plasma')
         if surface:
-            self._add_3Darray(structure.surface_bool, 1, 1, False, opacity=0.7, show_edges=True, scalar_name="Semi surface prec. density", button_name='Surface', color='red')
+            self._add_3Darray(structure.surface_bool, 1, 1, False, opacity=0.7, show_edges=True, scalar_name="Semi surface prec. density", button_name='Surface', color='red', show_scalar_bar=False)
         if semi_surface:
-            self._add_3Darray(structure.semi_surface_bool, 1, 1, False, opacity=0.7, show_edges=True, scalar_name="Semi surface prec. density", button_name='Semi-surface', color='green')
+            self._add_3Darray(structure.semi_surface_bool, 1, 1, False, opacity=0.7, show_edges=True, scalar_name="Semi surface prec. density", button_name='Semi-surface', color='green', show_scalar_bar=False)
         if ghosts:
-            self._add_3Darray(structure.ghosts_bool, 1, 1, False, opacity = 0.7, show_edges=True, scalar_name='ghosts', button_name="Ghosts", color='brown')
+            self._add_3Darray(structure.ghosts_bool, 1, 1, False, opacity = 0.7, show_edges=True, scalar_name='ghosts', button_name="Ghosts", color='brown', show_scalar_bar=False)
 
         init_layer = np.count_nonzero(structure.deposit == -2)  # substrate layer
         total_dep_cells = np.count_nonzero(structure.deposit[structure.deposit < 0]) - init_layer  # total number of fully deposited cells
@@ -124,7 +126,7 @@ class Render:
         self.__prepare_obj(obj, button_name, cmap, color)
 
 
-    def _add_3Darray(self, arr, lower_t=None, upper_t=None, exclude_zeros=True, opacity=0.5, clim=None, show_edges=None, nan_opacity=None, scalar_name='scalars_s', button_name='1', color='', show_scalar_bar=True, cmap='viridis', log_scale=False, invert=False, texture=None):
+    def _add_3Darray(self, arr, lower_t=None, upper_t=None, exclude_zeros=True, opacity=0.5, clim=None, below_color=None, above_color=None, show_edges=None, nan_opacity=None, scalar_name='scalars_s', button_name='NoName', color=None, show_scalar_bar=True, cmap=None, n_colors=256, log_scale=False, invert=False, texture=None):
         """
         Adds 3D structure from a Numpy array to the Pyvista plot
 
@@ -141,16 +143,16 @@ class Render:
         if nan_opacity == None:
             nan_opacity = opacity
         self.obj = self._render_3Darray(arr=arr, lower_t=lower_t, upper_t=upper_t, exclude_zeros=exclude_zeros, name=scalar_name, invert=invert)
-        self.__prepare_obj(self.obj, button_name, cmap, color, show_scalar_bar, clim, log_scale=log_scale, opacity=opacity, nan_opacity=nan_opacity, show_edges=show_edges, texture=texture)
+        self.__prepare_obj(self.obj, button_name, cmap, color, show_scalar_bar, clim, below_color, above_color, n_colors, log_scale=log_scale, opacity=opacity, nan_opacity=nan_opacity, show_edges=show_edges, texture=texture)
 
-    def __prepare_obj(self, obj, name, cmap, color, show_scalar_bar=True, clim=None, log_scale=False, opacity=0.5, nan_opacity=0.5, show_edges=None, texture=None):
+    def __prepare_obj(self, obj, name, cmap, color, show_scalar_bar=True, clim=None, below_color=None, above_color=None, n_colors=256, log_scale=False, opacity=0.5, nan_opacity=0.5, show_edges=None, texture=None):
         while True:
             try:
-                if color:
-                    obj_a = self.p.add_mesh(obj, style='surface', opacity=opacity, nan_opacity=nan_opacity, clim=clim, name=name, label='Structure', log_scale=log_scale, show_scalar_bar=show_scalar_bar, color=color, lighting=True, show_edges=show_edges, texture=texture, render=False) # adding data to the plot
+                if not cmap:
+                    obj_a = self.p.add_mesh(obj, style='surface', opacity=opacity, nan_opacity=nan_opacity, clim=clim, below_color=below_color, above_color=above_color, name=name, label='Structure', log_scale=log_scale, show_scalar_bar=show_scalar_bar, n_colors=n_colors, color=color, lighting=True, show_edges=show_edges, texture=texture, render=False) # adding data to the plot
                     break
-                if cmap:
-                    obj_a = self.p.add_mesh(obj, style='surface', opacity=opacity, use_transparency=False, nan_opacity=nan_opacity, clim=clim, name=name, label='Structure', log_scale=log_scale, show_scalar_bar=show_scalar_bar, cmap=cmap, lighting=True, show_edges=show_edges, texture=texture, render=False)
+                else:
+                    obj_a = self.p.add_mesh(obj, style='surface', opacity=opacity, use_transparency=False, nan_opacity=nan_opacity, clim=clim, below_color=below_color, above_color=above_color, name=name, label='Structure', log_scale=log_scale, show_scalar_bar=show_scalar_bar, cmap=cmap, n_colors=n_colors, lighting=True, show_edges=show_edges, texture=texture, render=False)
                     break
             except Exception as e:
                 print(f'Error:{e.args}')
@@ -380,12 +382,16 @@ def show_animation(directory=''):
     font_size = 12
     files, times = open_file(directory)
     cell_dim, deposit, substrate, surface_bool, semi_surface_bool, ghosts_bool = open_deposited_structure(os.path.join(directory, files[0]))
+    substrate[np.isnan(substrate)] = 0  # setting all NAN values to 0
     render = Render(cell_dim)
-    substrate[np.isnan(substrate)] = 0 # setting all NAN values to 0
     render._add_3Darray(substrate, 0.00000001, 1, opacity=0.5, show_edges=True, exclude_zeros=False, scalar_name='Precursor',button_name='Precursor', cmap='plasma')
-    render.show(interactive_update=True, cam_pos=[(206.34055818793468, 197.6510638707941, 100.47106597548205),
+    cam_pos = render.show(interactive_update=False, cam_pos=[(206.34055818793468, 197.6510638707941, 100.47106597548205),
                                                   (0.0, 0.0, 0.0),
                                                   (-0.23307751464125356, -0.236197909312718, 0.9433373838690787)])
+    render = Render(cell_dim)
+    render._add_3Darray(substrate, 0.00000001, 1, opacity=0.5, show_edges=True, exclude_zeros=False,
+                        scalar_name='Precursor', button_name='Precursor', cmap='plasma')
+    render.show(interactive_update=True, cam_pos=cam_pos)
     init_layer =np.count_nonzero(deposit==-2) # substrate layer
     total_dep_cells = [np.count_nonzero(deposit[deposit<0])-init_layer] # total number of fully deposited cells
     growth_rate=[] # growth rate on each step
@@ -402,7 +408,7 @@ def show_animation(directory=''):
         # substrate[substrate > 1] = 0
         substrate[np.isnan(substrate)] = 0
         # if i == 0:
-        # render.p.clear()
+        render.p.clear()
         render._add_3Darray(substrate, 0.00000001, 1, opacity=1, show_edges=True, exclude_zeros=False, scalar_name='Precursor', button_name='Precursor', cmap='plasma') # adding structure
         render.p.add_text(str(times[i]-times[0])) # showing time passed
         render.p.add_text(f'Cells: {total_dep_cells[i]} \n' # showing total number of deposited cells
