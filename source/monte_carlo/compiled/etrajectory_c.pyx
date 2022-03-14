@@ -139,6 +139,7 @@ cdef class BuffVector:
     def __releasebuffer__(self, Py_buffer *buffer):
         pass
 
+
 cdef class Electron:
     cdef:
         Coordinate point
@@ -178,11 +179,21 @@ cdef class Electron:
         :param a: alpha at the current step
         :return:
         """
-        cdef float rnd2 = rand() / float(RAND_MAX)
-        self.ctheta = 1.0 - 2.0 * a * rnd2 / (
-                    1.0 + a - rnd2)  # scattering angle cosines , 0 <= angle <= 180˚, it produces an angular distribution that is obtained experimentally (more chance for low angles)
+
+        # Important note_: the equation for ctheta is unstable and oscillates, producing values a bit below -1.
+        # In the next line, it produces a negative value under the sqrt() and eventually leading to a nan value.
+        # After that the program will ultimately crash
+        # This is fixed by truncating the digits(double->float) that carry the error (~e-12)
+        # For analysis, check the function for alpha
+        cdef double rnd1 = rnd_uniform(0, 1)
+        cdef double rnd2 = rnd_uniform(0, 1)
+        self.ctheta = <float>(1.0 - 2.0 * a * rnd1 / (1.0 + a - rnd1))  # scattering angle cosines , 0 <= angle <= 180˚, it produces an angular distribution that is obtained experimentally (more chance for low angles)
         self.stheta = sqrt(1.0 - self.ctheta * self.ctheta)  # scattering angle sinus
-        self.psi = 2.0 * pi * rand() / float(RAND_MAX)  # azimuthal scattering angle
+        self.psi = 2.0 * pi * rnd2  # azimuthal scattering angle
+        if isnan(self.ctheta) or isnan(self.stheta) or isnan(self.psi):
+            print(f'ctheta, stheta, psi: {self.ctheta, self.stheta, self.psi}')
+            print(f'rnd1, rnd2, a, E: {rnd1, rnd2, a, self.E}')
+            raise ValueError('NAN encountered in angles!')
 
     cdef void get_direction(self):
         cdef float cc, cb, ca, AM, AN, V1, V2, V3, V4
@@ -228,34 +239,36 @@ cdef class Electron:
         :param x:
         :return:
         """
-        cdef double z, y, x
+        cdef double z, y, x, min
         cdef unsigned char flag = 1
         z = self.point.z
         y = self.point.y
         x = self.point.x
-        if 0 <= x < dims.x:
+        # If the border value is not zero, coordinates have to be checked against it, not against zero
+        min = 1e-6
+        if min <= x < dims.x:
             pass
         else:
             flag = 0
-            if x < 0:
+            if x < min:
                 x = 0.000001
             else:
                 x = dims.x - 0.0000001
 
-        if 0 <= y < dims.y:
+        if min <= y < dims.y:
             pass
         else:
             flag = 0
-            if y < 0:
+            if y < min:
                 y = 0.000001
             else:
                 y = dims.y - 0.000001
 
-        if 0 <= z < dims.z:
+        if min <= z < dims.z:
             pass
         else:
             flag = 0
-            if z < 0:
+            if z < min:
                 z = 0.000001
             else:
                 z = dims.z - 0.000001
@@ -413,7 +426,7 @@ cdef (vector[vector[double]], vector[vector[double]], vector[vector[double]]) ma
             else:
                 flag = get_next_crossing(e.point_prev, e.direction, grid, crossing, crossing1)
                 # print(f'Got crossings: {c, c1}')
-                e.add_point(from_mv(crossing))
+                e.point = from_mv(crossing)
                 delta[0] = e.point.z - e.point_prev.z
                 delta[1] = e.point.y - e.point_prev.y
                 delta[2] = e.point.x - e.point_prev.x
@@ -449,6 +462,9 @@ cdef (vector[vector[double]], vector[vector[double]], vector[vector[double]]) ma
 ####################################################################################
 
 cdef double get_alpha(double E, double Z):
+    # Alpha can take values in a range [0.0001: 0.84]
+    # assuming energy may vary from 0.1 (cut-off) to 30 keV
+    # and element number varying from 1 to 116
     return 3.4E-3*Z**0.67/E
 
 cdef double get_step(double E, Element *material, double a):
@@ -489,7 +505,7 @@ cdef signed char get_next_crossing(Coordinate point, Coordinate vec, SimulationV
         double[:] step_t = step_tc
         double[:] delta=deltac
         int step[3]
-        double t_min
+        double t_min, min = 1e-6
         signed char[:] sign = signc
         unsigned char flag
         int i = 0
@@ -508,7 +524,11 @@ cdef signed char get_next_crossing(Coordinate point, Coordinate vec, SimulationV
 
     sign_double(direction, sign)
     # print(f'sign{signc[0], signc[1], signc[2]}')
-    equal_to_bool(sign, 1, temp)
+    for i in range(sign.shape[0]):
+        if sign[i] == 1:
+            temp[i] = 1
+        else:
+            temp[i] = 0
     # print(f'sign==1: {temp[0], temp[1], temp[2]}')
     for i in range(3):
         tc[i] = fabs((-p0[i] + temp[i]*step[i])/directionc[i])
@@ -521,7 +541,7 @@ cdef signed char get_next_crossing(Coordinate point, Coordinate vec, SimulationV
     for i in range(3):
         if pn[i] >= step[i]:
             pn[i] = step[i] - 0.000001
-        elif pn[i] <= 0:
+        elif pn[i] < min:
             pn[i] = 0.000001
 
     # print(f'pnc_corr: {pnc}')
@@ -539,7 +559,11 @@ cdef signed char get_next_crossing(Coordinate point, Coordinate vec, SimulationV
     for i in range(3):
         deltac[i] = -(p0[i]%grid.cell_dim)
     # print(f'delta: {deltac}')
-    equal_to_double(delta,0, temp1)
+    for i in range(delta.shape[0]):
+        if delta[i] == 0:
+            temp1[i] = 1
+        else:
+            temp1[i] = 0
     # print(f'delta==0: {temp1[0], temp1[1], temp1[2]}')
     for i in range(3):
         tc[i] = fabs((deltac[i] + temp[i]*grid.cell_dim + temp1[i]*step[i])/directionc[i])

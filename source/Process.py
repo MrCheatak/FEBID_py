@@ -38,6 +38,7 @@ class Process():
         self.precursor = None # contains values from 0 to 1 describing normalized precursor density in a cell
         self.surface = None # a boolean array, surface cells are True
         self.semi_surface = None # a boolean array, semi-surface cells are True
+        self.surface_n_neighbors = None # a boolean array, surface n-nearest neighbors are True
         self.ghosts = None # a boolean array, ghost cells are True
         self.beam_matrix = None # contains values of the SE surface flux
         
@@ -87,6 +88,7 @@ class Process():
         # Statistics
         self.substrate_height = 0 # Thickness of the substrate
         self.n_substrate_cells = 0 # the number of the cells in the substrate
+        self.max_neib = 0 # the number of surface nearest neighbors that could be escaped by a SE
         self.max_z = 0 # maximum height of the deposited structure, cells
         self.n_filled_cells = []
         self.growth_rate = []
@@ -107,6 +109,7 @@ class Process():
         self.precursor = self.structure.precursor
         self.surface = self.structure.surface_bool
         self.semi_surface = self.structure.semi_surface_bool
+        self.surface_n_neighbors = self.structure.surface_neighbors_bool
         self._surface_all = np.logical_or(self.surface, self.semi_surface)
         self.ghosts = self.structure.ghosts_bool
         self.beam_matrix = np.zeros_like(structure.deposit, dtype=np.int32)
@@ -203,42 +206,44 @@ class Process():
             # Creating a view with the 1st nearest neighbors to the deposited cell
             z_min, z_max, y_min, y_max, x_min, x_max = 0, 0, 0, 0, 0, 0
             # Taking into account cases when the cell is at the edge:
+            # Small note_: views should be first decreased from the end ([:2])
+            # and then from the begining. Otherwise desreasing from the end will have no effect.
+            if cell[0] + 2 > self.__deposit_reduced_3d.shape[0]:
+                z_max = self.__deposit_reduced_3d.shape[0]
+                neibs_sides = neibs_sides[:2, :, :]
+                neibs_edges = neibs_edges[:2, :, :]
+            else:
+                z_max = cell[0] + 2
             if cell[0] - 1 < 0:
                 z_min = 0
                 neibs_sides = neibs_sides[1:, :, :]
                 neibs_edges = neibs_edges[1:, :, :]
             else:
                 z_min = cell[0] - 1
-            if cell[0] + 2 > self.__deposit_reduced_3d.shape[0]:
-                z_max = self.__deposit_reduced_3d.shape[0]
-                neibs_sides = neibs_sides[:1, :, :]
-                neibs_edges = neibs_edges[:1, :, :]
+            if cell[1] + 2 > self.__deposit_reduced_3d.shape[1]:
+                y_max = self.__deposit_reduced_3d.shape[1]
+                neibs_sides = neibs_sides[:, :2, :]
+                neibs_edges = neibs_edges[:, :2, :]
             else:
-                z_max = cell[0] + 2
+                y_max = cell[1] + 2
             if cell[1] - 1 < 0:
                 y_min = 0
                 neibs_sides = neibs_sides[:, 1:, :]
                 neibs_edges = neibs_edges[:, 1:, :]
             else:
                 y_min = cell[1] - 1
-            if cell[1] + 2 > self.__deposit_reduced_3d.shape[1]:
-                y_max = self.__deposit_reduced_3d.shape[1]
-                neibs_sides = neibs_sides[:, :1, :]
-                neibs_edges = neibs_edges[:, :1, :]
+            if cell[2] + 2 > self.__deposit_reduced_3d.shape[2]:
+                x_max = self.__deposit_reduced_3d.shape[2]
+                neibs_sides = neibs_sides[:, :, :2]
+                neibs_edges = neibs_edges[:, :, :2]
             else:
-                y_max = cell[1] + 2
+                x_max = cell[2] + 2
             if cell[2] - 1 < 0:
                 x_min = 0
                 neibs_sides = neibs_sides[:, :, 1:]
                 neibs_edges = neibs_edges[:, :, 1:]
             else:
                 x_min = cell[2] - 1
-            if cell[2] + 2 > self.__deposit_reduced_3d.shape[2]:
-                x_max = self.__deposit_reduced_3d.shape[2]
-                neibs_sides = neibs_sides[:, :, :1]
-                neibs_edges = neibs_edges[:, :, :1]
-            else:
-                x_max = cell[2] + 2
             # neighbors_1st = s_[cell[0]-1:cell[0]+2, cell[1]-1:cell[1]+2, cell[2]-1:cell[2]+2]
             neighbors_1st = np.s_[z_min:z_max, y_min:y_max, x_min:x_max]
             # Creating a view with the 2nd nearest neighbors to the deposited cell
@@ -300,16 +305,19 @@ class Process():
             self.__get_max_z()
             self.irradiated_area_2D = np.s_[self.structure.substrate_height-1:self.max_z, :, :] # a volume encapsulating the whole surface
             self.__update_views_2d()
+            self.structure.define_surface_neighbors(self.max_neib)
 
         if self.max_z + 5 > self.structure.shape[0]:
             # Here the Structure is extended in height
             # and all the references to the data arrays are renewed
             shape_old = self.structure.shape
             self.structure.resize_structure(200)
+            self.structure.define_surface_neighbors(self.max_neib)
             beam_matrix = self.beam_matrix # taking care of the beam_matrix, because __set_structure creates it empty
             self.__set_structure(self.structure)
             self.beam_matrix[:shape_old[0], :shape_old[1], :shape_old[2]] = beam_matrix
             # Basically, none of the slices have to be updated, because they use indexes, not references.
+            return True
         return False
 
     def deposition(self):

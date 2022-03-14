@@ -43,7 +43,7 @@ class Structure:
         self.deposit = None
         self.surface_bool = None
         self.semi_surface_bool = None
-        # self.surface_neighbors_bool = None
+        self.surface_neighbors_bool = None
         self.ghosts_bool = None
 
         self.substrate_height = 0
@@ -116,13 +116,13 @@ class Structure:
                 print('failed to retrieve semi-surface index data...', end='')
                 self.semi_surface_bool = np.zeros_like(self.deposit, dtype=bool)
                 self.define_semi_surface()
-            # try:
-            #     self.surface_neighbors_bool = np.asarray(vtk_obj.cell_data['surface_neighbors_bool'].reshape(shape), dtype=bool)
-            #     print(f'retrieved surface nearest neighbors index data...', end='')
-            # except:
-            #     print('failed to retrieve surface nearest neighbors index data...', end='')
-            #     self.surface_neighbors_bool = np.zeros_like(self.deposit, dtype=bool)
-            #     self.define_surface_neighbors()
+            try:
+                self.surface_neighbors_bool = np.asarray(vtk_obj.cell_data['surface_neighbors_bool'].reshape(shape), dtype=bool)
+                print(f'retrieved surface nearest neighbors index data...', end='')
+            except:
+                print('failed to retrieve surface nearest neighbors index data...', end='')
+                self.surface_neighbors_bool = np.zeros_like(self.deposit, dtype=bool)
+                self.define_surface_neighbors(3)
             try:
                 self.ghosts_bool = np.asarray(vtk_obj.cell_data['ghosts_bool'].reshape(shape), dtype=bool)
                 print(f'retrieved ghost cells index data...', end='')
@@ -160,7 +160,7 @@ class Structure:
             self.ghosts_bool = np.zeros(shape, dtype=bool)
             self.define_surface()
             self.define_semi_surface()
-            # self.define_surface_neighbors()
+            self.define_surface_neighbors()
             self.define_ghosts()
             print('...done!')
         self.precursor[self.precursor < 0] = 0
@@ -191,8 +191,10 @@ class Structure:
         self.flush_structure()
         self.surface_bool = np.zeros((self.zdim + substrate_height, self.ydim, self.xdim), dtype=bool)
         self.semi_surface_bool = np.zeros((self.zdim + substrate_height, self.ydim, self.xdim), dtype=bool)
+        self.surface_neighbors_bool = np.zeros((self.zdim + substrate_height, self.ydim, self.xdim), dtype=bool)
         self.ghosts_bool = np.zeros((self.zdim + substrate_height, self.ydim, self.xdim), dtype=bool)
         self.define_surface()
+        self.define_surface_neighbors(1)
         self.define_ghosts()
         self.zdim, self.ydim, self.xdim = self.deposit.shape
         self.shape = (self.zdim, self.ydim, self.xdim)
@@ -248,8 +250,8 @@ class Structure:
         shape_new = (self.zdim + d_i, self.ydim + d_j, self.xdim + d_k)
         def resize_all(ref_check=True):
             if ref_check:
-                 if sys.getrefcount(self.deposit) - 1 > 0:
-                     raise ValueError
+                if sys.getrefcount(self.deposit) - 1 > 0:
+                    raise ValueError
             temp = np.copy(self.deposit)
             self.deposit = np.zeros(shape_new)
             self.deposit[:self.zdim, :self.ydim, :self.xdim] = temp[:]
@@ -262,9 +264,9 @@ class Structure:
             temp = np.copy(self.semi_surface_bool)
             self.semi_surface_bool = np.zeros(shape_new, dtype=bool)
             self.semi_surface_bool[:self.zdim, :self.ydim, :self.xdim] = temp[:]
-            # temp = np.copy(self.surface_nearest_neighbor)
-            # self.surface_nearest_neighbor = np.zeros(shape_new, dtype=int)
-            # self.surface_nearest_neighbor[:self.zdim, :self.ydim, :self.xdim] = temp[:]
+            temp = np.copy(self.surface_neighbors_bool)
+            self.surface_neighbors_bool = np.zeros(shape_new, dtype=int)
+            self.surface_neighbors_bool[:self.zdim, :self.ydim, :self.xdim] = temp[:]
             temp = np.copy(self.ghosts_bool)
             self.ghosts_bool = np.zeros(shape_new, dtype=bool)
             self.ghosts_bool[:self.zdim, :self.ydim, :self.xdim] = temp[:]
@@ -273,7 +275,7 @@ class Structure:
                 self.define_surface()
                 self.precursor[np.logical_and(self.precursor==0, self.surface_bool)] = self.precursor.max()
                 self.define_semi_surface()
-                #self.define_surface_neigbors
+                self.define_surface_neighbors()
                 self.define_ghosts()
         try:
             resize_all(True)
@@ -283,7 +285,7 @@ class Structure:
             try:
                 resize_all(False)
             except Exception as e:
-                print(f'An arror occurred while resizing Structure arrays: \n'
+                print(f'An error occurred while resizing Structure arrays: \n'
                       f'{e.args}')
                 raise e
 
@@ -364,17 +366,48 @@ class Structure:
         self.semi_surface_bool[grid != 0] = True
         print(f'done!')
 
-    # def define_surface_neighbors(self, n=1):
-    #     """
-    #     Find solid cells that are n-closest neighbors to the surface cells
-    #     :param n: order of nearest neighbor
-    #     :return:
-    #     """
-    #     grid = np.zeros_like(self.deposit)
-    #     for i in range(n + 1):
-    #         self.__stencil_3d(grid, self.surface_bool)
-    #     grid[self.deposit > -1] = 0
-    #     self.surface_neighbors_bool[grid > 0] = True
+    def define_surface_neighbors(self, n=0):
+        """
+        Find solid cells that are n-closest neighbors to the surface cells
+        :param n: order of nearest neighbor, if 0, then index all the solid cells
+        :return:
+        """
+        grid = np.zeros_like(self.deposit)
+        self.__stencil_3d(grid, self.surface_bool)
+        grid[grid>1] = 1
+        grid1 = np.zeros_like(grid)
+        self.__stencil_3d(grid1, grid)
+        grid1[grid>0] = 0
+        grid1[grid1<2] = 0
+        grid1[grid1>=2] = 1
+        grid[grid1 > 0] = 1
+        i = 1
+        if n==0:
+            loop = 0
+        else:
+            loop = 1
+        flag = True
+        while True:
+            i += 1
+            if loop:
+                if i>n:
+                    break
+            elif grid[self.deposit<0].min() > 0:
+                break
+            grid1 = np.zeros_like(grid)
+            self.__stencil_3d(grid1, grid)
+            grid1[grid != 0] = 0
+            grid1[grid1 > 0] = 1
+            grid[grid1 > 0] = i
+            grid1 = np.zeros_like(grid)
+            self.__stencil_3d(grid1, grid)
+            grid1[grid > 0] = 0
+            grid1[grid1 < i*2] = 0
+            grid1[grid1 >= i*2] = 1
+            grid[grid1>0] = i
+        grid[self.deposit > -1] = 0
+        self.surface_neighbors_bool[...] = 0
+        self.surface_neighbors_bool[grid > 0] = True
 
     def define_ghosts(self):
         """

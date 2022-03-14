@@ -22,5 +22,5 @@ ext_module = [Extension("etrajectory_c", ['etrajectory_c.pyx'],
                   )]
 
 # setup(ext_modules = cythonize("cytest.pyx", annotate=True, compiler_directives={'linetrace': True}), include_dirs=[np.get_include()])
-setup(ext_modules = cythonize("etrajectory_c.pyx", annotate=True, gdb_debug=True), include_dirs=[np.get_include()])
+setup(ext_modules = cythonize("etrajectory_c.pyx"), include_dirs=[np.get_include()])
 # setup(ext_modules = cythonize(extensions, annotate=True), include_dirs='.')

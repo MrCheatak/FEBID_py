@@ -9,8 +9,7 @@ faulthandler.enable(file=sys.stderr)
 from PyQt5.QtWidgets import QApplication, QDialog, QMainWindow, QMessageBox
 from PyQt5 import QtWidgets, QtGui
 
-from main_window import Ui_MainWindow as UI_MainPanel
-from warning_ui import  Ui_Dialog as UI_Warning
+from ui.main_window import Ui_MainWindow as UI_MainPanel
 
 import pyvista as pv
 import yaml
@@ -34,6 +33,7 @@ class MainPannel(QMainWindow, UI_MainPanel):
         self.save_flag = False
         self.structure_source = 'vtk' # vtk, geom or auto
         self.pattern_source = 'simple' # simple or stream_file
+        self.pattern = 'Point'
         self.vtk_filename = ''
         self.geom_parameters_filename = ''
         self.stream_file_filename = ''
@@ -115,8 +115,9 @@ class MainPannel(QMainWindow, UI_MainPanel):
                         self.input_substrate_height.setText(str(params['substrate_height']))
 
                         self.pattern_source = params['pattern_source']
-                        self.pattern_selection = params['pattern_selection']
-                        self.pattern_selection_changed(str.title(self.pattern_selection))
+                        self.pattern = params['pattern']
+                        self.pattern_selection.setCurrentText(str.title(self.pattern))
+                        self.pattern_selection_changed(str.title(self.pattern))
                         if self.pattern_source == 'simple':
                             self.simple_pattern_chosen()
                         elif self.pattern_source == 'stream_file':
@@ -151,8 +152,9 @@ class MainPannel(QMainWindow, UI_MainPanel):
                 return
             print('creating a new one.')
             with open(filename, "x") as f:
+                yml = YAML()
                 input = ''.join(self.last_session_stub)
-                self.session = self.yml.load(input)
+                self.session = yml.load(input)
                 self.session['load_last_session'] = self.save_flag
                 self.session['structure_source'] = self.structure_source
                 self.session['vtk_filename'] = self.vtk_filename
@@ -164,7 +166,7 @@ class MainPannel(QMainWindow, UI_MainPanel):
                 self.session['substrate_height'] = int(self.input_substrate_height.text())
 
                 self.session['pattern_source'] = self.pattern_source
-                self.session['pattern_selection'] = self.pattern_selection.currentText()
+                self.session['pattern'] = self.pattern_selection.currentText()
                 self.session['param1'] = float(self.input_param1.text())
                 self.session['param2'] = float(self.input_param2.text())
                 self.session['dwell_time'] = int(self.input_dwell_time.text())
@@ -292,7 +294,8 @@ class MainPannel(QMainWindow, UI_MainPanel):
         if current == 'Circle':
             self.set_params_ui(self.pattern_param1_controls, 'd:', True)
             self.set_params_ui(self.pattern_param2_controls, ' ', False)
-        self.save_parameter('pattern_selection', current)
+        self.pattern = current
+        self.save_parameter('pattern', current)
 
     def open_vtk_file(self, file=''):
         # For both tabs:
@@ -423,7 +426,7 @@ class MainPannel(QMainWindow, UI_MainPanel):
         self.checkbox_save_snapshots.setChecked(switch)
         self.l_snapshot_interval.setEnabled(switch)
         self.l_snapshot_interval_units.setEnabled(switch)
-        if switch or self.checkbox_save_snapshots.isChecked():
+        if switch or self.checkbox_save_simulation_data.isChecked():
             self.input_unique_name.setEnabled(True)
             self.l_unique_name.setEnabled(True)
             self.open_save_folder_button.setEnabled(True)
@@ -440,6 +443,9 @@ class MainPannel(QMainWindow, UI_MainPanel):
         self.checkbox_show.setChecked(switch)
         self.show_process = switch
         self.save_parameter('show_process', switch)
+
+    def unique_name_changed(self):
+        self.save_parameter('unique_name', self.input_unique_name.text())
 
     def open_save_directory(self): #implement
         directory = QtWidgets.QFileDialog.getExistingDirectory()
@@ -497,7 +503,7 @@ class MainPannel(QMainWindow, UI_MainPanel):
                                   f'Ambiguous required simulation volume.')
                 return
             try:
-                pattern = self.pattern_selection
+                pattern = self.pattern
                 p1 = float(self.input_param1.text()) # nm
                 p2 = float(self.input_param2.text()) if pattern in ['Point', 'Rectangle', 'Square'] else 0 # nm
                 dwell_time = int(self.input_dwell_time.text()) * dwell_time_units # s
@@ -566,12 +572,21 @@ class MainPannel(QMainWindow, UI_MainPanel):
 
         # Collecting parameters of file saving
         saving_params = {'monitoring': None, 'snapshot': None, 'filename': None}
-        flag1, flag2 = self.checkbox_save_simulation_data.isChecked(), self.checkbox_save_simulation_data.isChecked()
+        flag1, flag2 = self.checkbox_save_simulation_data.isChecked(), self.checkbox_save_snapshots.isChecked()
         if flag1:
             saving_params['monitoring'] = float(self.input_simulation_data_interval.text())
         if flag2:
             saving_params['snapshot'] = float(self.input_structure_snapshot_interval.text())
         if flag1 or flag2:
+            if not self.input_unique_name.text():
+                random_name = 'simulation_' + str(random.randint(10000, 99999))
+                self.view_message('No name specified',
+                                  f'Unique name is not specified, assigning {random_name}', icon='Info')
+                self.input_unique_name.setText(random_name)
+                return
+            if not self.save_directory:
+                self.view_message('No directory specified', 'The directory to save the files to is not specified.')
+                return
             saving_params['filename'] = os.path.join(self.save_directory, self.input_unique_name.text())
             try:
                 os.makedirs(saving_params['filename'])
@@ -579,7 +594,7 @@ class MainPannel(QMainWindow, UI_MainPanel):
                 pass
             saving_params['filename'] = os.path.join(saving_params['filename'], self.input_unique_name.text())
 
-        rendering = {'show_process': self.show_process, 'frame_rate': 1}
+        rendering = {'show_process': self.show_process, 'frame_rate': 0.5}
         # Starting the process
         febid_core.run_febid_interface(structure, precursor_params, beam_params, sim_volume_params, printing_path, saving_params, rendering)
 
@@ -603,7 +618,6 @@ class MainPannel(QMainWindow, UI_MainPanel):
         :return:
         """
         self.session[param_name] = value
-        # self.yml.dump(self.session, self.file_stream)
         yml = YAML()
         with open(self.last_session_filename, mode='wb') as f:
             yml.dump(self.session, f)
@@ -684,7 +698,7 @@ class MainPannel(QMainWindow, UI_MainPanel):
                 'substrate_height: ''\n',
                 '\n',
                 'pattern_source: '' # simple - print a simple figure, stream-file - load printing path from file\n',
-                'pattern_selection: '' # available: point, line, square, circle, rectangle\n',
+                'pattern: '' # available: point, line, square, circle, rectangle\n',
                 '# For the point these parameters are position coordinates, while other patterns are automatically\n',
                 '# positioned in the center and these parameters define the figures.\n',
                 'param1: ''\n',
@@ -751,39 +765,12 @@ class MainPannel(QMainWindow, UI_MainPanel):
         self.input_unique_name.setText(kwargs['unique_name'])
 
 
-
-class Warning(QDialog, UI_Warning):
-    def __init__(self, message="An error occurred.", parent=None):
-        super().__init__(parent)
-        self.setupUi(self)
-        self.label.setText(message)
-        self.show()
-
+def start():
+    app = QApplication(sys.argv)
+    win1 = MainPannel()
+    sys.exit(app.exec())
 
 if __name__ == "__main__":
-    if sys.platform == 'darwin':
-        vtk_filename = '/Users/sandrik1742/Documents/PycharmProjects/FEBID/tests/Pillar_s.vtk'
-        settings = '/Users/sandrik1742/Documents/PycharmProjects/benchmark/hockeystick/Parameters.yml'
-        precursor = '/Users/sandrik1742/Documents/PycharmProjects/benchmark/hockeystick/Me3PtCpMe.yml'
-        stream_file = '/Users/sandrik1742/Documents/PycharmProjects/benchmark/hockeystick/hockey_stick_012.str'
-        directory = '/Users/sandrik1742/Documents/PycharmProjects/benchmark/hockeystick'
-    else:
-        vtk_filename = '/home/kuprava/febid/tests/Pillar_s.vtk'
-        precursor = '/home/kuprava/benchmark/hockeystick/Me3PtCpMe.yml'
-        settings = '/home/kuprava/benchmark/hockeystick/Parameters.yml'
-        stream_file = '/home/kuprava/benchmark/hockeystick/hockey_stick_012.str'
-        directory = '/home/kuprava/benchmark/hockeystick'
-    test_kwargs = {'structure_source':'auto', 'vtk_filename': vtk_filename,
-               'width':200, 'length':200, 'height':400, 'cell_dim':8, 'substrate_height': 16,
-               'pattern_source': 'simple', 'pattern': 'Circle', 'p1':80, 'p2':0, 'dwell_time':10, 'pitch':2, 'repeats': 100,
-               'stream_file_filename': stream_file,
-               'beam_parameters_filename':settings,
-               'precursor_parameters_filename': precursor,
-               'stats_interval': '1',
-               'snapshot_interval': '2',
-               'save_directory': directory,
-               'unique_name': 'hockeystick1'
-               }
     app = QApplication(sys.argv)
     win1 = MainPannel()
     sys.exit(app.exec())

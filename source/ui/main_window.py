@@ -500,6 +500,7 @@ class Ui_MainWindow(object):
         self.open_save_folder_button.clicked.connect(MainWindow.open_save_directory) # type: ignore
         self.checkbox_show.stateChanged['int'].connect(MainWindow.change_state_show_process) # type: ignore
         self.checkbox_load_last_session.stateChanged['int'].connect(MainWindow.change_state_load_last_session) # type: ignore
+        self.input_unique_name.editingFinished.connect(MainWindow.unique_name_changed) # type: ignore
         QtCore.QMetaObject.connectSlotsByName(MainWindow)
 
     def retranslateUi(self, MainWindow):

@@ -140,7 +140,7 @@ def plot(m3d:map3d.ETrajMap3d, sim:et.ETrajectory): # plot energy loss and all t
     render.show_mc_result(sim.grid, pe_trajectories, m3d.DE, m3d.flux, m3d.coords_all)
 
 
-def cache_params(params, deposit, surface):
+def cache_params(params, deposit, surface, surface_neighbors):
     """
     Creates an instance of simulation class and fetches necessary parameters
 
@@ -153,11 +153,11 @@ def cache_params(params, deposit, surface):
     """
 
     sim = et.ETrajectory(name=params['name']) # creating an instance of Monte-Carlo simulation class
-    sim.setParameters(params, deposit, surface) # setting parameters
+    sim.setParameters(params, deposit, surface, surface_neighbors) # setting parameters
     return sim
 
 
-def rerun_simulation(y0, x0, deposit, surface, sim:et.ETrajectory, dt):
+def rerun_simulation(y0, x0, sim:et.ETrajectory, dt):
     """
     Rerun simulation using existing MC simulation instance
 
@@ -169,15 +169,9 @@ def rerun_simulation(y0, x0, deposit, surface, sim:et.ETrajectory, dt):
     :return:
     """
     start = timeit.default_timer()
-    sim.grid = deposit
-    sim.surface = surface
-    sim.map_wrapper(y0, x0)
+    # sim.map_wrapper(y0, x0)
     sim.map_wrapper_cy(y0, x0)
-    # sim.save_passes(f'{sim.N} passes', 'pickle')
     t = timeit.default_timer() - start
-    # print(f'\n{sim.N} trajectories took {t} s')
-    # print(f'Energy deposition took: \t SE preparation took: \t Flux counting took:')
-    sim.m3d = map3d.ETrajMap3d(deposit, surface, sim)
     m3d = sim.m3d
     start = timeit.default_timer()
     m3d.map_follow(sim.passes)
@@ -189,7 +183,8 @@ def rerun_simulation(y0, x0, deposit, surface, sim:et.ETrajectory, dt):
     if m3d.flux.min() < 0:
         print(f'Encountered negative in beam matrix: {np.nonzero(m3d.flux<0)}')
         m3d.flux[m3d.flux<0] = 0
-    return np.int32(m3d.flux/m3d.amplifying_factor*sim.norm_factor/(dt*sim.cell_dim*sim.cell_dim))
+    const = sim.norm_factor/(dt*sim.cell_dim*sim.cell_dim)/m3d.amplifying_factor
+    return np.int32(m3d.flux*const)
 
 
 if __name__ == '__main__':

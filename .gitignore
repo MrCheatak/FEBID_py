@@ -166,3 +166,6 @@ crashlytics-build.properties
 fabric.properties
 
 
+/source/monte_carlo/compiled/etrajectory_c.c
+/source/monte_carlo/compiled/etrajectory_c.cpp
+/source/monte_carlo/compiled/etrajectory_c.html

@@ -40,6 +40,7 @@ import simple_patterns as sp
 # Thus concept serves an alternative diffusion channel
 
 flag = False
+warnings.simplefilter('always')
 
 class ThreadWithResult(Thread):
     def __init__(self, group=None, target=None, name=None, args=(), kwargs={}, *, daemon=None):
@@ -404,8 +405,12 @@ def run_febid(structure, precursor_params, settings, sim_params, path, gather_st
         stats.get_params(settings, 'Beam parameters and settings')
         stats.get_params(sim_params, 'Simulation volume parameters')
     process_obj = Process(structure, equation_values, timings)
-    sim = etraj3d.cache_params(mc_config, structure.deposit, structure.surface_bool)
+    sim = etraj3d.cache_params(mc_config, structure.deposit, structure.surface_bool, structure.surface_neighbors_bool)
+    process_obj.max_neib = math.ceil(np.max([sim.deponat.lambda_escape, sim.substrate.lambda_escape])/process_obj.cell_dimension)
+    process_obj.structure.define_surface_neighbors(process_obj.max_neib)
     total_iters = int(np.sum(path[:, 2]) / process_obj.dt)
+    # Actual simulation runs in a second Thread, because visualization of the process
+    # via Pyvista works only from the main Thread
     printing = Thread(target=print_all, args=[path, process_obj, sim])
     printing.start()
     monitoring(process_obj, total_iters, stats, **monitor_kwargs)
@@ -421,12 +426,13 @@ def print_all(path, process_obj, sim):
     total_time = path[:,2].sum()
     t = tqdm(total=av_loops, desc='total', position=0)
     for x, y, step in path[start:]:
-        process_obj.beam_matrix[:, :, :] = etraj3d.rerun_simulation(y, x, process_obj.deposit, process_obj.surface,
-                                                                    sim,
-                                                                    process_obj.dt)
+        process_obj.beam_matrix[:, :, :] = etraj3d.rerun_simulation(y, x, sim, process_obj.dt)
+        if process_obj.beam_matrix.max() <= 1:
+            warnings.warn('No surface flux!', RuntimeWarning)
+            process_obj.beam_matrix[...] = 1
         process_obj.get_dt()
         process_obj.update_helper_arrays()
-        av_loops = path[:,2].sum() / process_obj.dt
+        av_loops = path[:, 2].sum() / process_obj.dt
         t.total = av_loops
         print_step(y, x, step, process_obj, sim, t)
     flag = True
@@ -448,8 +454,18 @@ def print_step(y, x, dwell_time, pr: Process, sim, t):
     while time < dwell_time:  # loop repeats
         pr.deposition()  # depositing on a selected area
         if pr.check_cells_filled():
-            pr.update_surface()  # updating surface on a selected area
-            pr.beam_matrix = etraj3d.rerun_simulation(y, x, pr.deposit, pr.surface, sim, pr.dt)
+            flag = pr.update_surface()  # updating surface on a selected area
+            if flag:
+                sim.grid = sim.m3d.grid = pr.deposit
+                sim.surface = sim.m3d.surface = pr.surface
+                sim.s_neighb = sim.m3d.s_neighb = pr.surface_n_neighbors
+            start = timeit.default_timer()
+            pr.beam_matrix[...] = etraj3d.rerun_simulation(y, x, sim, pr.dt)
+            print(f'Finished MC in {timeit.default_timer()-start} s')
+            if pr.beam_matrix.max() <= 1:
+                warnings.warn('No surface flux!', RuntimeWarning)
+                pr.beam_matrix[...] = 1
+                continue
             pr.get_dt()
             pr.update_helper_arrays()
             a = 1
@@ -475,20 +491,13 @@ def monitoring(pr: Process, l, stats: Statistics = None, location=None, stats_ra
     :param refresh_rate: sleep time
     :return:
     """
-    """
-    
-    :param pr: process object
-    :param l: approximate number of iterations
-    :param dump: weather to periodically save the structure to a file, None or interval in min
-    :return:
-    """
 
     global flag  # This flag variable is used for the communication between current and the process thread.
     # When deposition process thread finishes, it sets flag to False which will finish current thread
 
     time_step = 60
     pr.start_time = datetime.datetime.now()
-    dump_time = stats_time = pr.t
+    dump_time = stats_time = 0
     time_spent = start_time = frame = timeit.default_timer()
     # Initializing graphical monitoring
     rn = None
@@ -585,7 +594,7 @@ def update_graphical(rn: vr.Render, pr: Process, time_step, time_spent):
             rn.p.update_scalars(pr.precursor[pr.precursor > 0])
             rn.p.update_scalar_bar_range(clim=[pr.precursor[pr.precursor > 0.00001].min(), pr.precursor.max()])
         except ValueError:
-            warnings.warn('Failed to update scalars due to possible desynchronization with the working thread.')
+            warnings.warn('Failed to update scalars due to possible desynchronization with the working thread.', RuntimeWarning)
     rn.update()
     return redrawed
 

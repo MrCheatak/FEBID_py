@@ -2507,6 +2507,22 @@
     </hint>
    </hints>
   </connection>
+  <connection>
+   <sender>input_unique_name</sender>
+   <signal>editingFinished()</signal>
+   <receiver>MainWindow</receiver>
+   <slot>unique_name_changed()</slot>
+   <hints>
+    <hint type="sourcelabel">
+     <x>486</x>
+     <y>481</y>
+    </hint>
+    <hint type="destinationlabel">
+     <x>609</x>
+     <y>474</y>
+    </hint>
+   </hints>
+  </connection>
  </connections>
  <slots>
   <slot>vtk_chosen()</slot>
@@ -2534,5 +2550,6 @@
   <slot>open_save_directory()</slot>
   <slot>change_state_show_process(int)</slot>
   <slot>change_state_load_last_session(int)</slot>
+  <slot>unique_name_changed()</slot>
  </slots>
 </ui>

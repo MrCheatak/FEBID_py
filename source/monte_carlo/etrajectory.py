@@ -22,6 +22,7 @@ import traceback as tb
 # Local packages
 from libraries.ray_traversal import traversal
 from monte_carlo.compiled import etrajectory_c
+from monte_carlo import etrajmap3d as map3d
 
 
 class ETrajectory(object):
@@ -34,6 +35,8 @@ class ETrajectory(object):
         self.NA = 6.022141E23 # Avogadro number
         rnd.seed()
 
+        self.m3d = None
+
         # Beam properties
         self.E0 = 0 # energy of the beam, keV
         self.Emin = 0 # cut-off energy for electrons, keV
@@ -43,6 +46,7 @@ class ETrajectory(object):
         # Solid structure properties
         self.grid = None # 3D array representing a solid structure 
         self.surface = None # 3D array representing a surface of the solid structure
+        self.s_neghib = None # 3D array representing surface n-nearest neigbors
         self.cell_dim = 1 # dimension of a single cell
         self.deponat = Element() # deponat material properties
         self.substrate = substrates['Au'] # substrate material properties
@@ -249,13 +253,14 @@ class ETrajectory(object):
         def get_direction(self, ctheta=None, stheta=None, psi=None):
             return self.__get_direction(ctheta, stheta, psi)
 
-    def setParameters(self, params, deposit, surface, stat=1000):
+    def setParameters(self, params, deposit, surface, surface_neighbors,  stat=1000):
         #TODO: material tracking can be more universal
         # instead of using deponat and substrate variables, there can be a dictionary, where substrate is always last
         self.E0 = params['E0']
         self.Emin = params['Emin']
         self.grid = deposit
         self.surface = surface
+        self.s_neghib = surface_neighbors
         self.cell_dim = params['cell_dim']
         self.sigma = params['sigma']
         self.N = stat
@@ -267,6 +272,8 @@ class ETrajectory(object):
         self.material = None
 
         self.__calculate_attributes()
+
+        self.m3d = map3d.ETrajMap3d(self.grid, self.surface, surface_neighbors, self)
 
     def setParams_MC_test(self, structure, params):
         self.E0 = params['E0']
@@ -431,6 +438,8 @@ class ETrajectory(object):
                 warnings.warn(f'An error occurred while generating trajectories: {e.args}')
                 tb.print_exc()
                 flag = True
+        if not len(passes) > 0:
+            raise ValueError('Zero trajectories generated!')
         # for x,y in zip(x0,y0):
         #     passes.append(self.map_trajectory(x,y))
         # self.__inspect_passes(True, True)
@@ -836,14 +845,15 @@ class ETrajectory(object):
         :return:
         """
         i = 0
+        print('Dumping trajectories as a text file ...', end='')
         with open(fname, mode='w') as f:
             f.write('# ' + self.name + '\n')
             for p in self.passes:
                 f.write(f'# Trajectory {i} \n')
-                points = p[0]
-                energies = p[1]
-                mask = p[2]
-                mask.insert(0, nan)
+                points = np.asarray(p[0])
+                energies = np.asarray(p[1])
+                mask = np.asarray(p[2])
+                mask = np.insert(mask ,0, nan)
                 # f = open(fname + '_{:05d}'.format(i), 'w')
                 f.write('# x/nm\t\t y/nm\t\t z/nm\t\t E/keV\t\t mask\n')
                 for pt, e, m in zip(points, energies, mask):
@@ -851,6 +861,7 @@ class ETrajectory(object):
                       '{:f}\t'.format(pt[2]) + '{:f}\t'.format(e) + str(m) + '\n')
                 # f.close()
                 i += 1
+        print('done!')
 
     def __save_passes_obj(self, fname):
         """

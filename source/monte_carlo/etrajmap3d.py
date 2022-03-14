@@ -3,7 +3,9 @@ import logging
 import multiprocessing
 import random as rnd
 import sys
+import timeit
 
+import numexpr_mod as ne
 import numpy as np
 from numpy.random import default_rng
 import line_profiler
@@ -15,12 +17,12 @@ class ETrajMap3d(object):
     """
     Implements energy deposition and surface secondary electron flux calculation.
     """
-    def __init__(self, deposit, surface, sim, segment_min_length =0.3):
+    def __init__(self, deposit, surface, surface_neighbors, sim, segment_min_length =0.3):
         #TODO: ETrajMap3d class should probably be merged with Etrajectory
         # These classes
         self.grid = deposit
-        self.state = deposit
         self.surface = surface
+        self.s_neighb = surface_neighbors # 3D array representing surface n-nearest neigbors
         self.cell_dim = sim.cell_dim # absolute dimension of a cell, nm
         self.nz, self.ny, self.nx = np.asarray(self.grid.shape)- 1 # simulation chamber dimensions
         self.zdim_abs, self.ydim_abs, self.xdim_abs = [x*self.cell_dim for x in self.grid.shape]
@@ -119,9 +121,8 @@ class ETrajMap3d(object):
         t = np.abs((delta + (step == self.cell_dim) * self.cell_dim + (delta == 0) * step) / direction) # initial t-value
         max_traversed_cells = int(L.max()/self.cell_dim*2)+10 # maximum number of cells traversed by a segment in the trajectory;
         # this is essential to allocate enough memory for the traversal algorithm
-        print(f'*Running \'traverse_segment\'...', end='')
+        self.DE = np.zeros_like(self.grid)
         traversal.traverse_segment(self.DE, self.grid, self.cell_dim, p0, pn, direction, t, step_t, des, max_traversed_cells)
-        print('finished.')
 
     def prep_se_emission(self, points, dEs, ends):
         """
@@ -166,9 +167,7 @@ class ETrajMap3d(object):
             N = num.sum(dtype=int)
             pieces = np.empty((N, 3))
             energies = np.empty(N)
-            print('**Running \'divide_segments\'...', end='')
             traversal.divide_segments(dEs[long], coords_long[:,0], num, delta, pieces, energies) # Cython script
-            print('finished.')
             if pieces.min() < 0:
                 print(f'Encountered negative values in coordinates in prep_se_emission')
                 print(f'Num: {num}, delta: {delta}, ')
@@ -211,42 +210,49 @@ class ETrajMap3d(object):
 
         :return:
         """
-        L = np.empty_like(self.dEs_all)
-        direction = np.random.normal(0, 10, (self.dEs_all.shape[0], 3)) # creates spherically randomly distributed vectors
+        coords_all = np.int32(ne.evaluate('a/b', global_dict={'a': self.coords_all.T, 'b': 5}))
+        neighbors = self.s_neighb
+        include = neighbors[coords_all[0], coords_all[1], coords_all[2]]
+        in_index = include.nonzero()[0]
+
+        coords = self.coords_all[in_index]
+        dEs = self.dEs_all[in_index]
+
+        rng = np.random.default_rng()
+        L = np.empty_like(dEs)
+        direction = rng.normal(0, 10, (dEs.shape[0], 3)) # creates spherically randomly distributed vectors
         traversal.det_2d(direction, L)
         direction /= L.reshape(L.shape[0],1) # normalizing
         sign = np.int8(np.sign(direction))
         sign[sign==-1] = 0
         sign[sign==1] = -1
-        delta = -(self.coords_all % self.cell_dim)
+        delta = ne.evaluate('-(a%b)', global_dict={'a':coords, 'b':5})
         sign = (delta==0) * sign
 
-        coords = (np.int64(self.coords_all / self.cell_dim)).T
-        cell_material = self.grid[coords[0], coords[1], coords[2]]
+        coords_ind = coords_all[:, in_index]
+        cell_material = self.grid[coords_ind[0], coords_ind[1], coords_ind[2]]
         e = np.empty_like(cell_material)
         e[cell_material==-1] = self.deponat.e
         e[cell_material==-2] = self.substrate.e
         e[cell_material>=0] = 1000000
         lambda_escape = np.where(cell_material == -1, self.deponat.lambda_escape * 2, 0.00001) + np.where(cell_material == -2, self.substrate.lambda_escape * 2, 0.00001)
-        n_se = self.dEs_all / e * self.amplifying_factor  # number of generated SEs, usually ~0.1
+        n_se = dEs / e * self.amplifying_factor  # number of generated SEs, usually ~0.1
 
         length = lambda_escape # explicitly says that every vector has same length that equals SE escape path
         direction[:,0] *= length
         direction[:,1] *= length
         direction[:,2] *= length
-        pn = direction + self.coords_all
+        pn = direction + coords
         step = np.sign(direction) * self.cell_dim
         step_t = step / direction
 
-        t = np.abs((delta + np.maximum(step, 0) + (delta == 0) * step) / direction)
+        t = ne.evaluate('abs((d + m0s + d0 * s)/dir)', global_dict={'d':delta, 'm0s':np.maximum(step,0), 'd0':delta==0, 's':step, 'dir':direction})
         max_traversed_cells = int(np.amax(length, initial=0)/self.cell_dim*2+5)
-        print('***Running \'generate_flux\'...', end='')
         # Here each vector is processed with the same ray traversal algorithm as in 'follow_segment' method.
         # It checks if vectors cross surface cells and if they do, the SE number associated with the vector
         # is collected in the cell crossed.
-        traversal.generate_flux(self.flux, self.surface.view(dtype=np.uint8), self.cell_dim, self.coords_all, pn, direction, sign, t, step_t, n_se, max_traversed_cells) # Cython script
-        print('finished.')
-        self.coords_all = np.hstack((self.coords_all.reshape((pn.shape[0],1,3)), pn.reshape((pn.shape[0],1,3))))
+        traversal.generate_flux(self.flux, self.surface.view(dtype=np.uint8), self.cell_dim, coords, pn, direction, sign, t, step_t, n_se, max_traversed_cells) # Cython script
+
 
     def __setup_trajectory(self, points, energies, mask):
         """
@@ -258,8 +264,15 @@ class ETrajMap3d(object):
         # Trajectories are divided into segments represented by a pair of points
         # Then mask is applied, selecting only segments that traverse solid
         # This reduces the unnecessary analysis of trajectory segments that lie in void(geometry features or backscattered electrons)
-        mask = np.asarray(mask, dtype=bool)
-        pnp = np.array(points[0:len(points)]) # to get easy access to x, y, z coordinates of points
+        try:
+            mask = mask.astype(bool)
+            s = points.shape, energies.shape
+            pnp = points
+            dE = energies
+        except AttributeError:
+            mask = np.asarray(mask, dtype=bool)
+            pnp = np.array(points[0:len(points)]) # to get easy access to x, y, z coordinates of points
+            dE = np.asarray(energies)
         pairs = np.empty((pnp.shape[0]-1, 2, 3))
         pairs[:,0,:] = pnp[:-1]
         pairs[:,1,:] = pnp[1:]
@@ -274,7 +287,6 @@ class ETrajMap3d(object):
         # pairs = np.transpose(pairs, axes=(1,0,2))[mask.nonzero()]
         # np.delete(pairs, (mask==0), axis=0)
         # result = pairs[mask.nonzero()]
-        dE = np.asarray(energies)
         dE[:-1] -= dE[1:]
         dE = dE[:-1] # last element is discarded
         dE = dE[mask]*1000
@@ -292,6 +304,7 @@ class ETrajMap3d(object):
             self.DE += p[1]
             self.se_traj += p[2]
         return self.flux, self.DE
+
 
     def map_follow(self, passes):
         """
@@ -313,6 +326,8 @@ class ETrajMap3d(object):
         dEs = [] # same for energies
         traj_lengths = []
         traj_len = 0
+        print(f'*Preparing trajectories...', end='')
+        start = timeit.default_timer()
         for one_pass in passes:
             if len(one_pass[1][:]) < 3:
                 continue
@@ -325,9 +340,24 @@ class ETrajMap3d(object):
         traj_lengths = np.asarray(traj_lengths)
         segments_all = np.concatenate(points, axis=0)
         dEs_all = np.concatenate(dEs, axis=0)
+        print(f'finished. \t {timeit.default_timer() - start}')
+
+        print(f'**Running \'traverse_segment\'...', end='')
+        start = timeit.default_timer()
         self.follow_segment(segments_all, dEs_all)
+        print(f'finished. \t {timeit.default_timer() - start}')
+
+        print(f'***Running \'divide_segments\'....', end='')
+        start = timeit.default_timer()
         self.prep_se_emission(segments_all, dEs_all, traj_lengths-1)
+        print(f'finished. \t {timeit.default_timer() - start}')
+
+        self.flux = np.zeros_like(self.grid)
+
+        print(f'****Running \'generate_flux\'...', end='')
+        start = timeit.default_timer()
         self.generate_se()
+        print(f'finished. \t {timeit.default_timer() - start}')
         a=0
 
         return self.flux, self.DE # has to be returned, as every process (when using multiprocessing) gets its own copy of the whole class and thus does not write to the original
