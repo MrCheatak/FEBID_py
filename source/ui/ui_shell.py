@@ -94,6 +94,8 @@ class MainPannel(QMainWindow, UI_MainPanel):
             with open(filename, 'r+b') as f:
                 yml = YAML()
                 self.session = params = yml.load(f)
+                if params is None:
+                    raise RuntimeError('YAML error: was unable to read the .yml configuration file.')
                 if params['load_last_session'] is True:
                     with suppress(KeyError):
                         self.save_flag = True
@@ -146,11 +148,7 @@ class MainPannel(QMainWindow, UI_MainPanel):
                         self.change_state_show_process(params['show_process'])
                 print('done!')
         except FileNotFoundError:
-            print('Last session file not found', end='')
-            if not self.save_flag:
-                print('')
-                return
-            print('creating a new one.')
+            print('Last session file not found, creating a new one.')
             with open(filename, "x") as f:
                 yml = YAML()
                 input = ''.join(self.last_session_stub)
@@ -619,8 +617,9 @@ class MainPannel(QMainWindow, UI_MainPanel):
         """
         self.session[param_name] = value
         yml = YAML()
-        with open(self.last_session_filename, mode='wb') as f:
-            yml.dump(self.session, f)
+        if self.save_flag:
+            with open(self.last_session_filename, mode='wb') as f:
+                yml.dump(self.session, f)
     def change_color(self, labels: Union[list,QtWidgets.QLabel], color='gray'):
         if type(labels) is list:
             for label in labels:

@@ -210,7 +210,7 @@ class ETrajMap3d(object):
 
         :return:
         """
-        coords_all = np.int32(ne.evaluate('a/b', global_dict={'a': self.coords_all.T, 'b': 5}))
+        coords_all = np.int32(ne.evaluate('a/b', global_dict={'a': self.coords_all.T, 'b': self.cell_dim}))
         neighbors = self.s_neighb
         include = neighbors[coords_all[0], coords_all[1], coords_all[2]]
         in_index = include.nonzero()[0]

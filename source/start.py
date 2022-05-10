@@ -125,8 +125,8 @@ def start_no_ui(config_f=None):
     return
 
 if __name__ == '__main__':
-    start_no_ui('/home/kuprava/febid/source/last_session.yml')
-    # start_ui()
+    # start_no_ui('/home/kuprava/febid/source/last_session.yml')
+    start_ui()
 
 
 
