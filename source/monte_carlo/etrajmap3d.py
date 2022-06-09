@@ -1,3 +1,4 @@
+import copy
 import inspect
 import logging
 import multiprocessing
@@ -17,31 +18,49 @@ class ETrajMap3d(object):
     """
     Implements energy deposition and surface secondary electron flux calculation.
     """
-    def __init__(self, deposit, surface, surface_neighbors, sim, segment_min_length =0.3):
+    def __init__(self, deposit, surface, surface_neighbors, sim, segment_min_length=0.3):
         #TODO: ETrajMap3d class should probably be merged with Etrajectory
         # These classes
         self.grid = deposit
         self.surface = surface
         self.s_neighb = surface_neighbors # 3D array representing surface n-nearest neigbors
         self.cell_dim = sim.cell_dim # absolute dimension of a cell, nm
-        self.nz, self.ny, self.nx = np.asarray(self.grid.shape)- 1 # simulation chamber dimensions
-        self.zdim_abs, self.ydim_abs, self.xdim_abs = [x*self.cell_dim for x in self.grid.shape]
-        self.DE = np.zeros((self.nz+1, self.ny+1, self.nx+1)) # array for storing of deposited energies
-        self.flux = np.zeros((self.nz+1, self.ny+1, self.nx+1)) # array for storing SE fluxes
+        self.DE = np.zeros_like(deposit) # array for storing of deposited energies
+        self.flux = np.zeros_like(deposit) # array for storing SE fluxes
+        self.shape = deposit.shape
+        self.shape_abs = tuple([x*self.cell_dim for x in self.grid.shape])
+
         self.amplifying_factor = 10000 # artificially increases SE yield to preserve accuracy
+        self.emission_fraction = 1 # fraction of total lost energy spent on secondary electron emission
         # self.e = e # fitting parameter related to energy required to initiate a SE cascade, material specific, eV
         self.deponat = sim.deponat
         self.substrate = sim.substrate
         # self.lambda_escape = lambda_escape # mean free escape path, material specific, nm
         # self.dn = floor(self.lambda_escape * 2 / self.cell_dim) # number of cells an SE can intersect
         self.trajectories = [] # holds all trajectories mapped to 3d structure
-        self.se_traj = []
-        self.x0, self.y0, self.z0 = 0, 0, 0  # origin of 3d grid
-        rnd.seed()
+        self.se_traj = [] # holds all trajectories mapped to 3d structure
         self.segment_min_length = segment_min_length
-        self.m3d = None
 
-    # @nb.jit(nopython=True)
+    def setParametrs(self, structure, segment_min_length=0.3, **mc_params):
+        self.grid = structure.deposit
+        self.surface = structure.surface_bool
+        self.s_neighb = structure.surface_neighbors  # 3D array representing surface n-nearest neigbors
+        self.cell_dim = structure.cell_dimension  # absolute dimension of a cell, nm
+        self.DE = np.zeros_like(deposit)  # array for storing of deposited energies
+        self.flux = np.zeros_like(deposit)  # array for storing SE fluxes
+        self.shape = structure.shape
+        self.shape_abs = structure.shape_abs
+
+        self.amplifying_factor = 10000  # artificially increases SE yield to preserve accuracy
+        self.emission_fraction = mc_params['emission_fraction']  # fraction of total lost energy spent on secondary electron emission
+        # self.e = e # fitting parameter related to energy required to initiate a SE cascade, material specific, eV
+        self.deponat = mc_params['deponat']
+        self.substrate = mc_params['substrate']
+        # self.lambda_escape = lambda_escape # mean free escape path, material specific, nm
+        # self.dn = floor(self.lambda_escape * 2 / self.cell_dim) # number of cells an SE can intersect
+        self.se_traj = []  # holds all trajectories mapped to 3d structure
+        self.segment_min_length = segment_min_length
+
     def __arr_min(self, x):
         if x[0] >= x[1]:
             if x[1] >= x[2]:
@@ -54,7 +73,6 @@ class ETrajMap3d(object):
             else:
                 return x[0], 0
 
-    # @nb.jit(nopython=True)
     def traverse_cells(self, p0, pn, direction, t, step_t):
         """
             AABB Ray-Voxel traversal algorithm.
@@ -236,7 +254,7 @@ class ETrajMap3d(object):
         e[cell_material==-2] = self.substrate.e
         e[cell_material>=0] = 1000000
         lambda_escape = np.where(cell_material == -1, self.deponat.lambda_escape * 2, 0.00001) + np.where(cell_material == -2, self.substrate.lambda_escape * 2, 0.00001)
-        n_se = dEs / e * self.amplifying_factor  # number of generated SEs, usually ~0.1
+        n_se = dEs / e * self.amplifying_factor * self.emission_fraction  # number of generated SEs, usually ~0.1
 
         length = lambda_escape # explicitly says that every vector has same length that equals SE escape path
         direction[:,0] *= length
@@ -328,6 +346,7 @@ class ETrajMap3d(object):
         traj_len = 0
         print(f'*Preparing trajectories...', end='')
         start = timeit.default_timer()
+        passes = copy.deepcopy(passes)
         for one_pass in passes:
             if len(one_pass[1][:]) < 3:
                 continue

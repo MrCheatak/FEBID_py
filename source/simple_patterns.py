@@ -5,13 +5,14 @@ import tkinter.filedialog as fd
 import numpy as np
 
 
-def open_stream_file(file=None, offset=2, scale_factor=1):
+def open_stream_file(file=None, offset=2, collapse=False):
     """
     Open stream file, convert to nm and define enclosing volume dimensions.
         A valid stream-file should consist of 3 columns and start with 's16' line.
 
     :param file: path to the stream-file
     :param offset: determines a margin around the printing path
+    :param collapse: if True, summ dwell time of consecutive instructions with identical coordinates
     :return: normalized directives in nm and s, dimensions of the enclosing volume in nm
     """
     if not file:
@@ -67,21 +68,19 @@ def open_stream_file(file=None, offset=2, scale_factor=1):
     data = np.roll(data, -1, 1)
 
     # Summing dwell time of consecutive points with same coordinates
-    p_d = np.diff(data[:, (0, 1)], axis=0).astype(bool)
-    p_d = p_d[:, 0] + p_d[:, 1]
-    a = []
-    i = 0
-    while i < p_d.shape[0] - 1:
-        b = np.copy(data[i])
-        while not p_d[i] and i < p_d.shape[0] - 1:
-            b[2] += data[i, 2]
+    if collapse:
+        p_d = np.diff(data[:, (0, 1)], axis=0).astype(bool)
+        p_d = p_d[:, 0] + p_d[:, 1]
+        collapsed_arr = []
+        i = 0
+        while i < p_d.shape[0] - 1:
+            b = np.copy(data[i])
+            while not p_d[i] and i < p_d.shape[0] - 1:
+                b[2] += data[i, 2]
+                i += 1
+            collapsed_arr.append(b)
             i += 1
-        a.append(b)
-        i += 1
-    data = np.asarray(a)
-
-    if scale_factor:
-        data[:, 2] /= scale_factor
+        data = np.asarray(collapsed_arr)
 
     return data, np.array([z_dim/10, y_dim/10, x_dim/10], dtype=int)
 
@@ -166,12 +165,12 @@ def generate_square(loops, dwell_time, x, y, side_a, side_b=None, step=1):
 def generate_line(loops, dwell_time, x, y, line, _, step=1):
     start = x - line / 2
     end = x + line / 2
-    path = np.empty((int(line / step * 2) - 2, 3))
-    loop1 = np.arange(start + step, end, step)
-    loop2 = np.arange(end - step, start, -step)
+    loop1 = np.arange(start, end+1e-8, step)
+    loop2 = np.arange(loop1[-1], start-1e-8, -step)
     loop = np.concatenate([loop1, loop2])
-    path[:, 0] = y
-    path[:, 1] = loop
+    path = np.empty((loop1.shape[0]+loop2.shape[0], 3))
+    path[:, 0] = loop
+    path[:, 1] = y
     path[:, 2] = dwell_time
     path = np.tile(path, (loops, 1))
     return path

@@ -698,7 +698,7 @@
         <property name="title">
          <string>Beam and precursor</string>
         </property>
-        <widget class="QPushButton" name="open_beam_parameters_file_button">
+        <widget class="QPushButton" name="open_settings_file_button">
          <property name="geometry">
           <rect>
            <x>158</x>
@@ -724,7 +724,7 @@
           <string>Open file</string>
          </property>
         </widget>
-        <widget class="QLineEdit" name="beam_parameters_filename_display">
+        <widget class="QLineEdit" name="settings_filename_display">
          <property name="geometry">
           <rect>
            <x>280</x>
@@ -766,7 +766,7 @@
           </rect>
          </property>
          <property name="text">
-          <string>Beam parameters</string>
+          <string>Settings</string>
          </property>
         </widget>
         <widget class="QLabel" name="label_13">
@@ -858,12 +858,12 @@
           <rect>
            <x>286</x>
            <y>32</y>
-           <width>25</width>
+           <width>43</width>
            <height>16</height>
           </rect>
          </property>
          <property name="text">
-          <string>min</string>
+          <string>x 0.1 s</string>
          </property>
         </widget>
         <widget class="QLineEdit" name="input_simulation_data_interval">
@@ -895,7 +895,7 @@
           </rect>
          </property>
          <property name="text">
-          <string>10</string>
+          <string>1</string>
          </property>
          <property name="maxLength">
           <number>4</number>
@@ -922,12 +922,12 @@
           <rect>
            <x>286</x>
            <y>60</y>
-           <width>25</width>
+           <width>41</width>
            <height>16</height>
           </rect>
          </property>
          <property name="text">
-          <string>min</string>
+          <string>x 0.1 s</string>
          </property>
         </widget>
         <widget class="QLineEdit" name="input_unique_name">
@@ -1008,7 +1008,7 @@
          <string>Show the process</string>
         </property>
         <property name="checked">
-         <bool>true</bool>
+         <bool>false</bool>
         </property>
        </widget>
        <widget class="QCheckBox" name="checkbox_load_last_session">
@@ -1868,22 +1868,6 @@
    </hints>
   </connection>
   <connection>
-   <sender>open_beam_parameters_file_button</sender>
-   <signal>clicked()</signal>
-   <receiver>MainWindow</receiver>
-   <slot>open_beam_parameters_file()</slot>
-   <hints>
-    <hint type="sourcelabel">
-     <x>243</x>
-     <y>361</y>
-    </hint>
-    <hint type="destinationlabel">
-     <x>605</x>
-     <y>320</y>
-    </hint>
-   </hints>
-  </connection>
-  <connection>
    <sender>open_precursor_parameters_file_button</sender>
    <signal>clicked()</signal>
    <receiver>MainWindow</receiver>
@@ -1951,7 +1935,7 @@
    <sender>open_beam_parameters_file_button_mc</sender>
    <signal>clicked()</signal>
    <receiver>MainWindow</receiver>
-   <slot>open_beam_parameters_file()</slot>
+   <slot>open_settings_file()</slot>
    <hints>
     <hint type="sourcelabel">
      <x>66</x>
@@ -2523,6 +2507,22 @@
     </hint>
    </hints>
   </connection>
+  <connection>
+   <sender>open_settings_file_button</sender>
+   <signal>clicked()</signal>
+   <receiver>MainWindow</receiver>
+   <slot>open_settings_file()</slot>
+   <hints>
+    <hint type="sourcelabel">
+     <x>195</x>
+     <y>361</y>
+    </hint>
+    <hint type="destinationlabel">
+     <x>7</x>
+     <y>372</y>
+    </hint>
+   </hints>
+  </connection>
  </connections>
  <slots>
   <slot>vtk_chosen()</slot>
@@ -2533,7 +2533,7 @@
   <slot>open_vtk_file()</slot>
   <slot>open_geom_parameters_file()</slot>
   <slot>open_stream_file()</slot>
-  <slot>open_beam_parameters_file()</slot>
+  <slot>open_settings_file()</slot>
   <slot>open_precursor_parameters_file()</slot>
   <slot>vtk_chosen_mc()</slot>
   <slot>geom_parameters_chosen_mc()</slot>

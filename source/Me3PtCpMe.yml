@@ -1,13 +1,20 @@
 # parameters for Me3PtCpMe precursor
+# dissociated volume is estimated like follows: dV = molar_mass/Avogadro/density
+# average element number is estimated based on two points:
+#   the average Zav = ΣnZ/Σn
+#   the atomic number of an element with the closest molar_mass/density ratio as the deposit shoud be taken.
+# average molar mass Mav = ΣnM/Σn
+
 name: 'Me3PtCpMe'
 formula: 'Me3PtCpMe'
 molar_mass_precursor: 319.17 # g/mol
 max_density: 1.9 # 1/nm^2  [utke]
 molecule_diameter: 7.8 # Å  [utke]
-dissociated_volume: 0.025 # nm^3 # approximation from Pt and C atomic volume from [chem_globe] - 15% of Volume
+dissociated_volume: 0.094 # nm^3
 Knudsen_number: 1.3 # [utke]
 cross_section: 0.022 # nm^2 [huth]
 diffusion_coefficient: 4000000 # nm^2/s  [fowlkes]
+sticking_coefficient: 1 [fowlkes]
 P_vap: 7.7 # Pa [utke]
 residence_time: 100 # µs [fowlkes]
 #residence_time: 29 # µs [huth]
@@ -36,5 +43,5 @@ average_density: 4.5 # g/cm^3 [fried]
 # [utke] Utke I., Hoffmann P., Melngailis J., J. Vac. Sci. Technol. B, Vol. 26, No. 4, 2008
 # [huth] Huth M., Poratti F., Schwalb C. et. al, Beilstein J. Nanotechnol., 3, 597–619, 2012
 # [fowlkes] Fowlkes J.D., Winkler R., Lewis B.B. et.al, ACS Nano , 10, 6163−617, 2016
-# [chem_globe] https://chemglobe.org/ptoe/_/78.php
-# [fried] Fredili V., Santschi C. et. al, Appl. Phys. Lett. 90, 053106 (2007)
+# [fried] Friedli V., Santschi C. et. al, Appl. Phys. Lett. 90, 053106 (2007)
+# [lin] Lin Y., Joy D., Surf. Interface Anal. 2005, 37, 895–900

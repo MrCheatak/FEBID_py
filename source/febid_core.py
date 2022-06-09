@@ -17,6 +17,7 @@ from threading import Thread
 from tkinter import filedialog as fd
 
 # Core packages
+import line_profiler
 import numpy as np
 import pyvista as pv
 
@@ -30,7 +31,7 @@ from tqdm import tqdm
 
 # Local packages
 from Process import Structure, Process
-import VTK_Rendering as vr
+from libraries.vtk_rendering import VTK_Rendering as vr
 from monte_carlo import etraj3d
 import simple_patterns as sp
 
@@ -311,10 +312,11 @@ def buffer_constants(precursor: dict, settings: dict, cell_dimension: int):
                  'Emin': settings["minimum_energy"],
                  'Z': precursor["average_element_number"],
                  'A': precursor["average_element_mol_mass"], 'rho': precursor["average_density"],
-                 'I0': settings["beam_current"], 'sigma': settings["gauss_dev"],
-                 'N': Ie * dt / elementary_charge, 'sub': settings["substrate_element"],
+                 'I0': settings["beam_current"], 'sigma': settings["gauss_dev"], 'n': settings['n'],
+                 'N': Ie, 'sub': settings["substrate_element"],
                  'cell_dim': cell_dimension,
-                 'e': precursor["SE_emission_activation_energy"], 'l': precursor["SE_mean_free_path"]}
+                 'e': precursor["SE_emission_activation_energy"], 'l': precursor["SE_mean_free_path"],
+                  'emission_fraction': settings['emission_fraction']}
     # Parameters for reaction-equation solver
     equation_values = {'F': settings["precursor_flux"], 'n0': precursor["max_density"],
                        'sigma': precursor["cross_section"], 'tau': precursor["residence_time"] * 1E-6,
@@ -347,7 +349,7 @@ def start_from_command_line():
         x, y = structure.shape[2] // 2, structure.shape[1] // 2
         path = sp.generate_pattern(path[0], 100000000, 1e-4, x, y, None)
     else:
-        path, shape = sp.open_stream_file(path)
+        path, shape = sp.open_stream_file(path, True)
         structure.create_from_parameters(2, int(shape[2]) // 2, int(shape[1]) // 2, int(shape[0]) // 2, 4)
 
     run_febid(structure, precursor_params, settings, sim_params, path)
@@ -560,11 +562,17 @@ def update_graphical(rn: vr.Render, pr: Process, time_step, time_spent):
     redrawed = pr.redraw
     if pr.redraw:
         rn.p.clear()
+        # Calculating values to indicate
         pr.n_filled_cells.append(np.count_nonzero(pr.deposit[pr.deposit < 0]) - pr.n_substrate_cells)
         i = len(pr.n_filled_cells) - 1
-        pr.growth_rate.append(
-            (pr.n_filled_cells[i] - pr.n_filled_cells[i - 1]) / (time_spent - time_step + 0.001) * 60 * 60)
-        rn._add_3Darray(pr.precursor, 0.00000001, 1, opacity=0.5, show_edges=True, exclude_zeros=False,
+        time_real = str(datetime.timedelta(seconds=int(time_spent)))
+        speed = pr.t / time_spent
+        growth_rate = int(pr.n_filled_cells[i] * pr.cell_dimension**3 / pr.t)
+
+        height = (pr.max_z - pr.substrate_height) * pr.structure.cell_dimension
+        total_V = int((pr.n_filled_cells[i] + pr.deposit[pr.surface].sum()) * pr.cell_V)
+
+        rn._add_3Darray(pr.precursor, 0.00000001, 1, opacity=0.5, show_edges=True,
                         scalar_name='Precursor',
                         button_name='precursor', cmap='plasma')
         try:
@@ -576,22 +584,22 @@ def update_graphical(rn: vr.Render, pr: Process, time_step, time_spent):
         rn.meshes_count += 1
         # rn.add_3Darray(deposit, structure.cell_dimension, -2, -0.5, 0.7, scalar_name='Deposit',
         #            button_name='Deposit', color='white', show_scalar_bar=False)
-        rn.p.add_text(f'Time: {str(datetime.timedelta(seconds=int(time_spent)))} \n'
-                      f'Sim. time: {(pr.t):.8f} s \n'
-                      f'Speed: {(pr.t / time_spent):.8f} \n'  # showing time passed
-                      f'Relative growth rate: {int(pr.n_filled_cells[i] * pr.cell_dimension**3 / time_spent * 60 * 60)} nm^3/h \n'  # showing average growth rate
-                      f'Av. real growth rate: {int(pr.n_filled_cells[i] * pr.cell_dimension**3 / pr.t)} nm^3/s \n',
+        rn.p.add_text(f'Time: {time_real} \n' # showing real time passed 
+                      f'Sim. time: {(pr.t):.8f} s \n' # showing simulation time passed
+                      f'Speed: {(speed):.8f} \n'  
+                      f'Av. growth rate: {growth_rate} nm^3/s \n', # showing average growth rate
                       position='upper_left',
                       font_size=12)  # showing average growth rate
         rn.p.add_text(f'Cells: {pr.n_filled_cells[i]} \n'  # showing total number of deposited cells
-                      f'Height: {(pr.max_z - pr.substrate_height) * pr.structure.cell_dimension} nm \n',
+                      f'Height: {height} nm \n'
+                      f'Volume: {total_V} nm^3',
                       position='upper_right',
                       font_size=12)  # showing current height of the structure
         pr.redraw = False
     else:
         # rn.p.mesh['precursor'] = precursor[precursor!=0]
         try:
-            rn.p.update_scalars(pr.precursor[pr.precursor > 0])
+            rn.p.update_scalars(pr.precursor[pr.surface])
             rn.p.update_scalar_bar_range(clim=[pr.precursor[pr.precursor > 0.00001].min(), pr.precursor.max()])
         except ValueError:
             warnings.warn('Failed to update scalars due to possible desynchronization with the working thread.', RuntimeWarning)

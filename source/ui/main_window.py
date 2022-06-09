@@ -180,16 +180,16 @@ class Ui_MainWindow(object):
         self.groupBox_4 = QtWidgets.QGroupBox(self.tab)
         self.groupBox_4.setGeometry(QtCore.QRect(6, 270, 573, 93))
         self.groupBox_4.setObjectName("groupBox_4")
-        self.open_beam_parameters_file_button = QtWidgets.QPushButton(self.groupBox_4)
-        self.open_beam_parameters_file_button.setGeometry(QtCore.QRect(158, 20, 113, 32))
-        self.open_beam_parameters_file_button.setObjectName("open_beam_parameters_file_button")
+        self.open_settings_file_button = QtWidgets.QPushButton(self.groupBox_4)
+        self.open_settings_file_button.setGeometry(QtCore.QRect(158, 20, 113, 32))
+        self.open_settings_file_button.setObjectName("open_settings_file_button")
         self.open_precursor_parameters_file_button = QtWidgets.QPushButton(self.groupBox_4)
         self.open_precursor_parameters_file_button.setGeometry(QtCore.QRect(158, 54, 113, 32))
         self.open_precursor_parameters_file_button.setObjectName("open_precursor_parameters_file_button")
-        self.beam_parameters_filename_display = QtWidgets.QLineEdit(self.groupBox_4)
-        self.beam_parameters_filename_display.setGeometry(QtCore.QRect(280, 24, 275, 21))
-        self.beam_parameters_filename_display.setReadOnly(True)
-        self.beam_parameters_filename_display.setObjectName("beam_parameters_filename_display")
+        self.settings_filename_display = QtWidgets.QLineEdit(self.groupBox_4)
+        self.settings_filename_display.setGeometry(QtCore.QRect(280, 24, 275, 21))
+        self.settings_filename_display.setReadOnly(True)
+        self.settings_filename_display.setObjectName("settings_filename_display")
         self.precursor_parameters_filename_display = QtWidgets.QLineEdit(self.groupBox_4)
         self.precursor_parameters_filename_display.setGeometry(QtCore.QRect(280, 56, 275, 21))
         self.precursor_parameters_filename_display.setReadOnly(True)
@@ -218,7 +218,7 @@ class Ui_MainWindow(object):
         self.l_sim_data_interval.setGeometry(QtCore.QRect(202, 32, 39, 16))
         self.l_sim_data_interval.setObjectName("l_sim_data_interval")
         self.l_sim_data_interval_units = QtWidgets.QLabel(self.groupBox_7)
-        self.l_sim_data_interval_units.setGeometry(QtCore.QRect(286, 32, 25, 16))
+        self.l_sim_data_interval_units.setGeometry(QtCore.QRect(286, 32, 43, 16))
         self.l_sim_data_interval_units.setObjectName("l_sim_data_interval_units")
         self.input_simulation_data_interval = QtWidgets.QLineEdit(self.groupBox_7)
         self.input_simulation_data_interval.setGeometry(QtCore.QRect(240, 28, 43, 21))
@@ -232,7 +232,7 @@ class Ui_MainWindow(object):
         self.l_snapshot_interval.setGeometry(QtCore.QRect(202, 60, 39, 16))
         self.l_snapshot_interval.setObjectName("l_snapshot_interval")
         self.l_snapshot_interval_units = QtWidgets.QLabel(self.groupBox_7)
-        self.l_snapshot_interval_units.setGeometry(QtCore.QRect(286, 60, 25, 16))
+        self.l_snapshot_interval_units.setGeometry(QtCore.QRect(286, 60, 41, 16))
         self.l_snapshot_interval_units.setObjectName("l_snapshot_interval_units")
         self.input_unique_name = QtWidgets.QLineEdit(self.groupBox_7)
         self.input_unique_name.setGeometry(QtCore.QRect(418, 42, 143, 21))
@@ -252,7 +252,7 @@ class Ui_MainWindow(object):
         self.save_folder_display.setObjectName("save_folder_display")
         self.checkbox_show = QtWidgets.QCheckBox(self.tab)
         self.checkbox_show.setGeometry(QtCore.QRect(404, 510, 133, 20))
-        self.checkbox_show.setChecked(True)
+        self.checkbox_show.setChecked(False)
         self.checkbox_show.setObjectName("checkbox_show")
         self.checkbox_load_last_session = QtWidgets.QCheckBox(self.tab)
         self.checkbox_load_last_session.setGeometry(QtCore.QRect(410, 0, 133, 16))
@@ -460,12 +460,11 @@ class Ui_MainWindow(object):
         self.open_vtk_file_button.clicked.connect(MainWindow.open_vtk_file) # type: ignore
         self.open_geom_parameters_file_button.clicked.connect(MainWindow.open_geom_parameters_file) # type: ignore
         self.open_stream_file_button.clicked.connect(MainWindow.open_stream_file) # type: ignore
-        self.open_beam_parameters_file_button.clicked.connect(MainWindow.open_beam_parameters_file) # type: ignore
         self.open_precursor_parameters_file_button.clicked.connect(MainWindow.open_precursor_parameters_file) # type: ignore
         self.open_vtk_file_button_mc.clicked.connect(MainWindow.open_vtk_file) # type: ignore
         self.choice_vtk_file_mc.clicked.connect(MainWindow.vtk_chosen) # type: ignore
         self.choice_geom_parameters_file_mc.clicked.connect(MainWindow.geom_parameters_chosen) # type: ignore
-        self.open_beam_parameters_file_button_mc.clicked.connect(MainWindow.open_beam_parameters_file) # type: ignore
+        self.open_beam_parameters_file_button_mc.clicked.connect(MainWindow.open_settings_file) # type: ignore
         self.open_precursor_parameters_file_button_mc.clicked.connect(MainWindow.open_precursor_parameters_file) # type: ignore
         self.open_geom_parameters_file_button_mc.clicked.connect(MainWindow.open_geom_parameters_file) # type: ignore
         self.pattern_selection.currentTextChanged['QString'].connect(MainWindow.pattern_selection_changed) # type: ignore
@@ -501,6 +500,7 @@ class Ui_MainWindow(object):
         self.checkbox_show.stateChanged['int'].connect(MainWindow.change_state_show_process) # type: ignore
         self.checkbox_load_last_session.stateChanged['int'].connect(MainWindow.change_state_load_last_session) # type: ignore
         self.input_unique_name.editingFinished.connect(MainWindow.unique_name_changed) # type: ignore
+        self.open_settings_file_button.clicked.connect(MainWindow.open_settings_file) # type: ignore
         QtCore.QMetaObject.connectSlotsByName(MainWindow)
 
     def retranslateUi(self, MainWindow):
@@ -561,24 +561,24 @@ class Ui_MainWindow(object):
         self.l_dwell_time_units.setText(_translate("MainWindow", "µs"))
         self.l_pitc_units.setText(_translate("MainWindow", "nm"))
         self.groupBox_4.setTitle(_translate("MainWindow", "Beam and precursor"))
-        self.open_beam_parameters_file_button.setText(_translate("MainWindow", "Open file"))
+        self.open_settings_file_button.setText(_translate("MainWindow", "Open file"))
         self.open_precursor_parameters_file_button.setText(_translate("MainWindow", "Open file"))
-        self.beam_parameters_filename_display.setPlaceholderText(_translate("MainWindow", "Select file..."))
+        self.settings_filename_display.setPlaceholderText(_translate("MainWindow", "Select file..."))
         self.precursor_parameters_filename_display.setPlaceholderText(_translate("MainWindow", "Select file..."))
-        self.label_12.setText(_translate("MainWindow", "Beam parameters"))
+        self.label_12.setText(_translate("MainWindow", "Settings"))
         self.label_13.setText(_translate("MainWindow", "Precursor parameters"))
         self.start_febid_button.setText(_translate("MainWindow", "Start"))
         self.groupBox_7.setTitle(_translate("MainWindow", "Save file"))
         self.checkbox_save_simulation_data.setText(_translate("MainWindow", "Save simulation data"))
         self.checkbox_save_snapshots.setText(_translate("MainWindow", "Save structure snapshots"))
         self.l_sim_data_interval.setText(_translate("MainWindow", "every"))
-        self.l_sim_data_interval_units.setText(_translate("MainWindow", "min"))
+        self.l_sim_data_interval_units.setText(_translate("MainWindow", "x 0.1 s"))
         self.input_simulation_data_interval.setText(_translate("MainWindow", "1"))
         self.input_simulation_data_interval.setPlaceholderText(_translate("MainWindow", "1"))
-        self.input_structure_snapshot_interval.setText(_translate("MainWindow", "10"))
+        self.input_structure_snapshot_interval.setText(_translate("MainWindow", "1"))
         self.input_structure_snapshot_interval.setPlaceholderText(_translate("MainWindow", "10"))
         self.l_snapshot_interval.setText(_translate("MainWindow", "every"))
-        self.l_snapshot_interval_units.setText(_translate("MainWindow", "min"))
+        self.l_snapshot_interval_units.setText(_translate("MainWindow", "x 0.1 s"))
         self.input_unique_name.setPlaceholderText(_translate("MainWindow", "experiment_1"))
         self.l_unique_name.setText(_translate("MainWindow", "unique name:"))
         self.open_save_folder_button.setText(_translate("MainWindow", "Open folder"))

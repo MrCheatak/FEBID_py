@@ -4,9 +4,8 @@ import yaml
 import pyvista as pv
 
 from ui import ui_shell
-import febid_core
+import febid_core, simple_patterns as sp
 from Structure import Structure
-import simple_patterns as sp
 
 def start_ui():
     ui_shell.start()
@@ -16,7 +15,8 @@ def start_no_ui(config_f=None):
         config_f = input('Specify configuration file:')
 
     try:
-        params = yaml.load(open(config_f, 'r'), Loader=yaml.Loader)
+        with open(config_f, mode='rb') as f:
+            params = yaml.load(f, Loader=yaml.FullLoader)
     except Exception as e:
         print('An error occurred while opening configuration file.')
         print(e.args)
@@ -80,7 +80,8 @@ def start_no_ui(config_f=None):
 
     # Opening beam and precursor files
     try:
-        beam_params = yaml.load(open(params['settings_filename']), Loader=yaml.Loader)
+        with open(params['settings_filename'], mode='rb') as f:
+            beam_params = yaml.load(f, Loader=yaml.FullLoader)
         factor = beam_params.get('deposition_scaling', 1)
         if factor:
             printing_path[:, 2] /= factor
@@ -89,7 +90,8 @@ def start_no_ui(config_f=None):
         print(e.args)
         return
     try:
-        precursor_params = yaml.load(open(params['precursor_filename'], 'r', encoding='UTF-8'), Loader=yaml.Loader)
+        with open(params['precursor_filename'], mode='rb') as f:
+            precursor_params = yaml.load(f, Loader=yaml.FullLoader)
     except Exception as e:
         print(f'An error occurred while opening a stream-file')
         print(e.args)

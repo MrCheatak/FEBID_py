@@ -1,5 +1,5 @@
 import os, sys
-from setuptools import  setup
+from setuptools import setup
 from Cython.Build import cythonize
 import numpy as np
 from distutils.extension import Extension
@@ -9,7 +9,7 @@ directive_defaults = get_directive_defaults()
 # directive_defaults['binding'] = True
 
 # Using compiler of clang with llvm installed on mac OSX
-if sys.platform is 'darwin':  # darwin == OSX
+if sys.platform == 'darwin':  # darwin == OSX
     os.environ["CC"] = "/usr/local/opt/llvm/bin/clang"
     os.environ["CXX"] = "/usr/local/opt/llvm/bin/clang++"
 
@@ -22,5 +22,5 @@ ext_module = [Extension("traversal", ['traversal.pyx'],
                   )]
 
 # setup(ext_modules = cythonize("cytest.pyx", annotate=True, compiler_directives={'linetrace': True}), include_dirs=[np.get_include()])
-setup(ext_modules = cythonize("traversal.pyx", annotate=True), include_dirs=[np.get_include()])
+setup(ext_modules = cythonize(ext_module, annotate=True), include_dirs=[np.get_include()])
 # setup(ext_modules = cythonize(extensions, annotate=True), include_dirs='.')

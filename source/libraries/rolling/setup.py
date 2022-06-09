@@ -1,12 +1,12 @@
 import os, sys
-from setuptools import  setup
+from setuptools import setup
 from Cython.Build import cythonize
 import numpy as np
 from distutils.extension import Extension
 from Cython.Compiler.Options import get_directive_defaults
 
 # Using compiler of clang with llvm installed on mac OSX
-if sys.platform is 'darwin':  # darwin == OSX
+if sys.platform == 'darwin':  # darwin == OSX
     os.environ["CC"] = "/usr/local/opt/llvm/bin/clang"
     os.environ["CXX"] = "/usr/local/opt/llvm/bin/clang++"
 

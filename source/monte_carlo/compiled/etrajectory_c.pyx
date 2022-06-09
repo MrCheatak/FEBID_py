@@ -343,7 +343,7 @@ cpdef list start_sim(double E0, double Emin, double[:] y0, double[:] x0, int cel
     # print(vol.cell_dim, vol.shape, vol.shape_abs, vol.z_top)
     print('Running \'map_trajectory\'...', end='')
     try:
-        t, e, m = map_trajectory_c(y0, x0, E0, Emin, vol, materials)
+        map_trajectory_c(&t, &e, &m, y0, x0, E0, Emin, vol, materials)
     except Exception as ex:
         print(f'An error occurred in \'start_sim\': {ex.args}')
         traceback.print_exc()
@@ -352,11 +352,8 @@ cpdef list start_sim(double E0, double Emin, double[:] y0, double[:] x0, int cel
     print('finished.')
     return trajectory_vector_to_np_list(t, e, m)
 
-cdef (vector[vector[double]], vector[vector[double]], vector[vector[double]]) map_trajectory_c(double[:] y0, double[:] x0, double E0, double Emin, SimulationVolume grid, vector[Element] materials):
+cdef int map_trajectory_c(vector[vector[double]] *trajectories, vector[vector[double]] *energies, vector[vector[double]] *masks, double[:] y0, double[:] x0, double E0, double Emin, SimulationVolume grid, vector[Element] materials) except -1:
     cdef:
-        vector[vector[double]] energies
-        vector[vector[double]] trajectories
-        vector[vector[double]] masks
         vector[double] energy
         vector[double] trajectory
         vector[double] mask
@@ -454,7 +451,7 @@ cdef (vector[vector[double]], vector[vector[double]], vector[vector[double]]) ma
         energy.clear()
         mask.clear()
 
-    return (trajectories, energies, masks)
+    return 1
 
 
 ####################################################################################

@@ -137,7 +137,7 @@ class Structure:
             # self.vol_prefill = vtk_obj['volume_prefill']
             self.substrate_height = np.nonzero(self.deposit == self.d_full_s)[0].max() + 1
             # self.vol_prefill = self.deposit[-1,-1,-1]
-            print('...done!')
+            print('...finished reading!')
         else:
             # TODO: if a sample structure would be provided, it will be necessary to create a substrate under it
             print(f'VTK file is a regular file, generating auxiliary arrays...', end='')
@@ -345,7 +345,7 @@ class Structure:
         grid += positive
         grid += combined
         self.surface_bool[grid == 2] = True
-        print(f'done!')
+        print(f'done!', end=' ')
 
     def define_semi_surface(self):
         """
@@ -364,16 +364,23 @@ class Structure:
         grid[self.surface_bool] = 0
         grid[grid < 2] = 0
         self.semi_surface_bool[grid != 0] = True
-        print(f'done!')
+        print(f'done!', end=' ')
 
-    def define_surface_neighbors(self, n=0):
+    def define_surface_neighbors(self, n=0, deposit=None, surface=None, neighbors=None):
         """
         Find solid cells that are n-closest neighbors to the surface cells
         :param n: order of nearest neighbor, if 0, then index all the solid cells
         :return:
         """
-        grid = np.zeros_like(self.deposit)
-        self.__stencil_3d(grid, self.surface_bool)
+        print(f'generating surface nearest neighbors index...', end='')
+        if deposit is None:
+            deposit = self.deposit
+        if surface is None:
+            surface = self.surface_bool
+        if neighbors is None:
+            neighbors = self.surface_neighbors_bool
+        grid = np.zeros_like(deposit)
+        self.__stencil_3d(grid, surface)
         grid[grid>1] = 1
         grid1 = np.zeros_like(grid)
         self.__stencil_3d(grid1, grid)
@@ -392,7 +399,7 @@ class Structure:
             if loop:
                 if i>n:
                     break
-            elif grid[self.deposit<0].min() > 0:
+            elif grid[deposit<0].min() > 0:
                 break
             grid1 = np.zeros_like(grid)
             self.__stencil_3d(grid1, grid)
@@ -405,9 +412,12 @@ class Structure:
             grid1[grid1 < i*2] = 0
             grid1[grid1 >= i*2] = 1
             grid[grid1>0] = i
-        grid[self.deposit > -1] = 0
-        self.surface_neighbors_bool[...] = 0
-        self.surface_neighbors_bool[grid > 0] = True
+        grid[deposit > -1] = 0
+        neigb = neighbors[1:-1, 1:-1, 1:-1]
+        g = grid[1:-1, 1:-1, 1:-1]
+        neigb[...] = 0
+        neigb[g > 0] = True
+        print(f'done!', end=' ')
 
     def define_ghosts(self):
         """
@@ -423,7 +433,7 @@ class Structure:
         self.ghosts_bool = np.copy(roller)
         self.__stencil_3d(self.ghosts_bool, roller)
         self.ghosts_bool[roller] = False
-        print('done!')
+        print('done!', end=' ')
 
     def max_z(self):
         """

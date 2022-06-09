@@ -1,12 +1,12 @@
+import math
 import os, sys
-import copy
 import random
 from typing import Union
 from contextlib import suppress
 import faulthandler
 faulthandler.enable(file=sys.stderr)
 
-from PyQt5.QtWidgets import QApplication, QDialog, QMainWindow, QMessageBox
+from PyQt5.QtWidgets import QApplication, QMainWindow, QMessageBox
 from PyQt5 import QtWidgets, QtGui
 
 from ui.main_window import Ui_MainWindow as UI_MainPanel
@@ -15,9 +15,7 @@ import pyvista as pv
 import yaml
 from ruamel.yaml import YAML
 
-import febid_core
-import simple_patterns as sp
-from VTK_Rendering import open_deposited_structure
+import febid_core, simple_patterns as sp
 from Structure import Structure
 
 
@@ -133,7 +131,7 @@ class MainPannel(QMainWindow, UI_MainPanel):
                         self.stream_file_filename_display.setText(self.stream_file_filename)
 
                         self.settings_filename = params['settings_filename']
-                        self.beam_parameters_filename_display.setText(self.settings_filename)
+                        self.settings_filename_display.setText(self.settings_filename)
                         self.precursor_parameters_filename = params['precursor_filename']
                         self.precursor_parameters_filename_display.setText(self.precursor_parameters_filename)
 
@@ -148,8 +146,6 @@ class MainPannel(QMainWindow, UI_MainPanel):
                         self.change_state_show_process(params['show_process'])
                 print('done!')
         except FileNotFoundError:
-            print('Last session file not found, creating a new one.')
-            with open(filename, "x") as f:
                 yml = YAML()
                 input = ''.join(self.last_session_stub)
                 self.session = yml.load(input)
@@ -184,8 +180,10 @@ class MainPannel(QMainWindow, UI_MainPanel):
 
                 self.session['show_process'] = self.checkbox_show.isChecked()
 
-                self.save_parameter('show_process', self.checkbox_show.isChecked())
-            a = 0
+                if self.save_flag:
+                    print('Last session file not found, creating a new one.')
+                    with open(filename, "x") as f:
+                        self.save_parameter('show_process', self.checkbox_show.isChecked())
 
     def change_state_load_last_session(self, param=None):
         switch = True if param else False
@@ -339,7 +337,8 @@ class MainPannel(QMainWindow, UI_MainPanel):
         if not file:
             return
         try:
-            params = yaml.load(open(file), Loader=yaml.Loader)
+            with open(file, mode='rb') as f:
+                params = yaml.load(f, Loader=yaml.FullLoader)
             cell_dim = str(params['cell_dimension'])
             xdim = str(params['width'])
             ydim = str(params['length'])
@@ -368,17 +367,18 @@ class MainPannel(QMainWindow, UI_MainPanel):
         self.stream_file_filename = file
         self.stream_file_filename_display.setText(file)
         self.save_parameter('stream_file_filename', file)
-    def open_beam_parameters_file(self, file=''):
+    def open_settings_file(self, file=''):
         file,_ = QtWidgets.QFileDialog.getOpenFileName()
         if not file:
             return
         ### Read and insert parameters in Monte Carlo tab
         try:
-            params = yaml.load(open(file), Loader=yaml.Loader)
+            with open(file, mode='rb') as f:
+                params = yaml.load(f, Loader=yaml.FullLoader)
             self.beam_energy.setText(str(params['beam_energy']))
             self.energy_cutoff.setText(str(params['minimum_energy']))
             self.gauss_dev.setText(str(params['gauss_dev']))
-            self.beam_parameters_filename_display.setText(file)
+            self.settings_filename_display.setText(file)
             self.beam_parameters_filename_display_mc.setText(file)
             self.settings_filename = file
             self.save_parameter('settings_filename', file)
@@ -390,7 +390,8 @@ class MainPannel(QMainWindow, UI_MainPanel):
         if not file:
             return
         try:
-            params = yaml.load(open(file), Loader=yaml.Loader)
+            with open(file, mode='rb') as f:
+                params = yaml.load(f, Loader=yaml.FullLoader)
             self.precursor_parameters_filename_display.setText(file)
             self.precursor_parameters_filename_display_mc.setText(file)
             self.precursor_parameters_filename = file
@@ -479,7 +480,7 @@ class MainPannel(QMainWindow, UI_MainPanel):
                 xdim = int(float(self.input_width.text()))//cell_dimension # array length
                 ydim = int(float(self.input_length.text()))//cell_dimension # array length
                 zdim = int(float(self.input_height.text()))//cell_dimension # array length
-                substrate_height = int(self.input_substrate_height.text())//cell_dimension # array length
+                substrate_height = math.ceil(int(float(self.input_substrate_height.text())) / cell_dimension)
                 structure.create_from_parameters(cell_dimension, xdim, ydim, zdim, substrate_height)
             except Exception as e:
                 self.view_message('Input error',
@@ -489,7 +490,7 @@ class MainPannel(QMainWindow, UI_MainPanel):
                 return
         if self.structure_source == 'auto': # defining it later based on a stream-file
             cell_dimension = int(float(self.input_cell_size.text()))
-            substrate_height = int(float(self.input_substrate_height.text())) // cell_dimension
+            substrate_height = math.ceil(int(float(self.input_substrate_height.text())) / cell_dimension)
 
         # Defining printing path
         dwell_time_units = 1E-6 # input units are in microseconds, internally seconds are used
@@ -518,7 +519,7 @@ class MainPannel(QMainWindow, UI_MainPanel):
                 return
         if self.pattern_source == 'stream_file': # importing printing path from stream_file
             try:
-                printing_path, shape = sp.open_stream_file(self.stream_file_filename)
+                printing_path, shape = sp.open_stream_file(self.stream_file_filename, 2, True)
             except:
                 if not self.stream_file_filename:
                     self.view_message('File not specified',
@@ -540,19 +541,22 @@ class MainPannel(QMainWindow, UI_MainPanel):
 
         # Opening beam and precursor files
         try:
-            beam_params = yaml.load(open(self.settings_filename), Loader=yaml.Loader)
-            factor = beam_params.get('deposition_scaling', 1)
+            with open(self.settings_filename, mode='rb') as f:
+                settings = yaml.load(f, Loader=yaml.FullLoader)
+            factor = settings.get('deposition_scaling', 1)
             if factor:
                 printing_path[:, 2] /= factor
-        except:
+        except Exception as e:
             if not self.settings_filename:
                 self.view_message('File not specified',
                                   'Beam parameters file not specified. Please choose the file and try again.')
             else:
                 self.view_message(additional_message='Beam parameters file not found')
+                print(e.args)
             return
         try:
-            precursor_params = yaml.load(open(self.precursor_parameters_filename, 'r', encoding='UTF-8'), Loader=yaml.Loader)
+            with open(self.precursor_parameters_filename, mode='rb') as f:
+                precursor_params = yaml.load(f, Loader=yaml.FullLoader)
         except:
             if not self.precursor_parameters_filename:
                 self.view_message('File not specified',
@@ -594,7 +598,7 @@ class MainPannel(QMainWindow, UI_MainPanel):
 
         rendering = {'show_process': self.show_process, 'frame_rate': 0.5}
         # Starting the process
-        febid_core.run_febid_interface(structure, precursor_params, beam_params, sim_volume_params, printing_path, saving_params, rendering)
+        febid_core.run_febid_interface(structure, precursor_params, settings, sim_volume_params, printing_path, saving_params, rendering)
 
         return
 
@@ -756,7 +760,7 @@ class MainPannel(QMainWindow, UI_MainPanel):
         self.input_pitch.setText(str(kwargs['pitch']))
         self.input_repeats.setText(str(kwargs['repeats']))
         self.stream_file_filename_display.setText(kwargs['stream_file_filename'])
-        self.beam_parameters_filename_display.setText(kwargs['beam_parameters_filename'])
+        self.settings_filename_display.setText(kwargs['settings_filename'])
         self.precursor_parameters_filename_display.setText(kwargs['precursor_parameters_filename'])
         self.input_simulation_data_interval.setText(kwargs['stats_interval'])
         self.input_structure_snapshot_interval.setText(kwargs['snapshot_interval'])

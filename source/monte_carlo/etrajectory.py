@@ -33,6 +33,7 @@ class ETrajectory(object):
         self.name = name
         self.passes = [] # keeps the last result of the electron trajectory simulation
         self.NA = 6.022141E23 # Avogadro number
+        self.elementary_charge = 1.60217662e-19 # Coulon
         rnd.seed()
 
         self.m3d = None
@@ -41,6 +42,7 @@ class ETrajectory(object):
         self.E0 = 0 # energy of the beam, keV
         self.Emin = 0 # cut-off energy for electrons, keV
         self.sigma = 0 # standard Gaussian deviation
+        self.n = 0 # power of the super Gaussian distribution
         self.N = 0 # number of electron trajectories to simulate
 
         # Solid structure properties
@@ -263,8 +265,9 @@ class ETrajectory(object):
         self.s_neghib = surface_neighbors
         self.cell_dim = params['cell_dim']
         self.sigma = params['sigma']
+        self.n = params.get('n', 1)
         self.N = stat
-        self.norm_factor = params['N'] / self.N
+        self.norm_factor = params['N'] / self.N / self.elementary_charge
 
         self.deponat = Element(params['name'], params['Z'], params['A'], params['rho'], params['e'], params['l'], -1)
         self.substrate = substrates[params['sub']]
@@ -274,6 +277,7 @@ class ETrajectory(object):
         self.__calculate_attributes()
 
         self.m3d = map3d.ETrajMap3d(self.grid, self.surface, surface_neighbors, self)
+        self.m3d.emission_fraction = params['emission_fraction']
 
     def setParams_MC_test(self, structure, params):
         self.E0 = params['E0']
@@ -298,6 +302,66 @@ class ETrajectory(object):
         self.chamber_dim = np.asarray([self.zdim_abs, self.ydim_abs, self.xdim_abs])
         self.ztop = np.nonzero(self.surface)[0].max() + 1  # highest point of the structure
 
+    def rnd_super_gauss(self, x0, y0, N):
+        """
+        Generate a specified number of points according to a Super Gaussian distribution.
+        Standard deviation and order of the super gaussian are class properties.
+
+        :param x0: mean along X-axis
+        :param y0: mean along Y-axis
+        :param N: number of points to generate
+        :return:
+        """
+
+        # The function uses rejection method to generate a custom distribution (Super Gauss)
+        # with a given probability density function
+        # Firstly, probability density is calculated for a number of generated points within the given boundaries.
+        # Then, points of the meshgrid are assigned random probability r values (0>r>p.max()).
+        # If the r value in the given point is less then p value, the point is saved. Otherwise it is disgarded.
+
+        # Keeping in mind, that electrons might miss the target, a given number of points is generated first and then
+        # checked to be inside of the main grid boundaries.
+
+        # Probability density function
+        def super_gauss_2d(x, y, st_dev, n):
+            return 1 / sqrt(2 * pi) / st_dev * e ** (-0.5 * (((x-x0) ** 2 + (y-y0) ** 2) / (st_dev ** 2*(1+5*(n-1))**0.5+(n-1)**1.5)) ** n)
+        if N == 0: N = self.N
+        rnd = np.random.default_rng()
+        # Boundaries of the distribution
+        bonds = self.sigma ** (1 / 2 / self.n) * 2.355 * sqrt(self.sigma) * 2
+        x_all = np.array([0])
+        y_all = np.array([0])
+        i = 0
+        while x_all.shape[0] <= N:
+            # Uniform meshgrid
+            x = rnd.uniform(-bonds+x0, bonds+x0, 100)
+            y = rnd.uniform(-bonds+y0, bonds+y0, 100)
+            # Probability density grid
+            p = super_gauss_2d(x, y, self.sigma, self.n)
+            # Assigning random numbers
+            rand = rnd.uniform(0, p.max(), x.shape[0])
+            # Sieving out points
+            choice = (rand < p)
+            x = x[choice]
+            y = y[choice]
+            x_all = np.concatenate((x_all, x))
+            y_all = np.concatenate((y_all, y))
+            i += 1
+            if i > 100000:
+                raise OverflowError("Stuck in an endless loop in Gauss distribution creation. \n Terminating.")
+        # Discarding excess points
+        x_all = x_all[:N]
+        y_all = y_all[:N]
+        # Discarding points that are out of the main grid
+        if x_all.max() > self.xdim_abs or y_all.max() > self.ydim_abs:
+            condition = np.logical_and(x_all < self.xdim_abs, y_all < self.ydim_abs)
+            x_all = x_all[condition]
+            y_all = y_all[condition]
+        if x_all.min() <= 0 or y_all.min() <= 0:
+            condition = np.logical_and(x_all > 0, y_all > 0)
+            x_all = x_all[condition]
+            y_all = y_all[condition]
+        return x_all, y_all
 
     def rnd_gauss_xy(self, x0, y0, N):
         """
@@ -307,15 +371,12 @@ class ETrajectory(object):
         :param x0: x-position of the beam, nm
         :param N: number of positions to create
         """
-        # x, y = [], []
         if N==0: N=self.N
         i=0
+        rnd = np.random.default_rng()
         while True:
-            r = np.random.normal(0, self.sigma, N)
-            phi = np.random.uniform(0, 2 * pi - np.finfo(float).tiny, N)
-            rnd.seed()
-            x = r*np.cos(phi) + x0
-            y = r*np.sin(phi) + y0
+            x = rnd.normal(0, self.sigma, N) + x0
+            y = rnd.normal(0, self.sigma, N) + y0
             try:
                 if x.max()>self.xdim_abs or y.max()>self.ydim_abs:
                     condition = np.logical_and(x<self.xdim_abs, y<self.ydim_abs)
@@ -397,7 +458,7 @@ class ETrajectory(object):
         passes = []
         if N == 0:
             N = self.N
-        x0, y0 = self.rnd_gauss_xy(x0, y0, N)  # generate gauss-distributed beam positions
+        x0, y0 = self.rnd_super_gauss(x0, y0, N)  # generate gauss-distributed beam positions
         # profiler = line_profiler.LineProfiler()
         # profiled_func = profiler(self.map_trajectory)
         # try:
@@ -422,7 +483,7 @@ class ETrajectory(object):
         passes = []
         if N == 0:
             N = self.N
-        x0, y0 = self.rnd_gauss_xy(x0, y0, N)  # generate gauss-distributed beam positions
+        x0, y0 = self.rnd_super_gauss(x0, y0, N) # generate gauss-distributed beam positions
         # profiler = line_profiler.LineProfiler()
         # profiled_func = profiler(self.map_trajectory)
         # try:
@@ -435,9 +496,7 @@ class ETrajectory(object):
             try:
                 self.passes = passes = etrajectory_c.start_sim(self.E0, self.Emin, y0, x0, self.cell_dim, self.grid, self.surface.view(dtype=np.uint8), [self.substrate, self.deponat])
             except Exception as e:
-                warnings.warn(f'An error occurred while generating trajectories: {e.args}')
-                tb.print_exc()
-                flag = True
+                raise RuntimeError(f'An error occurred while generating trajectories: {e.args}')
         if not len(passes) > 0:
             raise ValueError('Zero trajectories generated!')
         # for x,y in zip(x0,y0):
@@ -948,10 +1007,11 @@ class ETrajectory(object):
         :param coords:
         :return:
         """
-        a, step = traversal.get_alpha_and_lambda(coords.E, self.material.Z, self.material.rho, self.material.A)
+        a = self._getAlpha(coords, self.material)
+        l = self._getLambda_el(coords, a, self.material)
         # NOTE: excluding unity to prevent segments with zero length (log(1)=0).
         #  Not only they are practically useless, but also cause bugs due to division by zero
-        step *= -log(rnd.uniform(0.00001, 0.9999))
+        step = l * -log(rnd.uniform(0.00001, 0.9999))
         return a, step
 
     def _getJ(self, Z=0):

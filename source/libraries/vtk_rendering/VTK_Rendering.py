@@ -80,7 +80,7 @@ class Render:
         total_dep_cells = np.count_nonzero(structure.deposit[structure.deposit < 0]) - init_layer  # total number of fully deposited cells
         self.p.add_text(f'Cells: {total_dep_cells} \n'  # showing total number of deposited cells
                         f'Height: {int(np.nonzero(structure.deposit)[0].max() * structure.cell_dimension)} nm \n'                           # showing current height of the structure
-                        f'Deposited volume: {total_dep_cells * structure.cell_dimension**3} nm^3\n',
+                        f'Deposited volume: {(total_dep_cells + structure.deposit[structure.deposit>0].sum()) * structure.cell_dimension**3} nm^3\n',
                         position='upper_right', font_size=self.font)
         cam_pos = [(463.14450307610286, 271.1171723376318, 156.56895424388603),
                    (225.90027381807235, 164.9577775224395, 71.42188811921902),

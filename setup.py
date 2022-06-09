@@ -30,21 +30,21 @@ ext_modules = [
              Extension("source.monte_carlo.compiled.etrajectory_c", ['source/monte_carlo/compiled/etrajectory_c.pyx'],
                          include_dirs=["/usr/local/opt/llvm/include"],
                          library_dirs=["/usr/local/opt/llvm/lib"],
-                         extra_compile_args=["-w", openMP_arg],
-                         libraries=libraries,
-                         extra_link_args=[openMP_arg]
+                         # extra_compile_args=["-w", '-fopenmp'],
+                         # libraries=libraries,
+                         # extra_link_args=[openMP_arg]
                          ),
                Extension("source.libraries.ray_traversal.traversal", ['source/libraries/ray_traversal/traversal.pyx'],
                          include_dirs=["/usr/local/opt/llvm/include"],
                          library_dirs=["/usr/local/opt/llvm/lib"],
-                         extra_compile_args=["-w", openMP_arg],
-                         libraries=libraries,
-                         extra_link_args=[openMP_arg]
+                         # extra_compile_args=["-w", '-fopenmp'],
+                         # libraries=libraries,
+                         # extra_link_args=[openMP_arg]
                          ),
                Extension("source.libraries.rolling.roll", ['source/libraries/rolling/roll.pyx'],
                          include_dirs=["/usr/local/opt/llvm/include"],
                          library_dirs=["/usr/local/opt/llvm/lib"],
-                         extra_compile_args=["-w", openMP_arg],
+                         extra_compile_args=["-w", '-fopenmp'],
                          libraries=libraries,
                          extra_link_args=[openMP_arg]
                          ),

@@ -5,9 +5,6 @@ import os, sys
 import numpy as np
 from numexpr_mod import evaluate_cached, cache_expression
 
-# Axillary packeges
-import line_profiler
-
 # Local packages
 from Structure import Structure
 import diffusion
@@ -21,6 +18,13 @@ class Process():
     Class representing the core deposition process.
     It contains all necessary arrays, variables, parameters and methods to support a continuous deposition process.
     """
+
+    ### A note_ to value correspondance:
+    # The main reaction equation operates in absolute values of precursor density per nanometer.
+    # The precursor array stores values as such.
+    # The deposited volume is though calculated and stored as a fraction of the cell's volume.
+    # Thus, the precursor density has to be multiplied by the cell's base area divided by the cell volume.
+
     def __init__(self, structure, equation_values, timings, deposition_scaling=1, name=None):
         if not name:
             self.name = str(np.random.randint(000000, 999999, 1)[0])
@@ -29,6 +33,7 @@ class Process():
         # Declaring necessary  properties
         self.structure = None
         self.cell_dimension = None
+        self.cell_V = None
         # Main arrays
         # Semi-surface cells are virtual cells that can hold precursor density value, but cannot create deposit.
         # Their role is to serve as pipes on steps, where regular surface cells are not in contact.
@@ -114,6 +119,7 @@ class Process():
         self.ghosts = self.structure.ghosts_bool
         self.beam_matrix = np.zeros_like(structure.deposit, dtype=np.int32)
         self.cell_dimension = self.structure.cell_dimension
+        self.cell_V = self.cell_dimension**3
         self.__get_max_z()
         self.substrate_height = structure.substrate_height
         self.irradiated_area_2D = np.s_[self.structure.substrate_height - 1:self.max_z, :, :]
@@ -141,12 +147,14 @@ class Process():
         self.t_dissociation = timings['t_flux']
         self.t_desorption = timings['t_desorption']
         # self.get_dt()
-        self.dt = min(self.t_desorption, self.t_diffusion, self.t_dissociation) / 2
+        self.dt = min(self.t_desorption, self.t_diffusion, self.t_dissociation)
+        self.dt = self.dt - self.dt / 10
         self.t = self.dt
 
     def get_dt(self):
         self.t_dissociation = 1/self.beam_matrix.max()/self.sigma
-        self.dt = min(self.t_desorption, self.t_diffusion, self.t_dissociation)/2
+        self.dt = min(self.t_desorption, self.t_diffusion, self.t_dissociation)
+        self.dt = self.dt - self.dt / 10
 
     def view_dt(self, units='µs'):
         m = 1E6
@@ -305,7 +313,40 @@ class Process():
             self.__get_max_z()
             self.irradiated_area_2D = np.s_[self.structure.substrate_height-1:self.max_z, :, :] # a volume encapsulating the whole surface
             self.__update_views_2d()
-            self.structure.define_surface_neighbors(self.max_neib)
+            # Updating surface nearest neighbors array
+            vert_slice = (self.irradiated_area_2D[1], self.irradiated_area_3D[1], self.irradiated_area_3D[2])
+            deposit_red_2d = self.deposit[vert_slice]
+            surface_red_2d = self.surface[vert_slice]
+            neighbors_2d = self.surface_n_neighbors[vert_slice]
+            if cell[0] - 3 < 0:
+                z_min = 0
+            else:
+                z_min = cell[0] - 3
+            if cell[0] + 4 > deposit_red_2d.shape[0]:
+                z_max = deposit_red_2d.shape[0]
+            else:
+                z_max = cell[0] + 4
+            if cell[1] - 3 < 0:
+                y_min = 0
+            else:
+                y_min = cell[1] - 3
+            if cell[1] + 4 > deposit_red_2d.shape[1]:
+                y_max = deposit_red_2d.shape[1]
+            else:
+                y_max = cell[1] + 4
+            if cell[2] - 3 < 0:
+                x_min = 0
+            else:
+                x_min = cell[2] - 3
+            if cell[2] + 4 > deposit_red_2d.shape[2]:
+                x_max = deposit_red_2d.shape[2]
+            else:
+                x_max = cell[2] + 4
+            n_3d = np.s_[z_min:z_max, y_min:y_max, x_min:x_max]
+            self.structure.define_surface_neighbors(self.max_neib,
+                                                    deposit_red_2d[n_3d],
+                                                    surface_red_2d[n_3d],
+                                                    neighbors_2d[n_3d])
 
         if self.max_z + 5 > self.structure.shape[0]:
             # Here the Structure is extended in height
@@ -328,7 +369,7 @@ class Process():
         """
         # Instead of processing cell by cell and on the whole surface, it is implemented to process only (effectively) irradiated area and array-wise(thanks to Numpy)
         # np.float32 — ~1E-7, produced value — ~1E-10
-        const = self.sigma*self.V*self.dt * 1e6 * self.deposition_scaling # multiplying by 1e6 to preserve accuracy
+        const = self.sigma*self.V*self.dt * 1e6 * self.deposition_scaling / self.cell_V * self.cell_dimension**2 # multiplying by 1e6 to preserve accuracy
         self.__deposit_reduced_3d[self.__deposition_index] += self.__precursor_reduced_3d[self.__deposition_index] * self.__beam_matrix_effective * const / 1e6
 
     def precursor_density(self):
@@ -343,7 +384,7 @@ class Process():
         surface_all = self.__surface_all_reduced_2d
         surface = self.__surface_reduced_2d
         diffusion_matrix = self._laplace_term_stencil(precursor, surface_all)  # Diffusion term is calculated separately and added in the end
-        precursor[surface] += self.__rk4(precursor[surface], self.__beam_matrix_surface )  # An increment is calculated through Runge-Kutta method without the diffusion term
+        precursor[surface] += self.__rk4(precursor[surface], self.__beam_matrix_surface)  # An increment is calculated through Runge-Kutta method without the diffusion term
         precursor[surface_all] += diffusion_matrix  # finally adding diffusion term
 
     def __rk4(self, precursor, beam_matrix):
@@ -559,6 +600,18 @@ class Process():
 
     def printing(self, x, y, dwell_time):
         pass
+    @property
+    def kd(self):
+        return self.F/self.n0 + 1/self.tau + self.sigma * self.beam_matrix.max()
+    @property
+    def kr(self):
+        return self.F/self.n0 + 1/self.tau
+    @property
+    def nr(self):
+        return self.F/self.kr
+    @property
+    def nd(self):
+        return self.F/self.kd
 
 
 if __name__ == '__main__':
