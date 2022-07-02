@@ -545,11 +545,26 @@ def monitoring(pr: Process, l, stats: Statistics = None, location=None, stats_ra
                 dump_structure(pr.structure, f'{location}')
                 f.write(f'[{time.strftime("%H:%M:%S", time.localtime())}] Dumped structure.\n')
             time.sleep(refresh_rate)
+        else:
+            if stats_time != np.inf:
+                stats.append((pr.t, np.count_nonzero(pr.deposit == -1)))
+                stats.save_to_file()
+                f.write(f'[{time.strftime("%H:%M:%S", time.localtime())}] Recorded statistics.\n')
+            if dump_time != np.inf:
+                dump_structure(pr.structure, f'{location}')
+                f.write(f'[{time.strftime("%H:%M:%S", time.localtime())}] Dumped structure.\n')
+            if frame != np.inf:
+                rn.p.close()
+                rn = vr.Render(pr.structure.cell_dimension)
+                pr.redraw = True
+                update_graphical(rn, pr, time_step, now-start_time, False)
+                rn.show(interactive_update=False)
+                f.write(f'[{time.strftime("%H:%M:%S", time.localtime())}] Redrawed scene.\n')
     flag = False
     print('Exiting monitoring.')
 
 
-def update_graphical(rn: vr.Render, pr: Process, time_step, time_spent):
+def update_graphical(rn: vr.Render, pr: Process, time_step, time_spent, update=True):
     """
     Update the visual representation of the current process state
 

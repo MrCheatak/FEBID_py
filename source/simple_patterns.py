@@ -58,7 +58,7 @@ def open_stream_file(file=None, offset=2, collapse=False):
             y_dim = ((x_dim/2)//10)*10
             y_delta =  y_dim/2
     # Getting local coordinates
-    data[:, 0] /= 1E6  # converting [0.1 ns] to [s]
+    data[:, 0] /= 1E7  # converting [0.1 µs] to [s]
     data[:, 1] -= x_min - x_delta
     data[:, 1] /= 10 # converting [0.1 nm] to [nm]
     # data[:, 1] += (x_dim - data[:, 1].max())/ 2 # shifting path center to the center of the volume

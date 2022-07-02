@@ -95,6 +95,7 @@ class Process():
         self.n_substrate_cells = 0 # the number of the cells in the substrate
         self.max_neib = 0 # the number of surface nearest neighbors that could be escaped by a SE
         self.max_z = 0 # maximum height of the deposited structure, cells
+        self.filled_cells = 0 # current number of filled cells
         self.n_filled_cells = []
         self.growth_rate = []
         self.execution_speed = 0
@@ -196,6 +197,7 @@ class Process():
         # The approach is cell-centric, which means all the surroundings are processed
         nd = (self.__deposit_reduced_3d >= 1).nonzero()
         new_deposits = [(nd[0][i], nd[1][i], nd[2][i]) for i in range(nd[0].shape[0])]
+        self.filled_cells += len(new_deposits)
         for cell in new_deposits:
             # deposit[cell[0]+1, cell[1], cell[2]] += deposit[cell[0], cell[1], cell[2]] - 1  # if the cell was filled above unity, transferring that surplus to the cell above
             surplus = self.__deposit_reduced_3d[cell] - 1 # saving deposit overfill to distribute among the neighbors later
@@ -318,6 +320,7 @@ class Process():
             deposit_red_2d = self.deposit[vert_slice]
             surface_red_2d = self.surface[vert_slice]
             neighbors_2d = self.surface_n_neighbors[vert_slice]
+            cell = (cell[0] + self.irradiated_area_3D[0].start, cell[1], cell[2])
             if cell[0] - 3 < 0:
                 z_min = 0
             else:
@@ -612,7 +615,9 @@ class Process():
     @property
     def nd(self):
         return self.F/self.kd
-
+    @property
+    def deposited_vol(self):
+        return (self.filled_cells + self.deposit[self.surface].sum()) * self.cell_V
 
 if __name__ == '__main__':
     print("Current script does not have an entry point.....")

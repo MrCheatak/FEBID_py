@@ -27,7 +27,8 @@ On Windows it should be shipped with standard gcc compiler, so no actions are re
 
 ## Usage:
 
-1. The simulation setup is done via the control pannel or by running the start.py script in the /source folder.
+The entry point is the source/start.py file.
+1. The simulation setup is done via the control pannel, that is shown after running the start.py with start_n.
 2. Define simulation volume by specifying a prepared .vtk file or create an empty volume from parameters
  or automatically, if you intend to print from a stream-file.
 3. Create a printing path from a number of simple shapes or load a more complex path from a stream-file.
@@ -62,3 +63,5 @@ Control pannel:
 The scene is interactive, meaning it can be zoomed by scrolling, rotated  with a mouse, moved around (with Shift pressed) and focused at the cursor by pressing 'f'. 
 The coloring and the corresponding scale represents the concentration of the precursor at the surface. Thus, the 3D object displayed is not the solid structure itself, but it's whole surface, that follows the shape of the solid 3D object.
    
+**Viewing simulation results**: There are two options to inspect a structure deposited by FEBID. The first one is viewing a specific snapshot with all the corresponding data layers. It can be done via running the source/libraries/vtk_rendering/show_file.py script and specifying a .vtk file. 
+The Second option is to view the process based on a series of structure snapshots. It can be done via source/libraries/vtk_rendering/show_animation_new.py script. Unlike viewing a single file, only one data layer can be 'animated'. Surface deposit or precursor density data is currently supported.

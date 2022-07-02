@@ -223,7 +223,7 @@ class ETrajMap3d(object):
 
     def generate_se(self):
         """
-        Generate a random vector for every coordinate, calculate SEs emitted per each vector
+        Generate a random vector for every coordinate, calculate SE source power per each vector
         and collect them when they cross surface
 
         :return:
@@ -270,6 +270,10 @@ class ETrajMap3d(object):
         # It checks if vectors cross surface cells and if they do, the SE number associated with the vector
         # is collected in the cell crossed.
         traversal.generate_flux(self.flux, self.surface.view(dtype=np.uint8), self.cell_dim, coords, pn, direction, sign, t, step_t, n_se, max_traversed_cells) # Cython script
+
+        self.coords = np.empty((coords.shape[0], 2, 3))
+        self.coords[:,0] = coords[...]
+        self.coords[:,1] = pn[...]
 
 
     def __setup_trajectory(self, points, energies, mask):

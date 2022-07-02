@@ -1,0 +1,35 @@
+# Settings from the last session are saved here and loaded
+# upon the launch if the parameter 'load_last_session' is True
+
+load_last_session: true
+structure_source: geom # vtk – load from a vtk_file, geom – create from parameters, auto – create from stream-file
+vtk_filename: Examples/Profiling/Pillar.vtk
+geom_parameters_filename: ''
+width: 200
+length: 200
+height: 50
+cell_size: 5
+substrate_height: 100
+
+pattern_source: simple # simple - print a simple figure, stream-file - load printing path from file
+pattern: Point # available: point, line, square, circle, rectangle
+# For the point these parameters are position coordinates, while other patterns are automatically
+# positioned in the center and these parameters define the figures.
+param1: 100
+param2: 100
+dwell_time: 1000
+pitch: 1
+repeats: 1000
+stream_file_filename: ''
+
+settings_filename: /Users/sandrik1742/Documents/PycharmProjects/FEBID/Examples/Parameters.yml
+precursor_filename: /Users/sandrik1742/Documents/PycharmProjects/FEBID/Examples/Me3PtCpMe.yml
+
+save_simulation_data: false
+save_structure_snapshot: false
+
+simulation_data_interval: 0.1
+structure_snapshot_interval: 0.2
+unique_name: test1
+save_directory:
+show_process: true

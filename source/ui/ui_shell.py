@@ -20,13 +20,16 @@ from Structure import Structure
 
 
 class MainPannel(QMainWindow, UI_MainPanel):
-    def __init__(self, test_kwargs=None, parent=None):
+    def __init__(self, config_filename=None, test_kwargs=None, parent=None):
         super().__init__(parent)
         self.setupUi(self)
         self.show()
         # TODO: variables and corresponding interface elements can be grouped into objects with a getter and a setter
         # Parameters
-        self.last_session_filename = 'last_session.yml'
+        if config_filename is not None:
+            self.last_session_filename = config_filename
+        else:
+            self.last_session_filename = 'last_session.yml'
         self.session = None
         self.save_flag = False
         self.structure_source = 'vtk' # vtk, geom or auto
@@ -768,9 +771,9 @@ class MainPannel(QMainWindow, UI_MainPanel):
         self.input_unique_name.setText(kwargs['unique_name'])
 
 
-def start():
+def start(config_filename=None):
     app = QApplication(sys.argv)
-    win1 = MainPannel()
+    win1 = MainPannel(config_filename)
     sys.exit(app.exec())
 
 if __name__ == "__main__":

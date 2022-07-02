@@ -7,6 +7,7 @@ import copy
 # Core packages
 import numpy as np
 import pyvista as pv
+from vtk import vtkDataSetAttributes
 
 # Axillary packeges
 from tqdm import tqdm
@@ -80,16 +81,18 @@ class Render:
         total_dep_cells = np.count_nonzero(structure.deposit[structure.deposit < 0]) - init_layer  # total number of fully deposited cells
         self.p.add_text(f'Cells: {total_dep_cells} \n'  # showing total number of deposited cells
                         f'Height: {int(np.nonzero(structure.deposit)[0].max() * structure.cell_dimension)} nm \n'                           # showing current height of the structure
-                        f'Deposited volume: {(total_dep_cells + structure.deposit[structure.deposit>0].sum()) * structure.cell_dimension**3} nm^3\n',
+                        f'Deposited volume: {int(total_dep_cells + structure.deposit[structure.deposit>0].sum()) * structure.cell_dimension**3} nm^3\n',
                         position='upper_right', font_size=self.font)
         cam_pos = [(463.14450307610286, 271.1171723376318, 156.56895424388603),
                    (225.90027381807235, 164.9577775224395, 71.42188811921902),
                    (-0.27787912231751677, -0.1411181984824172, 0.950194110399093)]
-        self.show(cam_pos=cam_pos)
+        return self.show(cam_pos=cam_pos)
 
     def show_mc_result(self, grid, pe_traj=None, deposited_E=None, surface_flux=None, se_traj=None, cam_pos=None, interactive=True):
+        pe_traj = copy.deepcopy(pe_traj)
+        se_traj = copy.deepcopy(se_traj)
         if grid is not None:
-            self._add_3Darray(grid, -2, -0.01, False, opacity=0.7, show_edges=True, scalar_name='Structure', button_name='Structure', color='white')
+            self._add_3Darray(grid, -2, -0.01, opacity=0.9, show_edges=True, scalar_name='Structure', button_name='Structure', color='white')
         if pe_traj is not None:
             self._add_trajectory(pe_traj[:,0], pe_traj[:,1], 0.2, step=1, scalar_name='PE Energy, keV', button_name='PEs', cmap='viridis')
         if deposited_E is not None:
@@ -99,7 +102,7 @@ class Render:
         if se_traj is not None:
             max_trajes = 4000
             step = int(se_traj.shape[0]/max_trajes)+1
-            self._add_trajectory(se_traj, radius=0.1, step=step, button_name='SEs', color='red')
+            self._add_trajectory(se_traj, radius=0.1, step=step, button_name='SEs', cmap=None, color='red')
         if cam_pos is None:
             cam_pos = [(463.14450307610286, 271.1171723376318, 156.56895424388603),
                    (225.90027381807235, 164.9577775224395, 71.42188811921902),
@@ -126,7 +129,7 @@ class Render:
         self.__prepare_obj(obj, button_name, cmap, color)
 
 
-    def _add_3Darray(self, arr, lower_t=None, upper_t=None, exclude_zeros=True, opacity=0.5, clim=None, below_color=None, above_color=None, show_edges=None, nan_opacity=None, scalar_name='scalars_s', button_name='NoName', color=None, show_scalar_bar=True, cmap=None, n_colors=256, log_scale=False, invert=False, texture=None):
+    def _add_3Darray(self, arr, lower_t=None, upper_t=None, exclude_zeros=False, opacity=0.5, clim=None, below_color=None, above_color=None, show_edges=None, nan_opacity=None, scalar_name='scalars_s', button_name='NoName', color=None, show_scalar_bar=True, cmap=None, n_colors=256, log_scale=False, invert=False, texture=None):
         """
         Adds 3D structure from a Numpy array to the Pyvista plot
 
@@ -164,7 +167,7 @@ class Render:
         self.meshes_count += 1
 
 
-    def _render_3Darray(self, arr, lower_t=None, upper_t=None, exclude_zeros=True, name='scalars_s', invert=False ):
+    def _render_3Darray(self, arr, lower_t=None, upper_t=None, exclude_zeros=False, name='scalars_s', invert=False ):
         """
         Renders a 3D numpy array and trimms values
 
@@ -175,7 +178,7 @@ class Render:
         """
         # if upper_t is None: upper_t = arr.max()
         # if lower_t is None: lower_t = arr.min()
-        grid = numpy_to_vtk(arr, self.cell_dim, data_name=name)
+        grid = numpy_to_vtk(arr, self.cell_dim, data_name=name, grid=None)
         if exclude_zeros:
             grid.remove_cells((arr==0).flatten())
         if upper_t is not None or lower_t is not None:
@@ -198,7 +201,7 @@ class Render:
         mesh = pv.PolyData()
         # If energies are provided, they are gonna be used as scalars to color trajectories
         start = timeit.default_timer()
-        if any(energies):
+        if len(energies) != 0:
             print('Rendering PEs...', end='')
             for i in tqdm(range(0, len(traj), step)): #
             #     mesh = mesh + self.__render_trajectory(traj[i], energies[i], radius, name)
@@ -256,6 +259,13 @@ class Render:
             mesh[name] = np.asarray(energies) # assigning energies for every point
         return mesh #.tube(radius=radius) # making line thicker
 
+    def update_mask(self, mask):
+        index = np.zeros_like(mask, dtype=np.uint8)
+        index[mask == 0] = vtkDataSetAttributes.HIDDENCELL
+        last_scalars = self.p.mesh.array_names[0]
+        self.p.mesh.cell_data[vtkDataSetAttributes.GhostArrayName()] = index.ravel()
+        self.p.mesh.set_active_scalars(last_scalars)
+
     def save_3Darray(self, filename, arr, data_name='scalar'):
         """
         Dump a Numpy array to a vtk file with a specified name and creation date
@@ -305,7 +315,7 @@ class Render:
         # self.p.clear()
 
 
-def numpy_to_vtk(arr, cell_dim, data_name='scalar', grid=None, unstructured=True):
+def numpy_to_vtk(arr, cell_dim, data_name='scalar', grid=None, unstructured=False):
         if not grid:
             grid = pv.UniformGrid()
             grid.dimensions = np.asarray([arr.shape[2], arr.shape[1], arr.shape[0]]) + 1  # creating a grid with the size of the array
@@ -313,11 +323,10 @@ def numpy_to_vtk(arr, cell_dim, data_name='scalar', grid=None, unstructured=True
             grid_given = False
         else:
             grid_given = True
-        grid.cell_data[data_name] = arr.flatten()  # writing values
+        grid.cell_data[data_name] = arr.ravel()  # writing values
         if unstructured and not grid_given:
             grid = grid.cast_to_unstructured_grid()
         return grid
-
 
 def save_deposited_structure(structure, filename=None):
     """
@@ -364,6 +373,20 @@ def open_deposited_structure(filename=None, return_structure=False):
     else:
         return (cell_dimension, deposit, substrate, surface_bool, semi_surface_bool, ghosts_bool)
 
+def export_obj(structure, filename=None):
+    """
+    Export deposited structure as an .obj file
+
+    :param structure: Structure class instance, must have 'deposit' array and 'cell_dimension' value
+    :param filename: full path with file name
+    :return:
+    """
+    grid = numpy_to_vtk(structure.deposit, structure.cell_dimension, 'Deposit', None, True)
+    grid = grid.threshold([-2,-0.001], continuous=True)
+    p = pv.Plotter()
+    p.add_mesh(grid)
+    p.export_obj(filename)
+    return 1
 
 def show_animation(directory=''):
     """

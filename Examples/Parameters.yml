@@ -1,0 +1,12 @@
+# parameters of electron beam and precursor flux
+beam_energy: 30 # keV
+minimum_energy: 0.1 # cut-off energy for stopping trajectory in keV
+gauss_dev: 7.5 # standard deviation of a Gaussian beam shape function in nm
+n: 4 # order of the Gaussian function (see super or higher order gaussian distribution)
+beam_current: 150.0e-12  #  A
+# N: 100 # number of trajectories to calculate
+precursor_flux: 1500  #  1/(nm^2*s)
+#dwell_time: 0.000001  #  s
+substrate_element: 'Au' # material of the substrate
+deposition_scaling: 8 # multiplier for deposited volume for artificial speed up of the simulation
+emission_fraction: 1 # fraction of the total energy lost by primary electrons that is converted to secondary electron emission

@@ -219,7 +219,7 @@ def plot(m3d:map3d.ETrajMap3d, sim:et.ETrajectory, primary_e=True, deposited_E=T
     if secondary_flux:
         kwargs['surface_flux'] = m3d.flux
     if secondary_e:
-        kwargs['se_traj'] = m3d.coords_all
+        kwargs['se_traj'] = m3d.coords
     render.show_mc_result(sim.grid, **kwargs, interactive=False)
 
 
@@ -266,7 +266,7 @@ def rerun_simulation(y0, x0, sim:et.ETrajectory, dt):
     if m3d.flux.min() < 0:
         print(f'Encountered negative in beam matrix: {np.nonzero(m3d.flux<0)}')
         m3d.flux[m3d.flux<0] = 0
-    const = sim.norm_factor/m3d.amplifying_factor/sim.cell_dim**2
+    const = sim.norm_factor/m3d.amplifying_factor/sim.cell_dim**2/sim.m3d.segment_min_length
     return np.int32(m3d.flux*const)
 
 
