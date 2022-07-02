@@ -505,11 +505,7 @@ def monitoring(pr: Process, l, stats: Statistics = None, location=None, stats_ra
     rn = None
     if render:
         rn = vr.Render(pr.structure.cell_dimension)
-        rn._add_3Darray(pr.precursor, opacity=1, nan_opacity=1, scalar_name='Precursor',
-                        button_name='precursor', cmap='plasma')
-        rn.show(interactive_update=True, cam_pos=[(206.34055818793468, 197.6510638707941, 100.47106597548205),
-                                                  (0.0, 0.0, 0.0),
-                                                  (-0.23307751464125356, -0.236197909312718, 0.9433373838690787)])
+        pr.redraw = True
     else:
         frame = np.inf  # current time is always less than infinity
     if not stats_rate or stats_rate == np.inf:
@@ -532,7 +528,7 @@ def monitoring(pr: Process, l, stats: Statistics = None, location=None, stats_ra
                 # print(f'Time passed: {time_spent}, Av.speed: {l / time_spent}')
             if now > frame:  # graphical
                 frame += frame_rate
-                redrawed = update_graphical(rn, pr, time_step, now - start_time)
+                redrawed = update_graphical(rn, pr, frame_rate, now - start_time)
                 if redrawed:
                     f.write(f'[{time.strftime("%H:%M:%S", time.localtime())}] Redrawed scene.\n')
             if pr.t > stats_time:
@@ -574,51 +570,62 @@ def update_graphical(rn: vr.Render, pr: Process, time_step, time_spent, update=T
     :param time_spent:
     :return:
     """
+    data = pr.precursor
     redrawed = pr.redraw
     if pr.redraw:
-        rn.p.clear()
-        # Calculating values to indicate
-        pr.n_filled_cells.append(np.count_nonzero(pr.deposit[pr.deposit < 0]) - pr.n_substrate_cells)
-        i = len(pr.n_filled_cells) - 1
-        time_real = str(datetime.timedelta(seconds=int(time_spent)))
-        speed = pr.t / time_spent
-        growth_rate = int(pr.n_filled_cells[i] * pr.cell_dimension**3 / pr.t)
-
-        height = (pr.max_z - pr.substrate_height) * pr.structure.cell_dimension
-        total_V = int((pr.n_filled_cells[i] + pr.deposit[pr.surface].sum()) * pr.cell_V)
-
-        rn._add_3Darray(pr.precursor, 0.00000001, 1, opacity=0.5, show_edges=True,
-                        scalar_name='Precursor',
-                        button_name='precursor', cmap='plasma')
         try:
-            rn.p.update_scalar_bar_range(clim=[pr.precursor[pr.precursor > 0.00001].min(), pr.precursor.max()])
+            rn.y_pos = 5
+            try:
+                rn.p.button_widgets.clear()
+            except: pass
+            rn.p.clear()
+            current = 'precursor'
+            rn._add_3Darray(data, opacity=1, scalar_name='Precursor',
+                            button_name='precursor', show_edges=True, cmap='plasma')
+            scalar = rn.p.mesh.active_scalars_name
+            rn.p.mesh[scalar] = data.reshape(-1)
+            rn.update_mask(pr.surface)
+            rn.p.add_text('.', position='upper_left', font_size=12, name='time')
+            rn.p.add_text('.', position='upper_right', font_size=12, name='stats')
+            rn.show(interactive_update=True, cam_pos=[(206.34055818793468, 197.6510638707941, 100.47106597548205),
+                                                      (0.0, 0.0, 0.0),
+                                                      (-0.23307751464125356, -0.236197909312718, 0.9433373838690787)])
         except Exception as e:
             print('An error occurred while redrawing the scene.')
             print(e.args)
             pass
         rn.meshes_count += 1
-        # rn.add_3Darray(deposit, structure.cell_dimension, -2, -0.5, 0.7, scalar_name='Deposit',
-        #            button_name='Deposit', color='white', show_scalar_bar=False)
-        rn.p.add_text(f'Time: {time_real} \n' # showing real time passed 
-                      f'Sim. time: {(pr.t):.8f} s \n' # showing simulation time passed
-                      f'Speed: {(speed):.8f} \n'  
-                      f'Av. growth rate: {growth_rate} nm^3/s \n', # showing average growth rate
-                      position='upper_left',
-                      font_size=12)  # showing average growth rate
-        rn.p.add_text(f'Cells: {pr.n_filled_cells[i]} \n'  # showing total number of deposited cells
-                      f'Height: {height} nm \n'
-                      f'Volume: {total_V} nm^3',
-                      position='upper_right',
-                      font_size=12)  # showing current height of the structure
         pr.redraw = False
-    else:
-        # rn.p.mesh['precursor'] = precursor[precursor!=0]
-        try:
-            rn.p.update_scalars(pr.precursor[pr.surface])
-            rn.p.update_scalar_bar_range(clim=[pr.precursor[pr.precursor > 0.00001].min(), pr.precursor.max()])
-        except ValueError:
-            warnings.warn('Failed to update scalars due to possible desynchronization with the working thread.', RuntimeWarning)
-    rn.update()
+    # Calculating values to indicate
+    pr.n_filled_cells.append(pr.filled_cells)
+    i = len(pr.n_filled_cells) - 1
+    time_real = str(datetime.timedelta(seconds=int(time_spent)))
+    speed = pr.t / time_spent
+    height = (pr.max_z - pr.substrate_height) * pr.structure.cell_dimension
+    total_V = int((pr.filled_cells + pr.deposit[pr.surface].sum()) * pr.cell_V)
+    growth_rate = int((total_V-pr.vol_prev) / (pr.t-pr.t_prev) / pr.deposition_scaling)
+    pr.t_prev = pr.t
+    pr.vol_prev = total_V
+    # Updating displayed text
+    rn.p.textActor.renderer.actors['time'].SetText(2,
+                    f'Time: {time_real} \n' # showing real time passed 
+                    f'Sim. time: {(pr.t*pr.deposition_scaling):.8f} s \n' # showing simulation time passed
+                    f'Speed: {speed:.8f} \n'  
+                    f'Av. growth rate: {growth_rate} nm^3/s')
+    rn.p.textActor.renderer.actors['stats'].SetText(3,
+                    f'Cells: {pr.n_filled_cells[i]} \n'  # showing total number of deposited cells
+                    f'Height: {height} nm \n'
+                    f'Volume: {total_V} nm^3')
+    # Updating scene
+    rn.update_mask(pr.surface)
+    try:
+        min = data[data > 0.00001].min()
+    except:
+        min = 1e-8
+    rn.p.update_scalar_bar_range(clim=[min, data.max()])
+
+    if update:
+        rn.update()
     return redrawed
 
 

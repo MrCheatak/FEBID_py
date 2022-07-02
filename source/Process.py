@@ -89,6 +89,8 @@ class Process():
         self.irradiated_area_2D = np.s_[:,:,:]
         self.deposition_scaling = deposition_scaling # multiplier of the deposit increment; used to speed up the process
         self.redraw = True # flag for external functions saying that surface has been updated
+        self.t_prev = 0
+        self.vol_prev = 0
         
         # Statistics
         self.substrate_height = 0 # Thickness of the substrate
@@ -205,7 +207,7 @@ class Process():
             self.__precursor_reduced_3d[cell] = 0
             self.__ghosts_reduced_3d[cell] = True  # deposited cell belongs to ghost shell
             self.__surface_reduced_3d[cell] = False  # rising the surface one cell up (new cell)
-            self.redraw = True
+            # self.redraw = True
 
             # Instead of using classical conditions, boolean arrays are used to select elements
             # First, a condition array is created, that picks only elements that satisfy conditions
@@ -360,6 +362,7 @@ class Process():
             beam_matrix = self.beam_matrix # taking care of the beam_matrix, because __set_structure creates it empty
             self.__set_structure(self.structure)
             self.beam_matrix[:shape_old[0], :shape_old[1], :shape_old[2]] = beam_matrix
+            self.redraw = True
             # Basically, none of the slices have to be updated, because they use indexes, not references.
             return True
         return False
