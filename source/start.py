@@ -4,11 +4,12 @@ import yaml
 import pyvista as pv
 
 from source.ui import ui_shell
-import source.febid_core, simple_patterns as sp
+import source.febid_core, source.simple_patterns as sp
 from source.Structure import Structure
+import febid
 
-def start_ui():
-    ui_shell.start()
+def start_ui(config_f=None):
+    ui_shell.start(config_f)
 
 def start_no_ui(config_f=None):
     if not config_f:
@@ -125,6 +126,10 @@ def start_no_ui(config_f=None):
                                    saving_params, rendering)
 
     return
+
+def start_default(config_f=None):
+    start_ui(config_f)
+    # start_no_ui(config_f)
 
 if __name__ == '__main__':
     # start_no_ui('/home/kuprava/febid/source/last_session.yml')

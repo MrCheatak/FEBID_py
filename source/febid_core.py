@@ -30,7 +30,7 @@ import yaml
 from tqdm import tqdm
 
 # Local packages
-from source.Process import Structure, Process
+from source import Structure, Process
 from source.libraries.vtk_rendering import VTK_Rendering as vr
 from source.monte_carlo import etraj3d
 import source.simple_patterns as sp

@@ -11,6 +11,7 @@ directive_defaults = get_directive_defaults()
 # Using compiler of clang with llvm installed on mac OSX
 platform = sys.platform
 libraries = []
+
 if 'darwin' in platform:  # darwin == OSX
     os.environ["CC"] = "/usr/local/opt/llvm/bin/clang"
     os.environ["CXX"] = "/usr/local/opt/llvm/bin/clang++"
@@ -50,8 +51,22 @@ ext_modules = [
                          ),
                ]
 
-setup(
-    author='Alexander Kuprava',
+setuptools.setup(
+    name='febid',
+    version='0.8.0',
+    author='Alexander Kuprava, Michael Huth',
+    author_email='sandro1742@gmail.com',
+    description='FEBID process simulator',
+    long_description='Direct-write nano- and microscale chemical vapor deposition method using a beam of accelerated electrons.',
+    long_description_content_type="text/markdown",
+    url='https://github.com/MrCheatak/FEBID_py',
+    project_urls = {},
+    license='MIT',
+    packages=['febid'],
+    package_dir={'febid':'source'},
+    install_requires=['numpy', 'pyvista', 'pandas', 'ruamel.yaml', 'cython', 'openpyxl', 'tqdm', 'pyqt5', 'pyaml',
+                      'numexpr_mod@git+https://github.com/MrCheatak/numexpr_mod.git#numexpr_mod'],
     ext_modules = cythonize(ext_modules),
-    packages=['monte_carlo.compiled', 'traversal', 'rolling'],
-    include_dirs=[np.get_include()])
+    include_dirs=[np.get_include(),
+    ]
+)

@@ -1,3 +1,6 @@
+"""
+View the 3D-structure files produced by the simulation.
+"""
 import sys
 import numpy as np
 import pyvista as pv
