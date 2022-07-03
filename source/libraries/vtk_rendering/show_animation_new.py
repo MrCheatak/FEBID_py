@@ -5,8 +5,8 @@ from tkinter import filedialog as fd
 import numpy as np
 import vtk
 
-import VTK_Rendering as vr
-from Structure import Structure
+import source.libraries.vtk_rendering.VTK_Rendering as vr
+from source.Structure import Structure
 
 def open_file(directory=''):
     """

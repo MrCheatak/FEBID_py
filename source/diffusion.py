@@ -1,7 +1,7 @@
 import math
 
 import numpy as np
-from libraries.rolling import roll
+from source.libraries.rolling import roll
 
 # Diffusion is solved according to finite-difference explicit
 # FTCS (Forward in Time Central in Space) method.

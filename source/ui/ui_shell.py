@@ -9,14 +9,14 @@ faulthandler.enable(file=sys.stderr)
 from PyQt5.QtWidgets import QApplication, QMainWindow, QMessageBox
 from PyQt5 import QtWidgets, QtGui
 
-from ui.main_window import Ui_MainWindow as UI_MainPanel
+from source.ui.main_window import Ui_MainWindow as UI_MainPanel
 
 import pyvista as pv
 import yaml
 from ruamel.yaml import YAML
 
-import febid_core, simple_patterns as sp
-from Structure import Structure
+from source import febid_core, simple_patterns as sp
+from source.Structure import Structure
 
 
 class MainPannel(QMainWindow, UI_MainPanel):

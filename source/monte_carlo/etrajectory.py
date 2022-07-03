@@ -20,9 +20,9 @@ import line_profiler
 import traceback as tb
 
 # Local packages
-from libraries.ray_traversal import traversal
-from monte_carlo.compiled import etrajectory_c
-from monte_carlo import etrajmap3d as map3d
+from source.libraries.ray_traversal import traversal
+from source.monte_carlo.compiled import etrajectory_c
+from source.monte_carlo import etrajmap3d as map3d
 
 
 class ETrajectory(object):

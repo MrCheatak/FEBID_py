@@ -2,8 +2,8 @@ import sys
 import numpy as np
 import pyvista as pv
 from tkinter import filedialog as fd
-from libraries.vtk_rendering import VTK_Rendering as vr
-from Structure import Structure
+from source.libraries.vtk_rendering import VTK_Rendering as vr
+from source.Structure import Structure
 
 
 def show_structure(solid=True, deposit=True, precursor=True, surface=True, semi_surface=True, ghost=True):

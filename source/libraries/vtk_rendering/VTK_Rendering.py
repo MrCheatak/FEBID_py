@@ -15,7 +15,7 @@ from tkinter import filedialog as fd
 import pickle
 
 # Local packages
-from Structure import Structure
+from source.Structure import Structure
 
 
 

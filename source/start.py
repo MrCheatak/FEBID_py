@@ -3,9 +3,9 @@ import os
 import yaml
 import pyvista as pv
 
-from ui import ui_shell
-import febid_core, simple_patterns as sp
-from Structure import Structure
+from source.ui import ui_shell
+import source.febid_core, simple_patterns as sp
+from source.Structure import Structure
 
 def start_ui():
     ui_shell.start()

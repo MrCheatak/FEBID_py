@@ -11,7 +11,7 @@ import numpy as np
 from numpy.random import default_rng
 import line_profiler
 
-from libraries.ray_traversal import traversal
+from source.libraries.ray_traversal import traversal
 
 
 class ETrajMap3d(object):
