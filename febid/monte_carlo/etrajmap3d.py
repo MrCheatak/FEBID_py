@@ -9,9 +9,8 @@ import timeit
 import numexpr_mod as ne
 import numpy as np
 from numpy.random import default_rng
-import line_profiler
 
-from source.libraries.ray_traversal import traversal
+from febid.libraries.ray_traversal import traversal
 
 
 class ETrajMap3d(object):
@@ -46,8 +45,8 @@ class ETrajMap3d(object):
         self.surface = structure.surface_bool
         self.s_neighb = structure.surface_neighbors  # 3D array representing surface n-nearest neigbors
         self.cell_dim = structure.cell_dimension  # absolute dimension of a cell, nm
-        self.DE = np.zeros_like(deposit)  # array for storing of deposited energies
-        self.flux = np.zeros_like(deposit)  # array for storing SE fluxes
+        self.DE = np.zeros_like(self.grid)  # array for storing of deposited energies
+        self.flux = np.zeros_like(self.grid)  # array for storing SE fluxes
         self.shape = structure.shape
         self.shape_abs = structure.shape_abs
 

@@ -10,10 +10,10 @@ from tkinter import filedialog as fd
 import timeit
 
 # Local packages
-from source.Structure import Structure
-from source.libraries.vtk_rendering import VTK_Rendering as vr
-from source.monte_carlo import etrajectory as et
-from source.monte_carlo import etrajmap3d as map3d
+from febid.Structure import Structure
+from febid.libraries.vtk_rendering import VTK_Rendering as vr
+from febid.monte_carlo import etrajectory as et
+from febid.monte_carlo import etrajmap3d as map3d
 
 # TODO: implement a global flag for collecting data(Se trajes) for plotting
 

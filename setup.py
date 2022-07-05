@@ -1,5 +1,5 @@
-import os, sys
-from distutils.core import setup
+import os, sys, setuptools
+
 from Cython.Build import cythonize
 import numpy as np
 from distutils.extension import Extension
@@ -27,21 +27,21 @@ print(f'Platform: {platform, openMP_arg}')
 
 # Add include/link dirs, and modify the stdlib to libc++
 ext_modules = [
-             Extension("source.monte_carlo.compiled.etrajectory_c", ['source/monte_carlo/compiled/etrajectory_c.pyx'],
+             Extension("febid.monte_carlo.compiled.etrajectory_c", ['febid/monte_carlo/compiled/etrajectory_c.pyx'],
                          include_dirs=["/usr/local/opt/llvm/include"],
                          library_dirs=["/usr/local/opt/llvm/lib"],
                          # extra_compile_args=["-w", '-fopenmp'],
                          # libraries=libraries,
                          # extra_link_args=[openMP_arg]
                          ),
-               Extension("source.libraries.ray_traversal.traversal", ['source/libraries/ray_traversal/traversal.pyx'],
+               Extension("febid.libraries.ray_traversal.traversal", ['febid/libraries/ray_traversal/traversal.pyx'],
                          include_dirs=["/usr/local/opt/llvm/include"],
                          library_dirs=["/usr/local/opt/llvm/lib"],
                          # extra_compile_args=["-w", '-fopenmp'],
                          # libraries=libraries,
                          # extra_link_args=[openMP_arg]
                          ),
-               Extension("source.libraries.rolling.roll", ['source/libraries/rolling/roll.pyx'],
+               Extension("febid.libraries.rolling.roll", ['febid/libraries/rolling/roll.pyx'],
                          include_dirs=["/usr/local/opt/llvm/include"],
                          library_dirs=["/usr/local/opt/llvm/lib"],
                          extra_compile_args=["-w", '-fopenmp'],
@@ -50,8 +50,24 @@ ext_modules = [
                          ),
                ]
 
-setup(
-    author='Alexander Kuprava',
-    ext_modules = cythonize(ext_modules),
-    packages=['monte_carlo.compiled', 'traversal', 'rolling'],
-    include_dirs=[np.get_include()])
+setuptools.setup(
+    name='febid',
+    version='0.8.0',
+    author='Alexander Kuprava, Michael Huth',
+    author_email='sandro1742@gmail.com',
+    description='FEBID process simulator',
+    long_description='Direct-write nano- and microscale chemical vapor deposition method using a beam of accelerated electrons.',
+    long_description_content_type="text/markdown",
+    url='https://github.com/MrCheatak/FEBID_py',
+    project_urls = {},
+    license='MIT',
+    packages=['febid', 'febid.monte_carlo', 'febid.monte_carlo.compiled', 'febid.ui', 'febid.libraries.vtk_rendering',
+              'febid.libraries.rolling', 'febid.libraries.ray_traversal'],
+    package_data = {'': ['*.pyx']},
+    include_package_data=True,
+    install_requires=['numpy<1.23.0', 'pyvista', 'pandas', 'ruamel.yaml', 'cython', 'openpyxl', 'tqdm', 'pyqt5', 'pyaml',
+                      'numexpr_mod@git+https://github.com/MrCheatak/numexpr_mod.git#numexpr_mod'],
+    ext_modules=cythonize(ext_modules),
+    include_dirs=[np.get_include()],
+    pyhton_requires='>=3.7',
+)

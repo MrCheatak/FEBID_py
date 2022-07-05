@@ -3,12 +3,13 @@ import os
 import yaml
 import pyvista as pv
 
-from source.ui import ui_shell
-import source.febid_core, simple_patterns as sp
-from source.Structure import Structure
+from febid.ui import ui_shell
+import febid.simple_patterns as sp
+from febid import febid_core
+from febid import Structure
 
-def start_ui():
-    ui_shell.start()
+def start_ui(config_f=None):
+    ui_shell.start(config_f)
 
 def start_no_ui(config_f=None):
     if not config_f:
@@ -121,10 +122,14 @@ def start_no_ui(config_f=None):
 
     rendering = {'show_process': params['show_process'], 'frame_rate': 0.2}
     # Starting the process
-    febid_core.run_febid_interface(structure, precursor_params, beam_params, sim_volume_params, printing_path,
+    process_obj, sim = febid_core.run_febid_interface(structure, precursor_params, beam_params, sim_volume_params, printing_path,
                                    saving_params, rendering)
 
-    return
+    return process_obj, sim
+
+def start_default(config_f=None):
+    start_ui(config_f)
+    # start_no_ui(config_f)
 
 if __name__ == '__main__':
     # start_no_ui('/home/kuprava/febid/source/last_session.yml')

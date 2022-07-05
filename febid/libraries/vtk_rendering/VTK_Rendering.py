@@ -15,7 +15,7 @@ from tkinter import filedialog as fd
 import pickle
 
 # Local packages
-from source.Structure import Structure
+from febid.Structure import Structure
 
 
 
@@ -65,7 +65,7 @@ class Render:
         :return:
         """
         if struct:
-            self._add_3Darray(structure.deposit, structure.deposit.min(), -0.01, False, opacity=1, clim=[-2,-1], below_color='red', show_edges=True, scalar_name='Structure', button_name='Structure', cmap='binary', n_colors=1, show_scalar_bar=False)
+            self._add_3Darray(structure.deposit, structure.deposit.min(), -0.01, False, opacity=1, clim=[-2,-1], below_color='red', show_edges=False, scalar_name='Structure', button_name='Structure', cmap='binary', n_colors=1, show_scalar_bar=False)
         if deposit:
             self._add_3Darray(structure.deposit, 0.00001, 1, False, opacity=1, clim=[0.00001,1], below_color='red', above_color='red', show_edges=True, scalar_name='Surface deposit', button_name='Deposit', cmap='viridis')
         if precursor:

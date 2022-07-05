@@ -17,7 +17,6 @@ from threading import Thread
 from tkinter import filedialog as fd
 
 # Core packages
-import line_profiler
 import numpy as np
 import pyvista as pv
 
@@ -30,10 +29,10 @@ import yaml
 from tqdm import tqdm
 
 # Local packages
-from source.Process import Structure, Process
-from source.libraries.vtk_rendering import VTK_Rendering as vr
-from source.monte_carlo import etraj3d
-import source.simple_patterns as sp
+from febid import Structure, Process
+from febid import VTK_Rendering as vr
+from febid.monte_carlo import etraj3d
+import febid.simple_patterns as sp
 
 # It is assumed, that surface cell is a cell with a fully deposited cell(or substrate) under it and thus able produce deposit under irradiation.
 
@@ -373,7 +372,8 @@ def run_febid_interface(structure, precursor_params, settings, sim_params, path,
     kwargs = dict(location=saving_params['filename'], stats_rate=stats_rate,
                   dump_rate=dump_rate, render=rendering['show_process'],
                   frame_rate=rendering['frame_rate'], refresh_rate=0.5)
-    run_febid(structure, precursor_params, settings, sim_params, path, dump_stats, kwargs)
+    process_obj, sim = run_febid(structure, precursor_params, settings, sim_params, path, dump_stats, kwargs)
+    return process_obj, sim
 
 
 def run_febid_test(geom, path, dwell_time, loops, files, kwargs):
@@ -418,6 +418,7 @@ def run_febid(structure, precursor_params, settings, sim_params, path, gather_st
     monitoring(process_obj, total_iters, stats, **monitor_kwargs)
     printing.join()
     print('Finished path.')
+    return process_obj, sim
 
 def print_all(path, process_obj, sim):
     global flag

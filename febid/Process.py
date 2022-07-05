@@ -6,8 +6,8 @@ import numpy as np
 from numexpr_mod import evaluate_cached, cache_expression
 
 # Local packages
-from source.Structure import Structure
-import source.diffusion as diffusion
+from febid import Structure
+import febid.diffusion as diffusion
 
 # TODO: look into k-d trees
 # TODO: add a benchmark to determine optimal threads number for current machine

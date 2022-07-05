@@ -1,17 +1,24 @@
 # FEBID
-Simulation of the FEBID process written in Python.
+Simulation of the FEBID process written in Python.  
+FEBID stands for Focused Electron Beam Induced Deposition, which is a variation of a CVD (chemical vapor deposition) process.
+It uses volative organo-metallic molecules (precursor) as material and a controlled electron beam (typically in a SEM)
+to selectively deposit material on a substrate.  
+
+The simulation is build based on a continuum model.
+Features:
+1. Enabled diffusion, FTCS approach
+2. Electron-matter interaction is implemented via a Monte Carlo simulaton submodule
+3. No gas dynamics implications
+4. Process can be observed live while simulation is running
+5. 3D models produced by the simulation can be viewed with the shipped scripts
 
 ## Installation
 
 1. Clone the repository and choose virtual environment.
-2. Install following packages using pip: *numpy, cython, pyvista, pyaml, ruamel, pandas, openpyxl, tqdm, pypt5, line_profiler and numexpr_mod* (https://github.com/MrCheatak/numexpr_mod).
-	 You can use these two commands to install everything at once:
-	
-	`pip install numpy cython pyvista pyaml ruamel.yaml pandas openpyxl tqdm pyqt5 line_profiler`
-   
-    `pip install git+https://github.com/MrCheatak/numexpr_mod.git#numexpr_mod`
+2. In the virtual environment execute `pip install .` to install the package and it's dependencies.
 
-3. Compile Cython modules by navigating to the project folder and executing `python setup.py build_ext --inplace`
+Alternatively, it can be installed as a package via pip if an access token is avalable:  
+`pip install git+https://{token}@github.com/MrCheatak/FEBID_py.git#febid`
 
 **Note**: Cython modules utilize OpenMP for parallel computations. You may need to install it in order to run the simulation.
 
@@ -27,8 +34,10 @@ On Windows it should be shipped with standard gcc compiler, so no actions are re
 
 ## Usage:
 
-The entry point is the source/start.py file.
-1. The simulation setup is done via the control pannel, that is shown after running the start.py with start_n.
+If using an IDE like PyCharm the entry point is the source/start.py file.  
+Alternatively, it can be run from the console with `python -m febid` once installed.
+
+1. The simulation setup is done via the control pannel.
 2. Define simulation volume by specifying a prepared .vtk file or create an empty volume from parameters
  or automatically, if you intend to print from a stream-file.
 3. Create a printing path from a number of simple shapes or load a more complex path from a stream-file.
@@ -64,4 +73,7 @@ The scene is interactive, meaning it can be zoomed by scrolling, rotated  with a
 The coloring and the corresponding scale represents the concentration of the precursor at the surface. Thus, the 3D object displayed is not the solid structure itself, but it's whole surface, that follows the shape of the solid 3D object.
    
 **Viewing simulation results**: There are two options to inspect a structure deposited by FEBID. The first one is viewing a specific snapshot with all the corresponding data layers. It can be done via running the source/libraries/vtk_rendering/show_file.py script and specifying a .vtk file. 
-The Second option is to view the process based on a series of structure snapshots. It can be done via source/libraries/vtk_rendering/show_animation_new.py script. Unlike viewing a single file, only one data layer can be 'animated'. Surface deposit or precursor density data is currently supported.
+The Second option is to view the process based on a series of structure snapshots. It can be done via source/libraries/vtk_rendering/show_animation_new.py script. Unlike viewing a single file, only one data layer can be 'animated'. Surface deposit or precursor density data is currently supported, it can be set up inside the scripts.  
+These scripts can also be run from the console:  
+`python -m febid show_file`
+`python -m show_animation`

@@ -16,13 +16,12 @@ import numpy as np
 # Axillary packeges
 import pickle
 import timeit
-import line_profiler
 import traceback as tb
 
 # Local packages
-from source.libraries.ray_traversal import traversal
-from source.monte_carlo.compiled import etrajectory_c
-from source.monte_carlo import etrajmap3d as map3d
+from febid.libraries.ray_traversal import traversal
+from febid.monte_carlo.compiled import etrajectory_c
+from febid.monte_carlo import etrajmap3d as map3d
 
 
 class ETrajectory(object):

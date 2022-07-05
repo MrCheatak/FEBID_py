@@ -6,11 +6,11 @@
 /tests/laplace/rolling/build/
 /tests/laplace/rolling/roll.html
 
-/source/libraries/ray_traversal/traversal.c
-/source/libraries/ray_traversal/traversal.html
+/febid/libraries/ray_traversal/traversal.c
+/febid/libraries/ray_traversal/traversal.html
 
-/source/libraries/rolling/roll.c
-/source/libraries/rolling/roll.html
+/febid/libraries/rolling/roll.c
+/febid/libraries/rolling/roll.html
 
 /venv3.7/
 
@@ -166,6 +166,6 @@ crashlytics-build.properties
 fabric.properties
 
 
-/source/monte_carlo/compiled/etrajectory_c.c
-/source/monte_carlo/compiled/etrajectory_c.cpp
-/source/monte_carlo/compiled/etrajectory_c.html
+/febid/monte_carlo/compiled/etrajectory_c.c
+/febid/monte_carlo/compiled/etrajectory_c.cpp
+/febid/monte_carlo/compiled/etrajectory_c.html
