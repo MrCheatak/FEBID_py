@@ -1,3 +1,6 @@
+"""
+View series of consequent 3D-Structure files as an animated process.
+"""
 import os, time
 from datetime import datetime
 from tkinter import filedialog as fd
