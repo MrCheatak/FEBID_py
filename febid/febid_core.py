@@ -29,7 +29,8 @@ import yaml
 from tqdm import tqdm
 
 # Local packages
-from febid import Structure, Process
+from .Structure import Structure
+from .Process import Process
 from febid import VTK_Rendering as vr
 from febid.monte_carlo import etraj3d
 import febid.simple_patterns as sp

@@ -22,9 +22,9 @@ Alternatively, it can be installed as a package via pip if an access token is av
 
 **Note**: Cython modules utilize OpenMP for parallel computations. You may need to install it in order to run the simulation.
 
-On Mac OSX it can be installed using *brew* and it does compile with clang/clang++ compiler shipped with macs:
+On Mac OSX it can be installed together with *LLVM/clang* using *brew*:
 	
-In Terminal: `brew install libomp`
+In Terminal: `brew install llvm`
 
 On Linux/Ubuntu it is available through *apt-get* and is compatible with the standard gcc compiler:
 

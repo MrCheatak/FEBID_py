@@ -6,7 +6,7 @@ import numpy as np
 from numexpr_mod import evaluate_cached, cache_expression
 
 # Local packages
-from febid import Structure
+from .Structure import Structure
 import febid.diffusion as diffusion
 
 # TODO: look into k-d trees

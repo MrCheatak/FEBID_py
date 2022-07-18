@@ -1,9 +1,9 @@
 """
 FEBID Simulator package
 """
-from .Structure import Structure
+from . import Structure
 from .libraries.vtk_rendering import VTK_Rendering
-from .Process import Process
+from . import Process
 from . import monte_carlo
 from . import febid_core
 from . import start
