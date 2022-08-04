@@ -343,6 +343,7 @@ def save_deposited_structure(structure, filename=None):
     vtk_obj = numpy_to_vtk(structure.surface_bool, cell_dim, data_name='surface_bool', grid=vtk_obj)
     vtk_obj = numpy_to_vtk(structure.semi_surface_bool, cell_dim, data_name='semi_surface_bool', grid=vtk_obj)
     vtk_obj = numpy_to_vtk(structure.ghosts_bool, cell_dim, data_name='ghosts_bool', grid=vtk_obj)
+    vtk_obj = numpy_to_vtk(structure.temperature, cell_dim, data_name='te', grid=vtk_obj)
     # vtk_obj.__setattr__('features', True) # Availability of this parameter will show if vtk file is either just a structure or a simulation result
     # vtk_obj.__setattr__('substrate_val', structure.substrate_val)
     # vtk_obj.__setattr__('substrate_height', structure.substrate_height)

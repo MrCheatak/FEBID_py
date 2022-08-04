@@ -320,6 +320,8 @@ def buffer_constants(precursor: dict, settings: dict, cell_dimension: int):
     equation_values = {'F': settings["precursor_flux"], 'n0': precursor["max_density"],
                        'sigma': precursor["cross_section"], 'tau': precursor["residence_time"] * 1E-6,
                        'V': precursor["dissociated_volume"], 'D': precursor["diffusion_coefficient"],
+                       'rho': precursor['average_density'], 'heat_cond': precursor['thermal_conductivity'],
+                       'cp': precursor['heat_capacity'],
                        'dt': dt, 'deposition_scaling': settings['deposition_scaling']}
     # Stability time steps
     timings = {'t_diff': diffusion_dt, 't_flux': t_flux, 't_desorption': tau, 'dt': dt}
@@ -429,7 +431,8 @@ def print_all(path, process_obj, sim):
     total_time = path[:,2].sum()
     t = tqdm(total=av_loops, desc='total', position=0)
     for x, y, step in path[start:]:
-        process_obj.beam_matrix[:, :, :] = etraj3d.rerun_simulation(y, x, sim, process_obj.dt)
+        beam_matrix, dep_energy = etraj3d.rerun_simulation(y, x, sim, process_obj.dt)
+        process_obj.beam_matrix[:, :, :] = beam_matrix
         if process_obj.beam_matrix.max() <= 1:
             warnings.warn('No surface flux!', RuntimeWarning)
             process_obj.beam_matrix[...] = 1
@@ -456,6 +459,7 @@ def print_step(y, x, dwell_time, pr: Process, sim, t):
     time = 0
     while time < dwell_time:  # loop repeats
         pr.deposition()  # depositing on a selected area
+        pr.heat_transfer(sim.m3d.DE/pr.cell_V*1.60217733E-19)
         if pr.check_cells_filled():
             flag = pr.update_surface()  # updating surface on a selected area
             if flag:
@@ -463,7 +467,8 @@ def print_step(y, x, dwell_time, pr: Process, sim, t):
                 sim.surface = sim.m3d.surface = pr.surface
                 sim.s_neighb = sim.m3d.s_neighb = pr.surface_n_neighbors
             start = timeit.default_timer()
-            pr.beam_matrix[...] = etraj3d.rerun_simulation(y, x, sim, pr.dt)
+            beam_matrix= etraj3d.rerun_simulation(y, x, sim, pr.dt)
+            pr.beam_matrix[...] = beam_matrix
             print(f'Finished MC in {timeit.default_timer()-start} s')
             if pr.beam_matrix.max() <= 1:
                 warnings.warn('No surface flux!', RuntimeWarning)

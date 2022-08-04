@@ -27,7 +27,8 @@ SE_mean_free_path: 2.5 # nm
 average_element_number: 23
 average_element_mol_mass: 42.5 # g/mol
 average_density: 4.5 # g/cm^3 [fried]
-
+thermal_conductivity: 0.16e-09 # W/nm/K [mutunga]
+heat_capacity: 650 # J/kg/K
 
 
 
@@ -43,5 +44,7 @@ average_density: 4.5 # g/cm^3 [fried]
 # [utke] Utke I., Hoffmann P., Melngailis J., J. Vac. Sci. Technol. B, Vol. 26, No. 4, 2008
 # [huth] Huth M., Poratti F., Schwalb C. et. al, Beilstein J. Nanotechnol., 3, 597–619, 2012
 # [fowlkes] Fowlkes J.D., Winkler R., Lewis B.B. et.al, ACS Nano , 10, 6163−617, 2016
-# [fried] Friedli V., Santschi C. et. al, Appl. Phys. Lett. 90, 053106 (2007)
+# [fried] Friedli V., Santschi C. et. al, Appl. Phys. Lett. 90, 053106 2007
 # [lin] Lin Y., Joy D., Surf. Interface Anal. 2005, 37, 895–900
+# [mutunga] Mutunga E., Winkler R., Sattelkow J. et al., ACS Nano, 13, 5198-5213, 2019
+# [cullen] Cullen J., Bahm A., Lobo C. et al., Journal of Physical Chemistry C, 119, 15948-15953, 2015

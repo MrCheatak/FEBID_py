@@ -8,6 +8,7 @@ from numexpr_mod import evaluate_cached, cache_expression
 # Local packages
 from febid import Structure
 import febid.diffusion as diffusion
+import febid.heat_transfer as heat_transfer
 
 # TODO: look into k-d trees
 # TODO: add a benchmark to determine optimal threads number for current machine
@@ -46,6 +47,7 @@ class Process():
         self.surface_n_neighbors = None # a boolean array, surface n-nearest neighbors are True
         self.ghosts = None # a boolean array, ghost cells are True
         self.beam_matrix = None # contains values of the SE surface flux
+        self.temp = None # contains temperatures of each cell
         
         # Working arrays
         self.__deposit_reduced_3d = None
@@ -74,7 +76,11 @@ class Process():
         self.tau = 0 # residence time
         self.V = 0 # deposit volume of a dissociated precursor molecule
         self.D = 0 # surface diffusion coefficient
-        
+        self.cp = 0 # heat capacity
+        self.heat_cond = 0 # heat conductance coefficient
+        self.rho = 0 # density
+        self.room_temp = 294 # room temperature
+
         # Timings
         self.t_diffusion = 0
         self.t_dissociation = 0
@@ -120,6 +126,7 @@ class Process():
         self.surface_n_neighbors = self.structure.surface_neighbors_bool
         self._surface_all = np.logical_or(self.surface, self.semi_surface)
         self.ghosts = self.structure.ghosts_bool
+        self.temp = self.structure.temperature
         self.beam_matrix = np.zeros_like(structure.deposit, dtype=np.int32)
         self.cell_dimension = self.structure.cell_dimension
         self.cell_V = self.cell_dimension**3
@@ -139,6 +146,9 @@ class Process():
         self.sigma = params['sigma']
         self.tau = params['tau']
         self.D = params['D']
+        self.cp = params['cp']
+        self.heat_cond = params['heat_cond']
+        self.rho = params['rho']
         self.deposition_scaling = params['deposition_scaling']
 
     def __setup_MC_module(self, params):
@@ -434,7 +444,7 @@ class Process():
         :param div:
         :return: flat ndarray
         """
-        return diffusion.laplace_term_stencil(grid, surface, self.D, self.dt, self.cell_dimension, self.__surface_index, add=add, div=div)
+        return diffusion.diffusion_stencil(grid, surface, self.D, self.dt, self.cell_dimension, self.__surface_index, add=add, div=div)
         # return evaluate_cached(expressions["laplace1"], local_dict={'dt_D': dt*D, 'grid_out':grid_out[surface]}, casting='same_kind')
 
     def _laplace_term_rolling(self, grid, surface, ghosts=None, add=0, div: int = 0):
@@ -450,7 +460,14 @@ class Process():
         :return: to grid array
         """
 
-        return diffusion.laplace_term_rolling(grid, surface, ghosts, self.D, self.dt, self.cell_dimension, flat=True, add=add, div=div)
+        return diffusion.diffusion_rolling(grid, surface, ghosts, self.D, self.dt, self.cell_dimension, flat=True, add=add, div=div)
+
+    def heat_transfer(self, heating):
+        slice = np.s_[self.substrate_height-1:self.max_z,:,:] # using only top layer of the substrate
+        heat_transfer.heat_transfer_BE(self.temp[slice], 'heatsink', self.heat_cond, self.cp,
+                                           self.rho, self.dt, self.cell_dimension, heating[slice],)
+        # self.temp[self.substrate_height] = self.room_temp
+
 
     # Data maintenance methods
     # These methods represent an optimization path that provides up to 100x speed up

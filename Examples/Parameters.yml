@@ -9,4 +9,4 @@ precursor_flux: 1500  #  1/(nm^2*s)
 #dwell_time: 0.000001  #  s
 substrate_element: 'Au' # material of the substrate
 deposition_scaling: 8 # multiplier for deposited volume for artificial speed up of the simulation
-emission_fraction: 1 # fraction of the total energy lost by primary electrons that is converted to secondary electron emission
+emission_fraction: 0.6 # fraction of the total energy lost by primary electrons that is converted to secondary electron emission

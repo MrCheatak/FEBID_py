@@ -267,7 +267,7 @@ def rerun_simulation(y0, x0, sim:et.ETrajectory, dt):
         print(f'Encountered negative in beam matrix: {np.nonzero(m3d.flux<0)}')
         m3d.flux[m3d.flux<0] = 0
     const = sim.norm_factor/m3d.amplifying_factor/sim.cell_dim**2/sim.m3d.segment_min_length
-    return np.int32(m3d.flux*const)
+    return np.int32(m3d.flux*const), m3d.DE/sim.cell_dim**3
 
 
 if __name__ == '__main__':
