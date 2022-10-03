@@ -9,6 +9,7 @@ from numexpr_mod import evaluate_cached, cache_expression
 from febid import Structure
 import febid.diffusion as diffusion
 import febid.heat_transfer as heat_transfer
+from febid.libraries.rolling.roll import surface_temp_av
 
 from timeit import default_timer as df
 
@@ -50,7 +51,8 @@ class Process():
         self.ghosts = None # a boolean array, ghost cells are True
         self.beam_matrix = None # contains values of the SE surface flux
         self.temp = None # contains temperatures of each cell
-        
+        self.surface_temp = None
+
         # Working arrays
         self.__deposit_reduced_3d = None
         self.__precursor_reduced_3d = None
@@ -68,7 +70,9 @@ class Process():
         self.__beam_matrix_effective = None
         self.__deposition_index = None
         self.__surface_index = None
+        self.__semi_surface_index = None
         self._solid_index = None
+        self.__surface_all_index = None
 
         # Monte Carlo simulation instance
         self.sim = None
@@ -132,6 +136,7 @@ class Process():
         self._surface_all = np.logical_or(self.surface, self.semi_surface)
         self.ghosts = self.structure.ghosts_bool
         self.temp = self.structure.temperature
+        self.surface_temp = np.zeros_like(self.temp)
         self.beam_matrix = np.zeros_like(structure.deposit, dtype=np.int32)
         self.cell_dimension = self.structure.cell_dimension
         self.cell_V = self.cell_dimension**3
@@ -489,7 +494,7 @@ class Process():
             heat_transfer.heat_transfer_steady_sor(self.temp[slice], self.heat_cond, self.cell_dimension, heat, 1e-7, self._solid_index)
             print(f'Temperature recalculation took {df() - start:.4f} s')
         self.temp[self.substrate_height] = self.room_temp
-
+        self.__get_surface_temp()
 
 
     # Data maintenance methods
@@ -544,6 +549,8 @@ class Process():
         self.__surface_all_reduced_2d = self._surface_all[self.irradiated_area_2D]
         self.__ghosts_reduced_2d = self.ghosts[self.irradiated_area_2D]
         self.__beam_matrix_reduced_2d = self.beam_matrix[self.irradiated_area_2D]
+        self.__temp_reduced_2d = self.temp[self.irradiated_area_2D]
+        self.__surface_temp_reduced_2d = self.surface_temp[self.irradiated_area_2D]
 
     def __get_irradiated_area(self):
         """
@@ -573,7 +580,11 @@ class Process():
         """
         self.__surface_all_reduced_2d[:,:,:] = np.logical_or(self.__surface_reduced_2d, self.__semi_surface_reduced_2d)
         index = self.__surface_all_reduced_2d.nonzero()
+        self.__surface_all_index = (np.intc(index[0]), np.intc(index[1]), np.intc(index[2]))
+        index = self.__surface_reduced_2d.nonzero()
         self.__surface_index = (np.intc(index[0]), np.intc(index[1]), np.intc(index[2]))
+        index = self.__semi_surface_reduced_2d.nonzero()
+        self.__semi_surface_index = (np.intc(index[0]), np.intc(index[1]), np.intc(index[2]))
 
     def __flatten_beam_matrix_effective(self):
         """
@@ -602,6 +613,12 @@ class Process():
         :return:
         """
         self.max_z = self.deposit.nonzero()[0].max() + 3
+
+    def __get_surface_temp(self):
+        self.__surface_temp_reduced_2d[...] = 0
+        surface_temp_av(self.__surface_temp_reduced_2d, self.__temp_reduced_2d, *self.__surface_index)
+        surface_temp_av(self.__surface_temp_reduced_2d, self.__surface_temp_reduced_2d, *self.__semi_surface_index)
+
 
     # Misc
     def __fix_bad_cells(self):

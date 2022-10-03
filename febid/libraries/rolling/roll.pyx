@@ -1,5 +1,6 @@
 #cython: language_level=3
 
+import traceback
 cimport cython
 from cython.parallel cimport prange
 
@@ -7,6 +8,23 @@ from cython.parallel cimport prange
 # Cython performs 2-3 times faster than numpy when adding one
 # array slice to another. This applies to medium size arrays from [10:10:10] to [500:500:500].
 # With smaller arrays bottleneck is the overhead, with bigger arrays Numpy works faster
+
+cpdef int surface_temp_av(double[:,:,:] surface_temp, double[:,:,:] temp, int[:] z, int[:] y, int[:] x) except -1:
+    """
+    Define temperature of the surface cells by averaging temperature of the neighboring solid cells 
+
+    :param surface_temp: surface temperature array
+    :param temp: solid temperature array
+    :param z: first array index
+    :param y: second array index
+    :param x: third array index 
+    :return: 
+    """
+    try:
+        return surface_temp_av_cy(surface_temp, temp, z, y, x)
+    except Exception as ex:
+        traceback.print_exc()
+        raise ex
 
 
 cpdef void stencil_sor(double[:,:,::1] grid, double[:,:,:] s, double w, int[:] z, int[:] y, int[:] x):
@@ -310,6 +328,104 @@ cdef void stencil_sor_cy(double[:,:,::1] grid, double[:,:,:] s, double w, int[:]
         residual = 0
         cond = 0
 
+
+@cython.initializedcheck(False) # turn off initialization check for memoryviews
+@cython.boundscheck(False) # turn off bounds-checking for entire function
+@cython.wraparound(False)  # turn off negative index wrapping for entire function
+cdef int surface_temp_av_cy(double[:,:,:] grid_out, double[:,:,:] grid, int[:] z_index, int[:] y_index, int[:] x_index) nogil except -1:
+    cdef int i, z, y, x, xdim, ydim, zdim, count=0, cond=0
+    cdef double cell
+    xdim = grid.shape[2]
+    ydim = grid.shape[1]
+    zdim = grid.shape[0]
+    l = z_index.shape[0]
+
+    # Assumptions taken for optimization:
+    #   1. Most cells are inside the array, thus bounds check should be quick. Cells on the boundary are processed separately.
+    #   2. There are at least 3 non-zero neighbors, but usually 4, therefore the first condition is !=0
+    for i in range(l):
+        z = z_index[i]
+        y = y_index[i]
+        x = x_index[i]
+        count = 0
+        if z == 0:
+            continue
+        if z<zdim-1 and z>0:
+            cond += 1
+            if y<ydim-1 and y>0:
+                cond += 1
+                if x<xdim-1 and x>0:
+                    cond += 1
+        if cond == 3:
+        # Z - axis
+            if grid[z + 1, y, x] != 0:
+                grid_out[z, y, x] += grid[z + 1, y, x]
+                count += 1
+            if grid[z - 1, y, x] != 0:
+                grid_out[z, y, x] += grid[z - 1, y, x]
+                count += 1
+
+            # Y - axis
+            if grid[z, y + 1, x] != 0:
+                grid_out[z, y, x] += grid[z, y + 1, x]
+                count += 1
+            if grid[z, y - 1, x] != 0:
+                grid_out[z, y, x] += grid[z, y - 1, x]
+                count += 1
+
+            # X - axis
+            if grid[z, y, x + 1] != 0:
+                grid_out[z, y, x] += grid[z, y, x + 1]
+                count += 1
+            if grid[z, y, x - 1] != 0:
+                grid_out[z, y, x] += grid[z, y, x - 1]
+                count += 1
+            grid_out[z, y, x] = grid_out[z, y, x] / count
+            count = 0
+            cond = 0
+        else:
+            # Z - axis
+            if z > zdim - 2:
+                pass
+            else:
+                if grid[z + 1, y, x] != 0:
+                    grid_out[z, y, x] += grid[z + 1, y, x]
+                    count += 1
+            if z < 1:
+                pass
+            else:
+                if grid[z - 1, y, x] != 0:
+                    grid_out[z, y, x] += grid[z - 1, y, x]
+                    count += 1
+            # Y - axis
+            if y > ydim - 2:
+                pass
+            else:
+                if grid[z, y + 1, x] != 0:
+                    grid_out[z, y, x] += grid[z, y + 1, x]
+                    count += 1
+            if y < 1:
+                pass
+            else:
+                if grid[z, y - 1, x] != 0:
+                    grid_out[z, y, x] += grid[z, y - 1, x]
+                    count += 1
+            # X - axis
+            if x > xdim - 2:
+                pass
+            else:
+                if grid[z, y, x + 1] != 0:
+                    grid_out[z, y, x] += grid[z, y, x + 1]
+                    count += 1
+            if x < 1:
+                pass
+            else:
+                if grid[z, y, x - 1] != 0:
+                    grid_out[z, y, x] += grid[z, y, x - 1]
+                    count += 1
+            grid_out[z, y, x] = grid_out[z, y, x] / count
+            count = 0
+        cond = 0
 
 
 @cython.boundscheck(False) # turn off bounds-checking for entire function

@@ -587,6 +587,9 @@ def update_graphical(rn: vr.Render, pr: Process, time_step, time_spent, displaye
     if displayed_data == 'temperature':
         data = pr.temp
         mask = pr.deposit < 0
+    if displayed_data == 'surface_temperature':
+        data = pr.surface_temp
+        mask = pr.surface
     # data = pr.temp
     redrawed = pr.redraw
     if pr.redraw:
