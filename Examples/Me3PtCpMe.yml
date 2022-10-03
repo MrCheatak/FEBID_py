@@ -14,10 +14,14 @@ dissociated_volume: 0.094 # nm^3
 Knudsen_number: 1.3 # [utke]
 cross_section: 0.022 # nm^2 [huth]
 diffusion_coefficient: 4000000 # nm^2/s  [fowlkes]
+diffusion_activation_energy: 0.112 # meV [cullen]
+diffusion_prefactor: 42.0e+6 # nm^2/s
 sticking_coefficient: 1 # [fowlkes]
 P_vap: 7.7 # Pa [utke]
 residence_time: 100 # µs [fowlkes]
 #residence_time: 29 # µs [huth]
+desorption_activation_energy: 0.62 # eV [mutunga]
+desorption_attempt_frequency: 1.0e+13 # Hz [mutunga]
 
 # parameters for PtC5 deposit
 deposit: 'PtC5'

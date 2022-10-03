@@ -319,7 +319,9 @@ def buffer_constants(precursor: dict, settings: dict, cell_dimension: int):
     # Parameters for reaction-equation solver
     equation_values = {'F': settings["precursor_flux"], 'n0': precursor["max_density"],
                        'sigma': precursor["cross_section"], 'tau': precursor["residence_time"] * 1E-6,
+                       'Ea': precursor['desorption_activation_energy'], 'k0': precursor['desorption_attempt_frequency'],
                        'V': precursor["dissociated_volume"], 'D': precursor["diffusion_coefficient"],
+                       'Ed': precursor['diffusion_activation_energy'], 'D0': precursor['diffusion_prefactor'],
                        'rho': precursor['average_density'], 'heat_cond': precursor['thermal_conductivity'],
                        'cp': precursor['heat_capacity'],
                        'dt': dt, 'deposition_scaling': settings['deposition_scaling']}
@@ -510,7 +512,7 @@ def monitoring(pr: Process, l, stats: Statistics = None, location=None, stats_ra
     time_spent = start_time = frame = timeit.default_timer()
     # Initializing graphical monitoring
     rn = None
-    displayed_data = 'temperature'
+    displayed_data = 'surface_temperature'
     if render:
         rn = vr.Render(pr.structure.cell_dimension)
         pr.redraw = True

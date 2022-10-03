@@ -63,6 +63,8 @@ class Process():
         self.__temp_reduced_3d = None
         self.__ghosts_reduced_2d = None
         self.__beam_matrix_reduced_2d = None
+        self.D_temp = None
+        self.tau_temp = None
 
         # Helpers
         self._surface_all = None
@@ -73,6 +75,7 @@ class Process():
         self.__semi_surface_index = None
         self._solid_index = None
         self.__surface_all_index = None
+        self.__tau_flat = None
 
         # Monte Carlo simulation instance
         self.sim = None
@@ -138,6 +141,8 @@ class Process():
         self.temp = self.structure.temperature
         self.surface_temp = np.zeros_like(self.temp)
         self.beam_matrix = np.zeros_like(structure.deposit, dtype=np.int32)
+        self.D_temp = np.zeros_like(self.precursor)
+        self.tau_temp = np.zeros_like(self.precursor)
         self.cell_dimension = self.structure.cell_dimension
         self.cell_V = self.cell_dimension**3
         self.__get_max_z()
@@ -151,12 +156,17 @@ class Process():
         self.n_substrate_cells = self.deposit[:structure.substrate_height].size
 
     def __set_constants(self, params):
+        self.kb = 0.00008617
         self.F = params['F']
         self.n0 = params['n0']
         self.V = params['V']
         self.sigma = params['sigma']
-        self.tau = params['tau']
-        self.D = params['D']
+        self.tau = params.get('tau', 1)
+        self.k0 = params.get('k0', 1)
+        self.Ea = params.get('Ea', 1)
+        self.D = params.get('D', 1)
+        self.D0 = params.get('D0', 1)
+        self.Ed = params.get('Ed', 1)
         self.cp = params['cp']
         self.heat_cond = params['heat_cond']
         self.rho = params['rho']
@@ -444,7 +454,14 @@ class Process():
         :param addon: Runge Kutta term
         :return:
         """
-        return evaluate_cached(self.expressions["precursor_density"],
+        if self.temperature_tracking:
+            tau = self.__tau_flat
+            return evaluate_cached(self.expressions['precursor_density_tau'],
+                                   local_dict={'F_dt': self.F * dt, 'F_dt_n0': self.F*self.n0*dt,
+                                               'sigma_dt':self.sigma*dt, 'dt': dt, 'sub': precursor+addon, 'tau': tau,
+                                               'flux_matrix': beam_matrix}, casting='same_kind')
+        else:
+            return evaluate_cached(self.expressions["precursor_density"],
                                local_dict={'F_dt': self.F * dt,
                                            'F_dt_n0_1_tau_dt': (self.F * dt * self.tau + self.n0 * dt) / (
                                                        self.tau * self.n0),
@@ -461,7 +478,11 @@ class Process():
         :param div:
         :return: flat ndarray
         """
-        return diffusion.diffusion_stencil(grid, surface, self.D, self.dt, self.cell_dimension, self.__surface_index, add=add, div=div)
+        if self.temperature_tracking:
+            D_param = self.__D_temp_reduced_2d
+        else:
+            D_param = self.D
+        return diffusion.diffusion_stencil(grid, surface, D_param, self.dt, self.cell_dimension, self.__surface_all_index, add=add, div=div)
         # return evaluate_cached(expressions["laplace1"], local_dict={'dt_D': dt*D, 'grid_out':grid_out[surface]}, casting='same_kind')
 
     def _laplace_term_rolling(self, grid, surface, ghosts=None, add=0, div: int = 0):
@@ -495,7 +516,15 @@ class Process():
             print(f'Temperature recalculation took {df() - start:.4f} s')
         self.temp[self.substrate_height] = self.room_temp
         self.__get_surface_temp()
+        self.diffusion_coefficient()
+        self.residence_time()
 
+    def diffusion_coefficient(self):
+        self.D_temp[self._surface_all] = self.D0 * np.exp(-self.Ed / self.kb / self.surface_temp[self._surface_all])
+
+    def residence_time(self):
+        self.__tau_flat = 1 / self.k0 * np.exp(self.Ea / self.kb / self.__surface_temp_reduced_2d[self.__surface_reduced_2d])
+        self.__tau_temp_reduced_2d[self.__surface_reduced_2d] = self.__tau_flat
 
     # Data maintenance methods
     # These methods represent an optimization path that provides up to 100x speed up
@@ -551,6 +580,8 @@ class Process():
         self.__beam_matrix_reduced_2d = self.beam_matrix[self.irradiated_area_2D]
         self.__temp_reduced_2d = self.temp[self.irradiated_area_2D]
         self.__surface_temp_reduced_2d = self.surface_temp[self.irradiated_area_2D]
+        self.__D_temp_reduced_2d = self.D_temp[self.irradiated_area_2D]
+        self.__tau_temp_reduced_2d = self.tau_temp[self.irradiated_area_2D]
 
     def __get_irradiated_area(self):
         """
@@ -662,6 +693,10 @@ class Process():
                                     signature=[('F_dt', np.float64), ('F_dt_n0_1_tau_dt', np.float64),
                                                ('addon', np.float64), ('flux_matrix', np.int64),
                                                ('sigma_dt', np.float64), ('sub', np.float64)]),
+                                precursor_density_tau = cache_expression("F_dt-F_dt_n0*sub - sub/tau*dt - sub*sigma_dt * flux_matrix",
+                                            signature=[('F_dt', np.float64), ('F_dt_n0', np.float64), ('dt', np.float64),
+                                                       ('flux_matrix', np.int32), ('sigma_dt', np.float64),
+                                                       ('sub', np.float64), ('tau', np.float64)]),
                                 laplace1=cache_expression("grid_out*dt_D",
                                                           signature=[('dt_D', np.float64), ('grid_out', np.float64)]),
                                 laplace2=cache_expression("grid_out*dt_D_div", signature=[('dt_D_div', np.float64),
