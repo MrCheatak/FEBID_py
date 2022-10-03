@@ -30,7 +30,7 @@ class ETrajMap3d(object):
         self.shape_abs = tuple([x*self.cell_dim for x in self.grid.shape])
 
         self.amplifying_factor = 10000 # artificially increases SE yield to preserve accuracy
-        self.emission_fraction = 1 # fraction of total lost energy spent on secondary electron emission
+        self.emission_fraction = 0.6 # fraction of total lost energy spent on secondary electron emission
         # self.e = e # fitting parameter related to energy required to initiate a SE cascade, material specific, eV
         self.deponat = sim.deponat
         self.substrate = sim.substrate
@@ -38,6 +38,9 @@ class ETrajMap3d(object):
         # self.dn = floor(self.lambda_escape * 2 / self.cell_dim) # number of cells an SE can intersect
         self.trajectories = [] # holds all trajectories mapped to 3d structure
         self.se_traj = [] # holds all trajectories mapped to 3d structure
+        self.wasted_se = None # SEs that did not escape the surface, used for Joule heating
+        self.heat_pe = None # Energy deposiuted by the PEs that is converted to heat
+        self.heat = None # total heating from the inelastic energy
         self.segment_min_length = segment_min_length
 
     def setParametrs(self, structure, segment_min_length=0.3, **mc_params):
@@ -253,7 +256,7 @@ class ETrajMap3d(object):
         e[cell_material==-2] = self.substrate.e
         e[cell_material>=0] = 1000000
         lambda_escape = np.where(cell_material == -1, self.deponat.lambda_escape * 2, 0.00001) + np.where(cell_material == -2, self.substrate.lambda_escape * 2, 0.00001)
-        n_se = dEs / e * self.amplifying_factor * self.emission_fraction  # number of generated SEs, usually ~0.1
+        n_se = dEs / e * self.amplifying_factor  # number of generated SEs, usually ~0.1
 
         length = lambda_escape # explicitly says that every vector has same length that equals SE escape path
         direction[:,0] *= length
@@ -270,9 +273,22 @@ class ETrajMap3d(object):
         # is collected in the cell crossed.
         traversal.generate_flux(self.flux, self.surface.view(dtype=np.uint8), self.cell_dim, coords, pn, direction, sign, t, step_t, n_se, max_traversed_cells) # Cython script
 
+        # Collecting SEs that did not escape the surface
+        exclude = ~include
+        exclude_index = exclude.nonzero()[0]
+        coords_ind = coords_all[:, exclude_index]
+        index = (coords_ind[0], coords_ind[1], coords_ind[2])
+        self.wasted_se = np.zeros_like(self.DE)
+        np.add.at(self.wasted_se, index, self.dEs_all[exclude_index])
+        self.wasted_se[self.grid>=0] = 0
         self.coords = np.empty((coords.shape[0], 2, 3))
         self.coords[:,0] = coords[...]
         self.coords[:,1] = pn[...]
+
+
+    def joule_heating(self):
+        self.heat_pe = self.DE * (1 - self.emission_fraction)
+        self.heat = self.heat_pe + self.wasted_se
 
 
     def __setup_trajectory(self, points, energies, mask):
@@ -380,6 +396,11 @@ class ETrajMap3d(object):
         start = timeit.default_timer()
         self.generate_se()
         print(f'finished. \t {timeit.default_timer() - start}')
+
+        print(f'****Running \'joule_heating\'...', end='')
+        start = timeit.default_timer()
+        self.joule_heating()
+        print(f'finished. \t {timeit.default_timer() - start}')
         a=0
 
-        return self.flux, self.DE # has to be returned, as every process (when using multiprocessing) gets its own copy of the whole class and thus does not write to the original
+        return self.flux, self.heat # has to be returned, as every process (when using multiprocessing) gets its own copy of the whole class and thus does not write to the original

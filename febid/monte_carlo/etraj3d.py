@@ -201,7 +201,8 @@ def read_param(name, expected_type, message="Inappropriate input for ", check_st
             continue
 
 
-def plot(m3d:map3d.ETrajMap3d, sim:et.ETrajectory, primary_e=True, deposited_E=True, secondary_flux=True, secondary_e=False): # plot energy loss and all trajectories
+def plot(m3d:map3d.ETrajMap3d, sim:et.ETrajectory, primary_e=True, deposited_E=True, secondary_flux=True,
+         secondary_e=False, heat_total=False, heat_pe=False, heat_se=False): # plot energy loss and all trajectories
     """
     Show the structure with surface electron flux and electron trajectories
 
@@ -220,6 +221,12 @@ def plot(m3d:map3d.ETrajMap3d, sim:et.ETrajectory, primary_e=True, deposited_E=T
         kwargs['surface_flux'] = m3d.flux
     if secondary_e:
         kwargs['se_traj'] = m3d.coords
+    if heat_total:
+        kwargs['heat_t'] = m3d.heat
+    if heat_pe:
+        kwargs['heat_pe'] = m3d.heat_pe
+    if heat_se:
+        kwargs['heat_se'] = m3d.wasted_se
     render.show_mc_result(sim.grid, **kwargs, interactive=False)
 
 
@@ -259,7 +266,7 @@ def rerun_simulation(y0, x0, sim:et.ETrajectory, dt):
     start = timeit.default_timer()
     m3d.map_follow(sim.passes)
     t = timeit.default_timer() - start
-    # plot(m3d, sim)
+    # plot(m3d, sim, True, True, True, True, True, True, True)
     if m3d.flux.max() > 10000*m3d.amplifying_factor:
         print(f' Encountered infinity in the beam matrix: {np.nonzero(m3d.flux>10000*m3d.amplifying_factor)}')
         m3d.flux[m3d.flux>10000*m3d.amplifying_factor] = 0
@@ -267,7 +274,8 @@ def rerun_simulation(y0, x0, sim:et.ETrajectory, dt):
         print(f'Encountered negative in beam matrix: {np.nonzero(m3d.flux<0)}')
         m3d.flux[m3d.flux<0] = 0
     const = sim.norm_factor/m3d.amplifying_factor/sim.cell_dim**2/sim.m3d.segment_min_length
-    return np.int32(m3d.flux*const), m3d.DE/sim.cell_dim**3
+    m3d.heat *= sim.norm_factor/sim.cell_dim**3
+    return np.int32(m3d.flux*const)
 
 
 if __name__ == '__main__':

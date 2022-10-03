@@ -303,7 +303,7 @@ cdef class SimulationVolume:
         self.shape_abs.x = self.shape.x * self.cell_dim
 
     cdef void get_z_top(self):
-        self.z_top = np.nonzero(self.surface)[0].max() * self.cell_dim
+        self.z_top = (np.nonzero(self.surface)[0].max() - 1) * self.cell_dim
 
 
 ####################################################################################
@@ -371,17 +371,21 @@ cdef int map_trajectory_c(vector[vector[double]] *trajectories, vector[vector[do
     srand(time(NULL))
     for g in range(x0.shape[0]):
         flag = 0
-        coord = coordinate(grid.z_top, y0[g], x0[g])
+        coord = coordinate(grid.shape_abs.z - 0.001, y0[g], x0[g]) # the very first point is at the top of the volume
         e = Electron.__new__(Electron, coord, E0)
-
         push_back_coordinate(&trajectory, e.point)
         # print(f'\nEntry, Recorded point, energy: {e.point, e.E}')
         energy.push_back(e.E)
         e.add_point(coord)
 
+        # coord = coordinate(grid.z_top - 0.001, y0[g], x0[g]) # the incident point is sunk into the solid a tiny bit
+        # e.add_point(coord)
+        # push_back_coordinate(&trajectory, e.point)
+        # energy.push_back(e.E)
+
         i, j, k = e.get_indices(grid.cell_dim)
         if grid.grid[i,j,k] > -1:
-            e.point.z = max_index_less_double(grid.grid[:,j,k], 0) * grid.cell_dim + grid.cell_dim
+            e.point.z = max_index_less_double(grid.grid[:,j,k], 0) * grid.cell_dim + grid.cell_dim - 0.001
             push_back_coordinate(&trajectory, e.point)
             energy.push_back(e.E)
             # print(f'Incident, Recorded point, energy: {e.point, e.E}')
@@ -580,9 +584,19 @@ cdef signed char get_next_crossing(Coordinate point, Coordinate vec, SimulationV
         #       f'c1: {crossing1[0], crossing1[1], crossing1[2]}')
         crossing = pnc
         return 2
+    # Here the scattering points are 'pushed' into the solid
+    # Otherwise they appear at a face of a grid cell which may cause uncertanty
+    # weather the scattering occurred at the surface or in the solid
+    crossing[0] -= sign[0] * 0.001 # pusing the scattering point a tiny bit into the solid
+    crossing[1] -= sign[1] * 0.001
+    crossing[2] -= sign[2] * 0.001
     flag = get_solid_crossing_c(grid.grid, grid.cell_dim, p0, direction, t, step_t, sign, crossing1)
     if flag:
         crossing1 = pnc
+    else:
+        crossing1[0] += sign[0] * 0.001 # pusing the scattering point a tiny bit into the solid
+        crossing1[0] += sign[0] * 0.001
+        crossing1[0] += sign[0] * 0.001
     return flag
 
 @cython.boundscheck(False) # turn off bounds-checking for entire function

@@ -88,7 +88,8 @@ class Render:
                    (-0.27787912231751677, -0.1411181984824172, 0.950194110399093)]
         return self.show(cam_pos=cam_pos)
 
-    def show_mc_result(self, grid, pe_traj=None, deposited_E=None, surface_flux=None, se_traj=None, cam_pos=None, interactive=True):
+    def show_mc_result(self, grid, pe_traj=None, deposited_E=None, surface_flux=None, se_traj=None, heat_t=None,
+                       heat_pe=None, heat_se=None, cam_pos=None, interactive=True):
         pe_traj = copy.deepcopy(pe_traj)
         se_traj = copy.deepcopy(se_traj)
         if grid is not None:
@@ -96,13 +97,21 @@ class Render:
         if pe_traj is not None:
             self._add_trajectory(pe_traj[:,0], pe_traj[:,1], 0.2, step=1, scalar_name='PE Energy, keV', button_name='PEs', cmap='viridis')
         if deposited_E is not None:
-            self._add_3Darray(deposited_E, 1, exclude_zeros=False, opacity=0.7, show_edges=False, scalar_name='Deposited energy, eV', button_name="Deposited energy", cmap='coolwarm', log_scale=True)
+            self._add_3Darray(deposited_E, 1, opacity=0.7, show_edges=False, scalar_name='Deposited energy, eV', button_name="Deposited energy", cmap='coolwarm', log_scale=True)
         if surface_flux is not None:
-            self._add_3Darray(surface_flux, 1, exclude_zeros=False, opacity=1, show_edges=False, scalar_name='SE Flux, 1/(nm^2*s)', button_name="SE surface flux", cmap='plasma', log_scale=True)
+            self._add_3Darray(surface_flux, 1, opacity=1, show_edges=False, scalar_name='SE Flux, 1/(nm^2*s)', button_name="SE surface flux", cmap='plasma', log_scale=True)
         if se_traj is not None:
             max_trajes = 4000
             step = int(se_traj.shape[0]/max_trajes)+1
             self._add_trajectory(se_traj, radius=0.1, step=step, button_name='SEs', cmap=None, color='red')
+        if heat_t is not None:
+            self._add_3Darray(heat_t, 1, opacity=0.7, scalar_name='Total energy transfered to heat, eV', button_name='Total heat', cmap='coolwarm', log_scale=True)
+        if heat_pe is not None:
+            self._add_3Darray(heat_pe, 1, opacity=0.7, scalar_name='Total PE energy transfered to heat, eV',
+                              button_name='PE heat', cmap='coolwarm', log_scale=True)
+        if heat_se is not None:
+            self._add_3Darray(heat_se, 1, opacity=0.7, scalar_name='Total SE energy transfered to heat, eV',
+                              button_name='SE heat', cmap='coolwarm', log_scale=True)
         if cam_pos is None:
             cam_pos = [(463.14450307610286, 271.1171723376318, 156.56895424388603),
                    (225.90027381807235, 164.9577775224395, 71.42188811921902),
