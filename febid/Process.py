@@ -1,7 +1,10 @@
 # Default packages
+import math
 import os, sys
 
 # Core packages
+import warnings
+from timeit import default_timer as df
 import numpy as np
 from numexpr_mod import evaluate_cached, cache_expression
 
@@ -106,6 +109,7 @@ class Process():
         # Initialization sequence
         self.__set_structure(structure)
         self.__set_constants(equation_values)
+        self.precursor[self.surface] = self.nr
         self.__get_timings(timings)
         self.__expressions()
         self.__get_utils()
@@ -201,8 +205,9 @@ class Process():
         new_deposits = [(nd[0][i], nd[1][i], nd[2][i]) for i in range(nd[0].shape[0])]
         self.filled_cells += len(new_deposits)
         for cell in new_deposits:
-            # deposit[cell[0]+1, cell[1], cell[2]] += deposit[cell[0], cell[1], cell[2]] - 1  # if the cell was filled above unity, transferring that surplus to the cell above
-            surplus = self.__deposit_reduced_3d[cell] - 1 # saving deposit overfill to distribute among the neighbors later
+            # deposit[cell[0]+1, cell[1], cell[2]] += deposit[cell[0], cell[1], cell[2]] - 1  # if the cell was filled above unity, transferring that surplus_deposit to the cell above
+            surplus_deposit = self.__deposit_reduced_3d[cell] - 1 # saving deposit overfill to distribute among the neighbors later
+            surplus_precursor = self.__precursor_reduced_3d[cell]
             self.__deposit_reduced_3d[cell] = -1  # a fully deposited cell is always a minus unity
             self.__precursor_reduced_3d[cell] = 0
             self.__ghosts_reduced_3d[cell] = True  # deposited cell belongs to ghost shell
@@ -298,7 +303,7 @@ class Process():
             semi_s_kern[condition] = True
             ghosts_kern = self.__ghosts_reduced_3d[neighbors_1st]
             ghosts_kern[...] = False
-            deposit_kern[surf_kern] += surplus/np.count_nonzero(surf_kern) # distributing among the neighbors
+            deposit_kern[surf_kern] += surplus_deposit / np.count_nonzero(surf_kern) # distributing among the neighbors
 
             surf_kern = self.__surface_reduced_3d[neighbors_2nd]
             semi_s_kern = self.__semi_surface_reduced_3d[neighbors_2nd]
@@ -311,8 +316,10 @@ class Process():
             self.__ghosts_reduced_3d[cell] = True  # deposited cell belongs to ghost shell
             self.__surface_reduced_3d[cell] = False  # rising the surface one cell up (new cell)
             precursor_kern = self.__precursor_reduced_3d[neighbors_2nd]
-            precursor_kern[semi_s_kern] += 0.000001  # only for plotting purpose (to pass vtk threshold filter)
-            precursor_kern[surf_kern] += 0.000001
+            condition = (semi_s_kern | surf_kern) & (precursor_kern<1e-6)
+            precursor_kern[condition] = surplus_precursor
+            # precursor_kern[condition] += 0.000001  # only for plotting purpose (to pass vtk threshold filter)
+            # precursor_kern[condition] += 0.000001
 
             self.__get_max_z()
             self.irradiated_area_2D = np.s_[self.structure.substrate_height-1:self.max_z, :, :] # a volume encapsulating the whole surface
@@ -392,6 +399,30 @@ class Process():
         diffusion_matrix = self._laplace_term_stencil(precursor, surface_all)  # Diffusion term is calculated separately and added in the end
         precursor[surface] += self.__rk4(precursor[surface], self.__beam_matrix_surface)  # An increment is calculated through Runge-Kutta method without the diffusion term
         precursor[surface_all] += diffusion_matrix  # finally adding diffusion term
+
+    def equilibrate(self, eps=1e-4, max_it=10000):
+        """
+        Bring precursor coverage to a steady state with a given accuracy
+
+        It is advised to run this method after updating the surface in order to determine a more accurate precursor
+        density value for newly acquired cells
+
+        :param eps: desired accuracy
+        """
+        from timeit import default_timer as df
+        start = df()
+        for i in range(20):
+            # p_prev = self.__precursor_reduced_2d.copy()
+            self.precursor_density()
+            # norm = np.linalg.norm(self.__precursor_reduced_2d - p_prev)/ np.linalg.norm(self.__precursor_reduced_2d)
+            # if norm < eps:
+            #     print(f'Took {i+1} iteration(s) to equilibrate, took {df() - start}')
+            #     return 1
+        else:
+            # acc = str(norm)[:int(3-math.log10(eps))]
+            # warnings.warn(f'Failed to reach {eps} accuracy in {max_it} iterations in Process.equilibrate. Acheived accuracy: {acc} \n'
+            #               f'Terminating loop.', RuntimeWarning)
+            print(f'Took {i + 1} iteration(s) to equilibrate, took {df() - start}')
 
     def __rk4(self, precursor, beam_matrix):
         """

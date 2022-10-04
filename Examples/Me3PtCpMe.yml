@@ -13,7 +13,7 @@ molecule_diameter: 7.8 # Å  [utke]
 dissociated_volume: 0.094 # nm^3
 Knudsen_number: 1.3 # [utke]
 cross_section: 0.022 # nm^2 [huth]
-diffusion_coefficient: 4000000 # nm^2/s  [fowlkes]
+diffusion_coefficient: 400000 # nm^2/s  [fowlkes]
 sticking_coefficient: 1 # [fowlkes]
 P_vap: 7.7 # Pa [utke]
 residence_time: 100 # µs [fowlkes]
