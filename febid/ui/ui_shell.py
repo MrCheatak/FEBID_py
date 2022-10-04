@@ -522,7 +522,7 @@ class MainPannel(QMainWindow, UI_MainPanel):
                 return
         if self.pattern_source == 'stream_file': # importing printing path from stream_file
             try:
-                printing_path, shape = sp.open_stream_file(self.stream_file_filename, 2, True)
+                printing_path, shape = sp.open_stream_file(self.stream_file_filename, 200, True)
             except:
                 if not self.stream_file_filename:
                     self.view_message('File not specified',

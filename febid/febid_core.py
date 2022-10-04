@@ -20,7 +20,7 @@ from tkinter import filedialog as fd
 import numpy as np
 import pyvista as pv
 
-# Auxillary packages
+# Auxiliary packages
 import pandas as pd
 import openpyxl
 # import matplotlib.pyplot as plt
@@ -41,6 +41,7 @@ import febid.simple_patterns as sp
 # Thus concept serves an alternative diffusion channel
 
 flag = False
+x_pos, y_pos = 0., 0.
 warnings.simplefilter('always')
 
 class ThreadWithResult(Thread):
@@ -64,13 +65,20 @@ class Statistics():
 
     def __init__(self, filename=f'run_id{rnd.randint(100000, 999999)}'):
         self.filename = filename
-        self.columns = ['Time', 'Time passed', 'Sim.time', 'Sim.speed', 'N of cells', 'Growth speed', "Sim.growth rate"]
-        self.units = ['', 's', 's', '', '', '1/s', '1/s']
+        self.columns = ['Time', 'Time passed', 'Sim.time', 'N of cells', 'Volume', 'Min.precursor coverage']
+        # self.units = ['', 's', 's', '', '', '1/s', '1/s']
         self.data = pd.DataFrame(columns=self.columns)
-        self.data.loc[0] = [pd.Timestamp.now(), 0, 0, 0, 0, 0, 0]
+        self.data.loc[0] = [pd.Timestamp.now(), 0, 0, 0, 0, 0]
         self.step = self.data.copy()
         self.parameters = []
         self.parameters_units = []
+        self.save_freq = 2 # seconds
+        self.time = timeit.default_timer()
+
+
+    def add_stat(self, name, first_value=0):
+        self.data[name] = first_value
+        self.columns.append(name)
 
     def __getitem__(self, item):
         return self.data[item]
@@ -90,26 +98,48 @@ class Statistics():
         series = pd.Series(arg)
         series.name = name
         self.parameters.append(series)
+        filename = self.filename + '.xlsx'
+        try:
+            with pd.ExcelWriter(filename, engine='openpyxl', mode='a', if_sheet_exists='replace') as writer:
+                writer.book = openpyxl.load_workbook(filename)
+                for params in self.parameters:
+                    if params.name in writer.book.sheetnames:
+                        del writer.book[params.name]
+                        wks = writer.book.create_sheet(params.name)
+                        writer.sheets[params.name] = wks
+                    params.to_excel(writer, sheet_name=params.name)
+        except Exception as e:
+            print(e.args)
 
-    def append(self, stats):
+    def append(self, *stats):
         """
-        Add a new record to the statistics
+        Add a new record to the statistics.
+        The number of stats must include manually added ones
 
-        :param stats: current simulation time and current number of deposited cells
+        :param stats: current simulation time, current number of deposited cells and manually added columns
         :return:
         """
         self.dt = 0
         self.av_temperature = 0
+        record = {}
+        cols = self.columns
         try:
-            stats = (pd.Timestamp.now(), stats[0], stats[1])
-            time_passed = (stats[0] - self.data.at[0, self.columns[0]]).total_seconds()
-            sim_speed = stats[1] / time_passed
-            growth_speed = stats[2] / time_passed * 60 * 60
-            growth_rate = stats[2] / stats[1]
-            # self.step = pd.Series({self.columns[1]:stats[0], self.columns[3]:stats[1]}, name=pd.Timestamp.now())
+            time_now = pd.Timestamp.now()
+            record[cols[0]] = time_now
+            record[cols[1]] = (time_now - self.data.at[0, cols[0]]).total_seconds()
+            for i in range(len(stats)):
+                record[cols[i+2]] = stats[i]
+            # time_now = pd.Timestamp.now()
+            # sim_time = stats[2]
+            # time_passed = (stats[0] - self.data.at[0, cols[0]]).total_seconds()
+            # sim_speed = stats[1] / time_passed
+            # growth_speed = stats[2] / time_passed * 60 * 60
+            # growth_rate = stats[2] / stats[1]
+            # self.step = pd.Series({cols[1]:stats[0], cols[3]:stats[1]}, name=pd.Timestamp.now())
             # self.step.loc[self.shape[0]] = (stats[0], time_passed, stats[1], sim_speed, stats[2], growth_speed, growth_rate, stats[3])
-            self.data.loc[self.shape[0]] = (stats[0], time_passed, stats[1], sim_speed, stats[2], growth_speed, growth_rate)
+            self.data.loc[self.shape[0]] = tuple([record[cols[i]] for i in range(len(cols))])
         except Exception as e:
+            print('An error occurred while recording statistics.')
             print(e.args)
 
         # self.data = self.data.append(self.step) # DataFrame.append() is not an in-place method like list.append()
@@ -134,9 +164,11 @@ class Statistics():
         If file does not exist, it is automatically created
         If file does exist, sheets with the names used here are overwritten
         """
+        if not timeit.default_timer()-self.time > self.save_freq:
+            return
         filename = self.filename + '.xlsx'
-        vals = [c1 + ', ' + c2 for c1, c2 in zip(self.columns, self.units)]
-        columns = zip(self.columns, vals)
+        # vals = [c1 + ', ' + c2 for c1, c2 in zip(self.columns, self.units)]
+        columns = zip(self.columns, self.columns)
         columns = dict(columns)
         data = self.data.copy()
         data.rename(columns=columns)
@@ -152,12 +184,6 @@ class Statistics():
                         wks = writer.book.create_sheet(sheet_name)
                         writer.sheets[sheet_name] = wks
                     data.to_excel(writer, sheet_name=sheet_name)
-                    for params in self.parameters:
-                        if params.name in writer.book.sheetnames:
-                            del writer.book[params.name]
-                            wks = writer.book.create_sheet(params.name)
-                            writer.sheets[params.name] = wks
-                        params.to_excel(writer, sheet_name=params.name)
             except Exception as e:
                 print(e.args)
                 sys.exit()
@@ -372,7 +398,7 @@ def run_febid_interface(structure, precursor_params, settings, sim_params, path,
 
     kwargs = dict(location=saving_params['filename'], stats_rate=stats_rate,
                   dump_rate=dump_rate, render=rendering['show_process'],
-                  frame_rate=rendering['frame_rate'], refresh_rate=0.5)
+                  frame_rate=rendering['frame_rate'], refresh_rate=1e-5)
     process_obj, sim = run_febid(structure, precursor_params, settings, sim_params, path, dump_stats, kwargs)
     return process_obj, sim
 
@@ -422,7 +448,8 @@ def run_febid(structure, precursor_params, settings, sim_params, path, gather_st
     return process_obj, sim
 
 def print_all(path, process_obj, sim):
-    global flag
+    global flag, x_pos, y_pos
+    x_pos, y_pos = path[0, 0:2]
     start = 0
     av_dwell_time = path[:, 2].mean()
     # av_loops = int(path.shape[0] * av_dwell_time / process_obj.dt)
@@ -430,7 +457,9 @@ def print_all(path, process_obj, sim):
     total_time = path[:,2].sum()
     t = tqdm(total=av_loops, desc='total', position=0)
     for x, y, step in path[start:]:
-        process_obj.beam_matrix[:, :, :] = etraj3d.rerun_simulation(y, x, sim, process_obj.dt)
+        x_pos, y_pos = x, y
+        beam_matrix = etraj3d.rerun_simulation(y, x, sim, process_obj.dt)
+        process_obj.beam_matrix[:, :, :] = beam_matrix
         if process_obj.beam_matrix.max() <= 1:
             warnings.warn('No surface flux!', RuntimeWarning)
             process_obj.beam_matrix[...] = 1
@@ -523,7 +552,6 @@ def monitoring(pr: Process, l, stats: Statistics = None, location=None, stats_ra
         dump_rate = 1e-1 * dump_rate
     # Event loop
     with open('monitor.log', mode='a') as f:
-        f.write(f'Beginning monitor log, {time.strftime("%H:%M:%S", time.localtime())}:\n')
         while not flag:
             now = timeit.default_timer()
             if now > time_spent:  # overall time and speed
@@ -532,33 +560,26 @@ def monitoring(pr: Process, l, stats: Statistics = None, location=None, stats_ra
             if now > frame:  # graphical
                 frame += frame_rate
                 redrawed = update_graphical(rn, pr, frame_rate, now - start_time)
-                if redrawed:
-                    f.write(f'[{time.strftime("%H:%M:%S", time.localtime())}] Redrawed scene.\n')
             if pr.t > stats_time:
                 stats_time += stats_rate
-                stats.append((pr.t, np.count_nonzero(pr.deposit == -1)))
+                stats.append(pr.t, pr.filled_cells, pr.deposited_vol, pr.precursor_min)
                 stats.save_to_file()
-                f.write(f'[{time.strftime("%H:%M:%S", time.localtime())}] Recorded statistics.\n')
             if pr.t > dump_time:
                 dump_time += dump_rate
                 dump_structure(pr.structure, f'{location}')
-                f.write(f'[{time.strftime("%H:%M:%S", time.localtime())}] Dumped structure.\n')
             time.sleep(refresh_rate)
         else:
             if stats_time != np.inf:
-                stats.append((pr.t, np.count_nonzero(pr.deposit == -1)))
+                stats.append(pr.t, pr.filled_cells, pr.deposited_vol, pr.precursor_min)
                 stats.save_to_file()
-                f.write(f'[{time.strftime("%H:%M:%S", time.localtime())}] Recorded statistics.\n')
             if dump_time != np.inf:
                 dump_structure(pr.structure, f'{location}')
-                f.write(f'[{time.strftime("%H:%M:%S", time.localtime())}] Dumped structure.\n')
             if frame != np.inf:
                 rn.p.close()
                 rn = vr.Render(pr.structure.cell_dimension)
                 pr.redraw = True
                 update_graphical(rn, pr, time_step, now-start_time, False)
                 rn.show(interactive_update=False)
-                f.write(f'[{time.strftime("%H:%M:%S", time.localtime())}] Redrawed scene.\n')
     flag = False
     print('Exiting monitoring.')
 
@@ -582,6 +603,12 @@ def update_graphical(rn: vr.Render, pr: Process, time_step, time_spent, update=T
                 rn.p.button_widgets.clear()
             except: pass
             rn.p.clear()
+            # Putting an arrow to indicate beam position
+            start = np.array([0, 0, 100]).reshape(1, 3) # position of the center of the arrow
+            end =  np.array([0, 0, -100]).reshape(1, 3) # direction and resulting size
+            rn.arrow = rn.p.add_arrows(start, end, color='tomato')
+            rn.arrow.SetPosition(x_pos, y_pos, (pr.max_z) * pr.cell_dimension + 10)  # relative to the initial position
+            # Plotting data
             current = 'precursor'
             rn._add_3Darray(data, opacity=1, scalar_name='Precursor',
                             button_name='precursor', show_edges=True, cmap='plasma')
@@ -599,14 +626,24 @@ def update_graphical(rn: vr.Render, pr: Process, time_step, time_spent, update=T
             pass
         rn.meshes_count += 1
         pr.redraw = False
+    # Changing arrow position
+    if pr.max_z != pr.max_z_prev:
+        rn.arrow.SetPosition(x_pos, y_pos, (pr.max_z)*pr.cell_dimension+10) # relative to the initial position
+        pr.max_z_prev = pr.max_z
     # Calculating values to indicate
     pr.n_filled_cells.append(pr.filled_cells)
     i = len(pr.n_filled_cells) - 1
     time_real = str(datetime.timedelta(seconds=int(time_spent)))
     speed = pr.t / time_spent
     height = (pr.max_z - pr.substrate_height) * pr.structure.cell_dimension
-    total_V = int((pr.filled_cells + pr.deposit[pr.surface].sum()) * pr.cell_V)
-    growth_rate = int((total_V-pr.vol_prev) / (pr.t-pr.t_prev) / pr.deposition_scaling)
+    total_V = int(pr.deposited_vol)
+    delta_t = pr.t-pr.t_prev
+    delta_V = total_V-pr.vol_prev
+    if delta_t == 0 or delta_V == 0:
+        growth_rate = pr.growth_rate
+    else:
+        growth_rate = delta_V / delta_t / pr.deposition_scaling
+        growth_rate = int(growth_rate)
     pr.t_prev = pr.t
     pr.vol_prev = total_V
     # Updating displayed text

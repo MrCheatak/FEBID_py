@@ -382,4 +382,4 @@ class ETrajMap3d(object):
         print(f'finished. \t {timeit.default_timer() - start}')
         a=0
 
-        return self.flux, self.DE # has to be returned, as every process (when using multiprocessing) gets its own copy of the whole class and thus does not write to the original
+        return self.flux, self.DE, dEs_all # has to be returned, as every process (when using multiprocessing) gets its own copy of the whole class and thus does not write to the original

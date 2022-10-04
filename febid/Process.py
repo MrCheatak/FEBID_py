@@ -15,6 +15,18 @@ import febid.diffusion as diffusion
 # TODO: look into k-d trees
 # TODO: add a benchmark to determine optimal threads number for current machine
 
+def restrict(func):
+    """
+    Prevent the decorated method to run, if the 'allow' property is not True
+    """
+    def inner(self):
+        if self.allow:
+            return_vals = func(self)
+        else:
+            warnings.warn(f'Not allowed to operate on main arrays in {func} during resizing', RuntimeWarning)
+            return_vals = -1
+        return return_vals
+    return inner
 
 class Process():
     """
@@ -94,15 +106,17 @@ class Process():
         self.redraw = True # flag for external functions saying that surface has been updated
         self.t_prev = 0
         self.vol_prev = 0
-        
+        self.growth_rate = 0
+        self.allow = True # prevent r/w operations on main arrays (i.e. during resizing)
+
         # Statistics
         self.substrate_height = 0 # Thickness of the substrate
         self.n_substrate_cells = 0 # the number of the cells in the substrate
         self.max_neib = 0 # the number of surface nearest neighbors that could be escaped by a SE
         self.max_z = 0 # maximum height of the deposited structure, cells
+        self.max_z_prev = 0
         self.filled_cells = 0 # current number of filled cells
         self.n_filled_cells = []
-        self.growth_rate = []
         self.execution_speed = 0
         self.profiler= None
 
@@ -363,6 +377,7 @@ class Process():
         if self.max_z + 5 > self.structure.shape[0]:
             # Here the Structure is extended in height
             # and all the references to the data arrays are renewed
+            self.allow = False # restricting access to the arrays
             shape_old = self.structure.shape
             self.structure.resize_structure(200)
             self.structure.define_surface_neighbors(self.max_neib)
@@ -370,6 +385,7 @@ class Process():
             self.__set_structure(self.structure)
             self.beam_matrix[:shape_old[0], :shape_old[1], :shape_old[2]] = beam_matrix
             self.redraw = True
+            self.allow = True
             # Basically, none of the slices have to be updated, because they use indexes, not references.
             return True
         return False
@@ -528,6 +544,7 @@ class Process():
         #  on the necessary array.
         # '2D view' taken here can be referred to as a volume that encapsulates
         #  the whole surface of the deposited structure. This means it takes a view only along the z-axis.
+        self.__deposit_reduced_2d = self.deposit[self.irradiated_area_2D]
         self.__precursor_reduced_2d = self.precursor[self.irradiated_area_2D]
         self.__surface_reduced_2d = self.surface[self.irradiated_area_2D]
         self.__semi_surface_reduced_2d = self.semi_surface[self.irradiated_area_2D]
@@ -586,6 +603,7 @@ class Process():
         Get z position of the highest not empty cell in the structure
         :return:
         """
+        self.max_z_prev = self.max_z
         self.max_z = self.deposit.nonzero()[0].max() + 3
 
     # Misc
@@ -650,8 +668,20 @@ class Process():
     def nd(self):
         return self.F/self.kd
     @property
+    @restrict
     def deposited_vol(self):
-        return (self.filled_cells + self.deposit[self.surface].sum()) * self.cell_V
+        return (self.filled_cells + self.__deposit_reduced_2d[self.__surface_reduced_2d].sum()) * self.cell_V
+    @property
+    @restrict
+    def precursor_min(self):
+        try:
+            return self.__precursor_reduced_3d[self.__surface_reduced_3d].min()
+        except Exception as e:
+            print(f'During determination of the lowest current precursor density value, the following error occurred: \n'
+                  f'{e.args}')
+            return -1
+
+
 
 if __name__ == '__main__':
     print("Current script does not have an entry point.....")

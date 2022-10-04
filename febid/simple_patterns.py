@@ -5,7 +5,7 @@ import tkinter.filedialog as fd
 import numpy as np
 
 
-def open_stream_file(file=None, offset=2, collapse=False):
+def open_stream_file(file=None, offset=200, collapse=False):
     """
     Open stream file, convert to nm and define enclosing volume dimensions.
         A valid stream-file should consist of 3 columns and start with 's16' line.
@@ -22,19 +22,18 @@ def open_stream_file(file=None, offset=2, collapse=False):
     data = None
 
     # Opening file and parsing text
-    with open(file, encoding='utf-8', errors='ignore') as f:
+    with open(file, mode='r+', encoding='utf-8', errors='ignore') as f:
         text = f.readlines()
         if text[0] != 's16\n':
             raise Exception('Not a valid stream file!')
-            return 0
         delim = ' '  # delimiter between the columns
-        header = 2  # number of lines to skip in the beginning
+        header = 3  # number of lines to skip in the beginning
         columns = (0, 1, 2)  # numbers of columns to get
         # Defult columns:
         # 0 – Dwell time
         # 1 – x-position
         # 2 – y-position
-        f = open(file, encoding='utf-8', errors='ignore')
+    with open(file, mode='r+', encoding='utf-8', errors='ignore') as f:
         print('Reading stream-file...')
         data = np.genfromtxt(f, dtype=np.float64, comments='#', delimiter=delim, skip_header=header, usecols=columns,
                              invalid_raise=False)
@@ -43,11 +42,11 @@ def open_stream_file(file=None, offset=2, collapse=False):
     # Determining volume dimensions with an offset
     # offset -= 1
     x_max, x_min = data[:, 1].max(), data[:, 1].min()
-    x_dim = (x_max - x_min) * offset
-    x_delta = (x_max - x_min) * (offset - 1) / 2
+    x_dim = (x_max - x_min) + offset*10
+    x_delta = offset * 10 / 2
     y_max, y_min = data[:, 2].max(), data[:, 2].min()
-    y_dim = (y_max - y_min) * offset
-    y_delta = (y_max - y_min) * (offset - 1) / 2
+    y_dim = (y_max - y_min) + offset*10
+    y_delta = offset * 10 / 2
     z_dim = max(x_dim, y_dim) * 2
 
     if x_dim < 1000 or y_dim < 1000: # checking if both dimensions are at least 100 nm
@@ -55,8 +54,9 @@ def open_stream_file(file=None, offset=2, collapse=False):
             x_dim = ((y_dim/2)//10)*10
             x_delta = x_dim/2
         if y_dim < 1000:
-            y_dim = ((x_dim/2)//10)*10
-            y_delta =  y_dim/2
+            # y_dim = ((x_dim/2)//10)*10Y
+            y_dim = 2000
+            y_delta = y_dim/2
     # Getting local coordinates
     data[:, 0] /= 1E7  # converting [0.1 µs] to [s]
     data[:, 1] -= x_min - x_delta

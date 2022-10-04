@@ -259,6 +259,7 @@ class ETrajectory(object):
         # instead of using deponat and substrate variables, there can be a dictionary, where substrate is always last
         self.E0 = params['E0']
         self.Emin = params['Emin']
+        self.I0 = params['I0']
         self.grid = deposit
         self.surface = surface
         self.s_neghib = surface_neighbors
@@ -266,7 +267,7 @@ class ETrajectory(object):
         self.sigma = params['sigma']
         self.n = params.get('n', 1)
         self.N = stat
-        self.norm_factor = params['N'] / self.N / self.elementary_charge
+        self.norm_factor = (self.I0 / self.elementary_charge) / self.N
 
         self.deponat = Element(params['name'], params['Z'], params['A'], params['rho'], params['e'], params['l'], -1)
         self.substrate = substrates[params['sub']]
@@ -276,7 +277,7 @@ class ETrajectory(object):
         self.__calculate_attributes()
 
         self.m3d = map3d.ETrajMap3d(self.grid, self.surface, surface_neighbors, self)
-        self.m3d.emission_fraction = params['emission_fraction']
+        self.m3d.emission_fraction = params.get('emission_fraction', 1)
 
     def setParams_MC_test(self, structure, params):
         self.E0 = params['E0']

@@ -40,6 +40,7 @@ class Render:
         self.y_pos = 5 # y-position of a button
         self.x_pos = self.size + 5 # x-position of a button
         self.meshes_count = 0
+        self.arrow = None # serves to indicate beam position
     class SetVisibilityCallback:
         """
         Helper callback to keep a reference to the actor being modified.

@@ -24,7 +24,7 @@ def open_file(directory=''):
     # Unzipping and returning in the order sorted
     # directory = '/Users/sandrik1742/Documents/PycharmProjects/FEBID/code/Experiment runs/gr=0'
     files = sorted(os.listdir(directory))[1:]
-    for i in range(len(files)-1):
+    for i in range(len(files)):
         if os.path.splitext(files[i])[1] != '.vtk':
             files.pop(i)
     ctimes = [time.ctime(os.path.getmtime(os.path.join(directory, file))) for file in files]
@@ -60,6 +60,8 @@ def show_animation(directory='', show='precursor'):
 
     # Opening files
     if not directory:
+        os.chdir('../../..')
+        init_dir = os.getcwd()
         directory = fd.askdirectory()
     files, times = open_file(directory)
     # Getting data

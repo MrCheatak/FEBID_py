@@ -1,7 +1,7 @@
 """
 View the 3D-structure files produced by the simulation.
 """
-import sys
+import sys, os
 import numpy as np
 import pyvista as pv
 from tkinter import filedialog as fd
@@ -9,9 +9,8 @@ from febid.libraries.vtk_rendering import VTK_Rendering as vr
 from febid.Structure import Structure
 
 
-def show_structure(solid=True, deposit=True, precursor=True, surface=True, semi_surface=True, ghost=True):
+def show_structure(filenames, solid=True, deposit=True, precursor=True, surface=True, semi_surface=True, ghost=True):
 
-    filenames = fd.askopenfilename(multiple=True)
     font_size = 12
     for filename in filenames:
         print(f'Opening file {filename}')
@@ -53,10 +52,14 @@ def show_structure(solid=True, deposit=True, precursor=True, surface=True, semi_
 if __name__ == '__main__':
     # show = Thread(target=show_structure)
     # show.start()
-    filename = None
+    filenames = None
     try:
         filename = sys.argv[1]
     except Exception as e:
         print(e.args)
-        pass
-    show_structure(True, True, True, True, True, True)
+        if not filenames:
+            os.chdir('../../..')
+            init_dir = os.getcwd()
+            filenames = fd.askopenfilename(multiple=True)
+
+    show_structure(filenames, True, True, True, True, True, True)
