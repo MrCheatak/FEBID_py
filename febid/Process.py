@@ -10,6 +10,8 @@ from febid import Structure
 import febid.diffusion as diffusion
 import febid.heat_transfer as heat_transfer
 
+from timeit import default_timer as df
+
 # TODO: look into k-d trees
 # TODO: add a benchmark to determine optimal threads number for current machine
 
@@ -56,6 +58,7 @@ class Process():
         self.__semi_surface_reduced_3d = None
         self.__surface_all_reduced_3d = None
         self.__ghosts_reduced_3d = None
+        self.__temp_reduced_3d = None
         self.__ghosts_reduced_2d = None
         self.__beam_matrix_reduced_2d = None
 
@@ -65,6 +68,7 @@ class Process():
         self.__beam_matrix_effective = None
         self.__deposition_index = None
         self.__surface_index = None
+        self._solid_index = None
 
         # Monte Carlo simulation instance
         self.sim = None
@@ -97,6 +101,7 @@ class Process():
         self.redraw = True # flag for external functions saying that surface has been updated
         self.t_prev = 0
         self.vol_prev = 0
+        self.temperature_tracking = True
         
         # Statistics
         self.substrate_height = 0 # Thickness of the substrate
@@ -137,6 +142,7 @@ class Process():
         self.__update_views_3d()
         self.__generate_surface_index()
         self.__generate_deposition_index()
+        self._get_solid_index()
         self.n_substrate_cells = self.deposit[:structure.substrate_height].size
 
     def __set_constants(self, params):
@@ -214,6 +220,7 @@ class Process():
             # deposit[cell[0]+1, cell[1], cell[2]] += deposit[cell[0], cell[1], cell[2]] - 1  # if the cell was filled above unity, transferring that surplus to the cell above
             surplus = self.__deposit_reduced_3d[cell] - 1 # saving deposit overfill to distribute among the neighbors later
             self.__deposit_reduced_3d[cell] = -1  # a fully deposited cell is always a minus unity
+            self.__temp_reduced_3d[cell] = self.room_temp
             self.__precursor_reduced_3d[cell] = 0
             self.__ghosts_reduced_3d[cell] = True  # deposited cell belongs to ghost shell
             self.__surface_reduced_3d[cell] = False  # rising the surface one cell up (new cell)
@@ -299,6 +306,7 @@ class Process():
             deposit_kern = self.__deposit_reduced_3d[neighbors_1st]
             semi_s_kern = self.__semi_surface_reduced_3d[neighbors_1st]
             surf_kern = self.__surface_reduced_3d[neighbors_1st]
+            temp_kern = self.__temp_reduced_3d[neighbors_1st]
             # Creating condition array
             condition = np.logical_and(deposit_kern == 0, neibs_sides)  # True for elements that are not deposited and are side neighbors
             # Updating main arrays
@@ -309,6 +317,8 @@ class Process():
             ghosts_kern = self.__ghosts_reduced_3d[neighbors_1st]
             ghosts_kern[...] = False
             deposit_kern[surf_kern] += surplus/np.count_nonzero(surf_kern) # distributing among the neighbors
+            condition = (temp_kern > 0)
+            self.__temp_reduced_3d[cell] = temp_kern[condition].sum()/np.count_nonzero(condition)
 
             surf_kern = self.__surface_reduced_3d[neighbors_2nd]
             semi_s_kern = self.__semi_surface_reduced_3d[neighbors_2nd]
@@ -321,7 +331,7 @@ class Process():
             self.__ghosts_reduced_3d[cell] = True  # deposited cell belongs to ghost shell
             self.__surface_reduced_3d[cell] = False  # rising the surface one cell up (new cell)
             precursor_kern = self.__precursor_reduced_3d[neighbors_2nd]
-            precursor_kern[semi_s_kern] += 0.000001  # only for plotting purpose (to pass vtk threshold filter)
+            precursor_kern[semi_s_kern] += 0.000001  # for stensil and plotting purpose (to pass vtk threshold filter)
             precursor_kern[surf_kern] += 0.000001
 
             self.__get_max_z()
@@ -362,6 +372,8 @@ class Process():
                                                     deposit_red_2d[n_3d],
                                                     surface_red_2d[n_3d],
                                                     neighbors_2d[n_3d])
+
+        self._get_solid_index()
 
         if self.max_z + 5 > self.structure.shape[0]:
             # Here the Structure is extended in height
@@ -462,11 +474,22 @@ class Process():
 
         return diffusion.diffusion_rolling(grid, surface, ghosts, self.D, self.dt, self.cell_dimension, flat=True, add=add, div=div)
 
-    def heat_transfer(self, heating):
-        slice = np.s_[self.substrate_height-1:self.max_z,:,:] # using only top layer of the substrate
-        heat_transfer.heat_transfer_BE(self.temp[slice], 'heatsink', self.heat_cond, self.cp,
-                                           self.rho, self.dt, self.cell_dimension, heating[slice],)
-        # self.temp[self.substrate_height] = self.room_temp
+    def heat_transfer(self, heating=0):
+        if self.max_z - self.substrate_height - 3 > 2:
+            slice = np.s_[self.substrate_height+1:self.max_z,:,:] # using only top layer of the substrate
+            if type(heating) is np.ndarray:
+                heat = heating[slice]
+            else:
+                heat = heating
+            # heat_transfer.heat_transfer_BE(self.temp[slice], 'heatsink', self.heat_cond, self.cp,
+            #                                    self.rho, self.dt, self.cell_dimension, heat,)
+            # self.temp[slice] += heat_transfer.temperature_stencil(self.temp[slice], self.heat_cond, self.cp,
+            #                                    self.rho, self.dt, self.cell_dimension, heat,)
+            start = df()
+            heat_transfer.heat_transfer_steady_sor(self.temp[slice], self.heat_cond, self.cell_dimension, heat, 1e-7, self._solid_index)
+            print(f'Temperature recalculation took {df() - start:.4f} s')
+        self.temp[self.substrate_height] = self.room_temp
+
 
 
     # Data maintenance methods
@@ -501,6 +524,7 @@ class Process():
         self.__semi_surface_reduced_3d = self.semi_surface[self.irradiated_area_3D]
         self.__surface_all_reduced_3d = self._surface_all[self.irradiated_area_3D]
         self.__ghosts_reduced_3d = self.ghosts[self.irradiated_area_3D]
+        self.__temp_reduced_3d = self.temp[self.irradiated_area_3D]
         self.__beam_matrix_reduced_3d = self.beam_matrix[self.irradiated_area_3D]
 
     def __update_views_2d(self):
@@ -566,6 +590,11 @@ class Process():
         :return:
         """
         self.__beam_matrix_surface = self.__beam_matrix_reduced_2d[self.__surface_reduced_2d]
+
+    def _get_solid_index(self):
+        index = self.deposit[self.substrate_height+1:].nonzero()
+        self._solid_index = (np.intc(index[0]), np.intc(index[1]), np.intc(index[2]))
+        return self._solid_index
 
     def __get_max_z(self):
         """

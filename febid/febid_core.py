@@ -431,13 +431,14 @@ def print_all(path, process_obj, sim):
     total_time = path[:,2].sum()
     t = tqdm(total=av_loops, desc='total', position=0)
     for x, y, step in path[start:]:
-        beam_matrix, dep_energy = etraj3d.rerun_simulation(y, x, sim, process_obj.dt)
+        beam_matrix = etraj3d.rerun_simulation(y, x, sim, process_obj.dt)
         process_obj.beam_matrix[:, :, :] = beam_matrix
         if process_obj.beam_matrix.max() <= 1:
             warnings.warn('No surface flux!', RuntimeWarning)
             process_obj.beam_matrix[...] = 1
         process_obj.get_dt()
         process_obj.update_helper_arrays()
+        process_obj.heat_transfer(sim.m3d.heat)
         av_loops = path[:, 2].sum() / process_obj.dt
         t.total = av_loops
         print_step(y, x, step, process_obj, sim, t)
@@ -459,7 +460,6 @@ def print_step(y, x, dwell_time, pr: Process, sim, t):
     time = 0
     while time < dwell_time:  # loop repeats
         pr.deposition()  # depositing on a selected area
-        pr.heat_transfer(sim.m3d.DE/pr.cell_V*1.60217733E-19)
         if pr.check_cells_filled():
             flag = pr.update_surface()  # updating surface on a selected area
             if flag:
@@ -476,6 +476,7 @@ def print_step(y, x, dwell_time, pr: Process, sim, t):
                 continue
             pr.get_dt()
             pr.update_helper_arrays()
+            pr.heat_transfer(sim.m3d.heat)
             a = 1
         pr.precursor_density()
         pr.t += pr.dt
@@ -509,6 +510,7 @@ def monitoring(pr: Process, l, stats: Statistics = None, location=None, stats_ra
     time_spent = start_time = frame = timeit.default_timer()
     # Initializing graphical monitoring
     rn = None
+    displayed_data = 'temperature'
     if render:
         rn = vr.Render(pr.structure.cell_dimension)
         pr.redraw = True
@@ -534,7 +536,7 @@ def monitoring(pr: Process, l, stats: Statistics = None, location=None, stats_ra
                 # print(f'Time passed: {time_spent}, Av.speed: {l / time_spent}')
             if now > frame:  # graphical
                 frame += frame_rate
-                redrawed = update_graphical(rn, pr, frame_rate, now - start_time)
+                redrawed = update_graphical(rn, pr, frame_rate, now - start_time, displayed_data)
                 if redrawed:
                     f.write(f'[{time.strftime("%H:%M:%S", time.localtime())}] Redrawed scene.\n')
             if pr.t > stats_time:
@@ -559,14 +561,14 @@ def monitoring(pr: Process, l, stats: Statistics = None, location=None, stats_ra
                 rn.p.close()
                 rn = vr.Render(pr.structure.cell_dimension)
                 pr.redraw = True
-                update_graphical(rn, pr, time_step, now-start_time, False)
+                update_graphical(rn, pr, time_step, now-start_time, displayed_data, False)
                 rn.show(interactive_update=False)
                 f.write(f'[{time.strftime("%H:%M:%S", time.localtime())}] Redrawed scene.\n')
     flag = False
     print('Exiting monitoring.')
 
 
-def update_graphical(rn: vr.Render, pr: Process, time_step, time_spent, update=True):
+def update_graphical(rn: vr.Render, pr: Process, time_step, time_spent, displayed_data='precursor', update=True):
     """
     Update the visual representation of the current process state
 
@@ -576,21 +578,31 @@ def update_graphical(rn: vr.Render, pr: Process, time_step, time_spent, update=T
     :param time_spent:
     :return:
     """
-    data = pr.precursor
+    if displayed_data == 'precursor':
+        data = pr.precursor
+        mask = pr.surface
+    if displayed_data == 'deposit':
+        data = pr.deposit
+        mask = pr.surface
+    if displayed_data == 'temperature':
+        data = pr.temp
+        mask = pr.deposit < 0
+    # data = pr.temp
     redrawed = pr.redraw
     if pr.redraw:
         try:
+            # Clearing scene
             rn.y_pos = 5
             try:
                 rn.p.button_widgets.clear()
             except: pass
             rn.p.clear()
             current = 'precursor'
-            rn._add_3Darray(data, opacity=1, scalar_name='Precursor',
-                            button_name='precursor', show_edges=True, cmap='plasma')
+            rn._add_3Darray(data, opacity=1, scalar_name=displayed_data,
+                            button_name=displayed_data, show_edges=True, cmap='plasma')
             scalar = rn.p.mesh.active_scalars_name
             rn.p.mesh[scalar] = data.reshape(-1)
-            rn.update_mask(pr.surface)
+            rn.update_mask(mask)
             rn.p.add_text('.', position='upper_left', font_size=12, name='time')
             rn.p.add_text('.', position='upper_right', font_size=12, name='stats')
             rn.show(interactive_update=True, cam_pos=[(206.34055818793468, 197.6510638707941, 100.47106597548205),
@@ -608,22 +620,28 @@ def update_graphical(rn: vr.Render, pr: Process, time_step, time_spent, update=T
     time_real = str(datetime.timedelta(seconds=int(time_spent)))
     speed = pr.t / time_spent
     height = (pr.max_z - pr.substrate_height) * pr.structure.cell_dimension
-    total_V = int((pr.filled_cells + pr.deposit[pr.surface].sum()) * pr.cell_V)
-    growth_rate = int((total_V-pr.vol_prev) / (pr.t-pr.t_prev) / pr.deposition_scaling)
+    try:
+        total_V = int((pr.filled_cells + pr.deposit[pr.surface].sum()) * pr.cell_V)
+        growth_rate = int((total_V-pr.vol_prev) / (pr.t-pr.t_prev) / pr.deposition_scaling)
+    except ZeroDivisionError:
+        warnings.warn('Zero time difference in growth rate calculation', RuntimeWarning)
+        growth_rate = 0
     pr.t_prev = pr.t
     pr.vol_prev = total_V
+    max_T = pr.temp.max()
     # Updating displayed text
     rn.p.textActor.renderer.actors['time'].SetText(2,
                     f'Time: {time_real} \n' # showing real time passed 
                     f'Sim. time: {(pr.t*pr.deposition_scaling):.8f} s \n' # showing simulation time passed
                     f'Speed: {speed:.8f} \n'  
-                    f'Av. growth rate: {growth_rate} nm^3/s')
+                    f'Av. growth rate: {growth_rate} nm^3/s \n'
+                    f'Max. temperature: {max_T:.3f} K')
     rn.p.textActor.renderer.actors['stats'].SetText(3,
                     f'Cells: {pr.n_filled_cells[i]} \n'  # showing total number of deposited cells
                     f'Height: {height} nm \n'
                     f'Volume: {total_V} nm^3')
     # Updating scene
-    rn.update_mask(pr.surface)
+    rn.update_mask(mask)
     try:
         min = data[data > 0.00001].min()
     except:

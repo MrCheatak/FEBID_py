@@ -158,6 +158,35 @@ def heat_transfer_BE(grid, conditions, k, cp, rho, dt, dl, heat_source = 0, subs
     return True
 
 
+def heat_transfer_steady_sor(grid, k, dl, s, eps, index=None):
+    print(f'\nFinding steady state solution using Simulateous Over-Relaxation:')
+    p_j = 1 - np.pi ** 2 / grid.shape[0] ** 2 / 2
+    global a
+    S = s*dl**2/k * 1.60217733E-19
+    anormf = np.abs(S).sum()
+    if index:
+        z, y, x = index
+    else:
+        z, y, x = grid.nonzero()
+        z, y, x = z.astype(np.intc), y.astype(np.intc), x.astype(np.intc)
+    iy, ix = (grid[0]>0).nonzero()
+    for i in range(100000):
+        if i == 0:
+            w = 1 / (1 - p_j ** 2 / 2)
+        else:
+            w = 1 / (1 - p_j ** 2 * w / 4)
+        grid_gs = grid.copy()
+        roll.stencil_sor(grid, S, w, z, y, x)
+        # grid -= w*grid_gs/6
+        # anorm = np.abs(grid_gs).sum()
+        norm = 0
+        norm = (np.linalg.norm(grid[1:]-grid_gs[1:])/ np.linalg.norm(grid[1:]))
+        grid[0, iy, ix] = 294
+        if eps> norm:
+            print(f'Reached solution with an error of {norm}')
+            return grid
+
+
 def fragmentise(grid):
     """
     Collect columns along each axis that do not contain zero cells
