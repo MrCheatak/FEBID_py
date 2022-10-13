@@ -412,9 +412,10 @@ class Process():
         precursor = self.__precursor_reduced_2d
         surface_all = self.__surface_all_reduced_2d
         surface = self.__surface_reduced_2d
-        diffusion_matrix = self._laplace_term_stencil(precursor, surface_all)  # Diffusion term is calculated separately and added in the end
+        # diffusion_matrix = self._laplace_term_stencil(precursor, surface_all)  # Diffusion term is calculated separately and added in the end
+        diffusion_matrix = self.__rk4_diffusion(precursor, surface_all)
         precursor[surface] += self.__rk4(precursor[surface], self.__beam_matrix_surface)  # An increment is calculated through Runge-Kutta method without the diffusion term
-        precursor[surface_all] += diffusion_matrix  # finally adding diffusion term
+        precursor[surface_all] += diffusion_matrix[surface_all]  # finally adding diffusion term
 
     def equilibrate(self, eps=1e-4, max_it=10000):
         """
@@ -453,6 +454,16 @@ class Process():
         k3 = self.__precursor_density_increment(precursor, beam_matrix, self.dt / 2, k2 / 2)
         k4 = self.__precursor_density_increment(precursor, beam_matrix, self.dt, k3)
         return evaluate_cached(self.expressions["rk4"], casting='same_kind')
+
+    def __rk4_diffusion(self, grid, surface):
+        dt = self.dt
+        k1 = diffusion.laplace_term_stencil(grid, surface, self.D, dt, self.cell_dimension, self.__surface_index, flat=False)
+        k1[surface] /= 2
+        k2 = diffusion.laplace_term_stencil(grid, surface, self.D, dt/2, self.cell_dimension, self.__surface_index, add=k1, flat=False)
+        k2[surface] /= 2
+        k3 = diffusion.laplace_term_stencil(grid, surface, self.D, dt/2, self.cell_dimension, self.__surface_index, add=k2, flat=False)
+        k4 = diffusion.laplace_term_stencil(grid, surface, self.D, dt, self.cell_dimension, self.__surface_index, add=k3, flat=False)
+        return evaluate_cached(self.expressions['rk4'], casting='same_kind')
 
     def __precursor_density_increment(self, precursor, beam_matrix, dt, addon=0.0):
         """

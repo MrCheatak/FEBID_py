@@ -501,7 +501,7 @@ def print_step(y, x, dwell_time, pr: Process, sim, t):
                 continue
             pr.get_dt()
             pr.update_helper_arrays()
-            pr.equilibrate()
+            # pr.equilibrate()
             a = 1
         pr.precursor_density()
         pr.t += pr.dt
