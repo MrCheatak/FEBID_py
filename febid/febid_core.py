@@ -8,8 +8,7 @@
 # Default packages
 import datetime
 import math
-import os, sys
-import random as rnd
+import sys
 import time
 import warnings
 import timeit
@@ -21,13 +20,10 @@ import numpy as np
 import pyvista as pv
 
 # Auxiliary packages
-import pandas as pd
-import openpyxl
-# import matplotlib.pyplot as plt
-# from matplotlib import cm
 import yaml
 from tqdm import tqdm
 
+from febid.Statistics import Statistics
 # Local packages
 from .Structure import Structure
 from .Process import Process
@@ -51,163 +47,6 @@ class ThreadWithResult(Thread):
             self.result = target(*args, **kwargs)
         super().__init__(group=group, target=function, name=name, daemon=daemon)
 
-
-class Statistics():
-    """
-    Class implementing statistics gathering and saving(to excel).
-
-        Report contains following columns:
-
-    Time, Time passed, Simulation time, Simulation speed, N of cells(filled), Growth speed, Simulation growth speed
-
-        Additionally, initial simulation parameters are added to 3 separate sheets
-    """
-
-    def __init__(self, filename=f'run_id{rnd.randint(100000, 999999)}'):
-        self.filename = filename
-        self.columns = ['Time', 'Time passed', 'Sim.time', 'N of cells', 'Volume', 'Min.precursor coverage']
-        # self.units = ['', 's', 's', '', '', '1/s', '1/s']
-        self.data = pd.DataFrame(columns=self.columns)
-        self.data.loc[0] = [pd.Timestamp.now(), 0, 0, 0, 0, 0]
-        self.step = self.data.copy()
-        self.parameters = []
-        self.parameters_units = []
-        self.save_freq = 2 # seconds
-        self.time = timeit.default_timer()
-
-
-    def add_stat(self, name, first_value=0):
-        self.data[name] = first_value
-        self.columns.append(name)
-
-    def __getitem__(self, item):
-        return self.data[item]
-
-    @property
-    def shape(self):
-        return self.data.shape
-
-    def get_params(self, arg: dict, name: str):
-        """
-        Collect initial parameters
-
-        :param arg: a dictionary of parameters
-        :param name: a name for the provided parameters
-        :return:
-        """
-        series = pd.Series(arg)
-        series.name = name
-        self.parameters.append(series)
-        filename = self.filename + '.xlsx'
-        try:
-            with pd.ExcelWriter(filename, engine='openpyxl', mode='a', if_sheet_exists='replace') as writer:
-                writer.book = openpyxl.load_workbook(filename)
-                for params in self.parameters:
-                    if params.name in writer.book.sheetnames:
-                        del writer.book[params.name]
-                        wks = writer.book.create_sheet(params.name)
-                        writer.sheets[params.name] = wks
-                    params.to_excel(writer, sheet_name=params.name)
-        except Exception as e:
-            print(e.args)
-
-    def append(self, *stats):
-        """
-        Add a new record to the statistics.
-        The number of stats must include manually added ones
-
-        :param stats: current simulation time, current number of deposited cells and manually added columns
-        :return:
-        """
-        self.dt = 0
-        self.av_temperature = 0
-        record = {}
-        cols = self.columns
-        try:
-            time_now = pd.Timestamp.now()
-            record[cols[0]] = time_now
-            record[cols[1]] = (time_now - self.data.at[0, cols[0]]).total_seconds()
-            for i in range(len(stats)):
-                record[cols[i+2]] = stats[i]
-            # time_now = pd.Timestamp.now()
-            # sim_time = stats[2]
-            # time_passed = (stats[0] - self.data.at[0, cols[0]]).total_seconds()
-            # sim_speed = stats[1] / time_passed
-            # growth_speed = stats[2] / time_passed * 60 * 60
-            # growth_rate = stats[2] / stats[1]
-            # self.step = pd.Series({cols[1]:stats[0], cols[3]:stats[1]}, name=pd.Timestamp.now())
-            # self.step.loc[self.shape[0]] = (stats[0], time_passed, stats[1], sim_speed, stats[2], growth_speed, growth_rate, stats[3])
-            self.data.loc[self.shape[0]] = tuple([record[cols[i]] for i in range(len(cols))])
-        except Exception as e:
-            print('An error occurred while recording statistics.')
-            print(e.args)
-
-        # self.data = self.data.append(self.step) # DataFrame.append() is not an in-place method like list.append()
-
-    def plot(self, x, y):
-        """
-        ['Time', 'Sim.time', 'Sim.speed', 'N of cells', 'Growth rate', "Sim.growth rate"]
-        :param x:
-        :param y:
-        :return:
-        """
-        if x not in self.columns or y not in self.columns:
-            print(f'Column with this name does not exist!')
-            return
-        self._calculate_columns()
-        self.plot(x=x, y=y)
-
-    def save_to_file(self):
-        """
-        Write collected statistics to an excel file.
-
-        If file does not exist, it is automatically created
-        If file does exist, sheets with the names used here are overwritten
-        """
-        if not timeit.default_timer()-self.time > self.save_freq:
-            return
-        filename = self.filename + '.xlsx'
-        # vals = [c1 + ', ' + c2 for c1, c2 in zip(self.columns, self.units)]
-        columns = zip(self.columns, self.columns)
-        columns = dict(columns)
-        data = self.data.copy()
-        data.rename(columns=columns)
-        sheet_name = 'Data'
-        if not os.path.exists(filename):
-            data.to_excel(filename, sheet_name=sheet_name, engine='openpyxl')
-        else:
-            try:
-                with pd.ExcelWriter(filename, engine='openpyxl', mode='a', if_sheet_exists='replace') as writer:
-                    writer.book = openpyxl.load_workbook(filename)
-                    if sheet_name in writer.book.sheetnames:
-                        del writer.book[sheet_name]
-                        wks = writer.book.create_sheet(sheet_name)
-                        writer.sheets[sheet_name] = wks
-                    data.to_excel(writer, sheet_name=sheet_name)
-            except Exception as e:
-                print(e.args)
-                sys.exit()
-
-    def _calculate_columns(self):
-        self.__get_time_passed()
-        self.__get_sim_speed()
-        self.__get_growth_speed()
-        self.__get_sim_growth_rate()
-
-    def __get_time_passed(self):
-        self.data.iloc[1:, self.columns[1]] = self.data.loc[1:, 'Time'] - self.data.loc[:-1, 'Time']
-
-    def __get_sim_speed(self):
-        self.data.iloc['Sim.speed'] = self.data['Sim.time'] / self.data['Time']
-
-    def __get_growth_speed(self):
-        self.data['Growth rate'] = self.data['N of cells'] / self.data['Time'].get_total_hours
-
-    def __get_sim_growth_rate(self):
-        self.data['Sim.growth rate'] = self.data['N of cells'] / self.data['Sim.time'].get_total_hours
-
-
-################################
 
 def initialize_framework(from_file=False, precursor=None, settings=None, sim_params=None, vtk_file=None,
                          geom_params=None):
@@ -571,7 +410,9 @@ def monitoring(pr: Process, l, stats: Statistics = None, location=None, stats_ra
         else:
             if stats_time != np.inf:
                 stats.append(pr.t, pr.filled_cells, pr.deposited_vol, pr.precursor_min)
-                stats.save_to_file()
+                stats.save_to_file(force=True)
+                stats.get_growth_rate()
+                stats.add_plots([('Sim.time', 'Min.precursor coverage'),('Sim.time', 'Growth rate')], position=['J1','J23'])
             if dump_time != np.inf:
                 dump_structure(pr.structure, f'{location}')
             if frame != np.inf:

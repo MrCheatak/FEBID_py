@@ -1,6 +1,7 @@
 """
 FEBID Simulator package
 """
+from . import Statistics
 from . import Structure
 from .libraries.vtk_rendering import VTK_Rendering
 from . import Process
