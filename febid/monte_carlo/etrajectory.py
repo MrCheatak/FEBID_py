@@ -15,7 +15,7 @@ import numpy as np
 
 # Axillary packeges
 import pickle
-import timeit
+from timeit import default_timer as dt
 import traceback as tb
 
 # Local packages
@@ -491,12 +491,13 @@ class ETrajectory(object):
         # finally:
         #     profiler.print_stats()
         flag = True
-        while flag:
-            flag = False
-            try:
-                self.passes = passes = etrajectory_c.start_sim(self.E0, self.Emin, y0, x0, self.cell_dim, self.grid, self.surface.view(dtype=np.uint8), [self.substrate, self.deponat])
-            except Exception as e:
-                raise RuntimeError(f'An error occurred while generating trajectories: {e.args}')
+        print('Running \'map trajectory\'...', end='')
+        start = dt()
+        try:
+            self.passes = passes = etrajectory_c.start_sim(self.E0, self.Emin, y0, x0, self.cell_dim, self.grid, self.surface.view(dtype=np.uint8), [self.substrate, self.deponat])
+        except Exception as e:
+            raise RuntimeError(f'An error occurred while generating trajectories: {e.args}')
+        print(f'finished. \t {dt() - start}')
         if not len(passes) > 0:
             raise ValueError('Zero trajectories generated!')
         # for x,y in zip(x0,y0):

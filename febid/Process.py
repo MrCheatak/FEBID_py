@@ -4,6 +4,7 @@ import os, sys
 
 # Core packages
 import warnings
+from threading import Lock
 from timeit import default_timer as df
 import numpy as np
 from numexpr_mod import evaluate_cached, cache_expression
@@ -17,14 +18,14 @@ import febid.diffusion as diffusion
 
 def restrict(func):
     """
-    Prevent the decorated method to run, if the 'allow' property is not True
+    Prevent simultaneous call of the decorated methods
     """
     def inner(self):
-        if self.allow:
-            return_vals = func(self)
-        else:
-            warnings.warn(f'Not allowed to operate on main arrays in {func} during resizing', RuntimeWarning)
-            return_vals = -1
+        flag = self.lock.acquire()
+        while not flag:
+            flag = self.lock.acquire()
+        return_vals = func(self)
+        flag_e = self.lock.release()
         return return_vals
     return inner
 
@@ -61,7 +62,7 @@ class Process():
         self.surface_n_neighbors = None # a boolean array, surface n-nearest neighbors are True
         self.ghosts = None # a boolean array, ghost cells are True
         self.beam_matrix = None # contains values of the SE surface flux
-        
+
         # Working arrays
         self.__deposit_reduced_3d = None
         self.__precursor_reduced_3d = None
@@ -89,7 +90,7 @@ class Process():
         self.tau = 0 # residence time
         self.V = 0 # deposit volume of a dissociated precursor molecule
         self.D = 0 # surface diffusion coefficient
-        
+
         # Timings
         self.t_diffusion = 0
         self.t_dissociation = 0
@@ -119,6 +120,8 @@ class Process():
         self.n_filled_cells = []
         self.execution_speed = 0
         self.profiler= None
+
+        self.lock = Lock()
 
         # Initialization sequence
         self.__set_structure(structure)
@@ -335,6 +338,7 @@ class Process():
             # precursor_kern[condition] += 0.000001  # only for plotting purpose (to pass vtk threshold filter)
             # precursor_kern[condition] += 0.000001
 
+        else:
             self.__get_max_z()
             self.irradiated_area_2D = np.s_[self.structure.substrate_height - 1:self.max_z, :, :]  # a volume encapsulating the whole surface
             self.__update_views_2d()
@@ -377,15 +381,14 @@ class Process():
         if self.max_z + 5 > self.structure.shape[0]:
             # Here the Structure is extended in height
             # and all the references to the data arrays are renewed
-            self.allow = False # restricting access to the arrays
-            shape_old = self.structure.shape
-            self.structure.resize_structure(200)
-            self.structure.define_surface_neighbors(self.max_neib)
-            beam_matrix = self.beam_matrix # taking care of the beam_matrix, because __set_structure creates it empty
+            with self.lock: # blocks run with Lock should exclude calls of decorated functions, otherwise the thread will hang
+                shape_old = self.structure.shape
+                self.structure.resize_structure(200)
+                self.structure.define_surface_neighbors(self.max_neib)
+                beam_matrix = self.beam_matrix # taking care of the beam_matrix, because __set_structure creates it empty
             self.__set_structure(self.structure)
             self.beam_matrix[:shape_old[0], :shape_old[1], :shape_old[2]] = beam_matrix
             self.redraw = True
-            self.allow = True
             # Basically, none of the slices have to be updated, because they use indexes, not references.
             return True
         return False
@@ -426,7 +429,6 @@ class Process():
 
         :param eps: desired accuracy
         """
-        from timeit import default_timer as df
         start = df()
         for i in range(20):
             # p_prev = self.__precursor_reduced_2d.copy()
@@ -569,7 +571,6 @@ class Process():
 
         :return:
         """
-        self.__fix_bad_cells()
         indices = np.nonzero(self.__beam_matrix_reduced_2d)
         y_start, y_end, x_start, x_end = indices[1].min(), indices[1].max()+1, indices[2].min(), indices[2].max()+1
         self.irradiated_area_3D = np.s_[self.structure.substrate_height:self.max_z, y_start:y_end, x_start:x_end]  # a slice of the currently irradiated area
@@ -609,24 +610,15 @@ class Process():
         """
         self.__beam_matrix_surface = self.__beam_matrix_reduced_2d[self.__surface_reduced_2d]
 
+    @restrict
     def __get_max_z(self):
         """
         Get z position of the highest not empty cell in the structure
         :return:
         """
-        self.max_z_prev = self.max_z
         self.max_z = self.deposit.nonzero()[0].max() + 3
 
     # Misc
-    def __fix_bad_cells(self):
-        # Temporary fix
-        # Very rarely Monte Carlo primary electron simulation produces duplicate coordinates,
-        # that lead to division by zero(distance=0) and then to type size overflow(infinity),
-        # which does not raise exceptions in Cython.
-        # This results in random cells having huge negative numbers
-        if self.beam_matrix.min() < 0:
-            self.__beam_matrix_reduced_2d[self.__beam_matrix_reduced_2d < 0] = 0
-
     def __get_utils(self):
         # Kernels for choosing cells
         self.__neibs_sides = np.array([[[0, 0, 0],  # chooses side neighbors
@@ -685,14 +677,7 @@ class Process():
     @property
     @restrict
     def precursor_min(self):
-        try:
-            return self.__precursor_reduced_3d[self.__surface_reduced_3d].min()
-        except Exception as e:
-            print(f'During determination of the lowest current precursor density value, the following error occurred: \n'
-                  f'{e.args}')
-            return -1
-
-
+        return self.__precursor_reduced_3d[self.__surface_reduced_3d].min()
 
 if __name__ == '__main__':
     print("Current script does not have an entry point.....")

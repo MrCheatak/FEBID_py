@@ -290,11 +290,8 @@ def print_all(path, process_obj, sim):
     global flag, x_pos, y_pos
     x_pos, y_pos = path[0, 0:2]
     start = 0
-    av_dwell_time = path[:, 2].mean()
-    # av_loops = int(path.shape[0] * av_dwell_time / process_obj.dt)
-    av_loops = path[:,2].sum() / process_obj.dt
-    total_time = path[:,2].sum()
-    t = tqdm(total=av_loops, desc='total', position=0)
+    total_time = int(path[:,2].sum() * process_obj.deposition_scaling * 1e6)
+    t = tqdm(total=total_time, desc='Patterning', position=0, unit='µs')
     for x, y, step in path[start:]:
         x_pos, y_pos = x, y
         beam_matrix = etraj3d.rerun_simulation(y, x, sim, process_obj.dt)
@@ -304,8 +301,6 @@ def print_all(path, process_obj, sim):
             process_obj.beam_matrix[...] = 1
         process_obj.get_dt()
         process_obj.update_helper_arrays()
-        av_loops = path[:, 2].sum() / process_obj.dt
-        t.total = av_loops
         print_step(y, x, step, process_obj, sim, t)
     flag = True
 
@@ -322,8 +317,15 @@ def print_step(y, x, dwell_time, pr: Process, sim, t):
     :return:
     """
     loops = int(dwell_time / pr.dt)
+    if dwell_time < pr.dt:
+        warnings.warn('Dwell time is smaller that the time step!')
+        pr.dt = dwell_time
     time = 0
-    while time < dwell_time:  # loop repeats
+    flag = True
+    while flag:  # loop repeats
+        if time+pr.dt>dwell_time: # stepping only for remaining dwell time to avoid accumulating of excessive deposit
+            pr.dt = dwell_time - time
+            flag = False
         pr.deposition()  # depositing on a selected area
         if pr.check_cells_filled():
             flag = pr.update_surface()  # updating surface on a selected area
@@ -338,14 +340,17 @@ def print_step(y, x, dwell_time, pr: Process, sim, t):
                 warnings.warn('No surface flux!', RuntimeWarning)
                 pr.beam_matrix[...] = 1
                 continue
-            pr.get_dt()
+            if dwell_time >= pr.dt:
+                pr.get_dt()
+            else:
+                pr.dt = dwell_time
             pr.update_helper_arrays()
             # pr.equilibrate()
             a = 1
         pr.precursor_density()
-        pr.t += pr.dt
+        pr.t += pr.dt*pr.deposition_scaling
         time += pr.dt
-        t.update(1)
+        t.update(pr.dt*pr.deposition_scaling*1e6)
 
 
 def monitoring(pr: Process, l, stats: Statistics = None, location=None, stats_rate=60, dump_rate=60, render=False,
@@ -484,14 +489,14 @@ def update_graphical(rn: vr.Render, pr: Process, time_step, time_spent, update=T
     if delta_t == 0 or delta_V == 0:
         growth_rate = pr.growth_rate
     else:
-        growth_rate = delta_V / delta_t / pr.deposition_scaling
+        growth_rate = delta_V / delta_t
         growth_rate = int(growth_rate)
-    pr.t_prev = pr.t
+    pr.t_prev += delta_t
     pr.vol_prev = total_V
     # Updating displayed text
     rn.p.textActor.renderer.actors['time'].SetText(2,
                     f'Time: {time_real} \n' # showing real time passed 
-                    f'Sim. time: {(pr.t*pr.deposition_scaling):.8f} s \n' # showing simulation time passed
+                    f'Sim. time: {(pr.t):.8f} s \n' # showing simulation time passed
                     f'Speed: {speed:.8f} \n'  
                     f'Av. growth rate: {growth_rate} nm^3/s')
     rn.p.textActor.renderer.actors['stats'].SetText(3,
@@ -499,7 +504,10 @@ def update_graphical(rn: vr.Render, pr: Process, time_step, time_spent, update=T
                     f'Height: {height} nm \n'
                     f'Volume: {total_V} nm^3')
     # Updating scene
-    rn.update_mask(pr.surface)
+    try:
+        rn.update_mask(pr.surface)
+    except ValueError:
+        print(f'Was unable to set mask in the scene, due to possible Structure resizing: {ValueError.args}')
     try:
         min = data[data > 0.00001].min()
     except:
