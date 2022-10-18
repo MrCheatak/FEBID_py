@@ -1,11 +1,11 @@
 """
-Stream file generator
+Stream-file reader and pattern generator
 """
-import tkinter.filedialog as fd
+import math
 import numpy as np
 
 
-def open_stream_file(file=None, offset=200, collapse=False):
+def open_stream_file(file=None, offset=200, collapse=False, unit_pitch=0.13):
     """
     Open stream file, convert to nm and define enclosing volume dimensions.
         A valid stream-file should consist of 3 columns and start with 's16' line.
@@ -34,37 +34,35 @@ def open_stream_file(file=None, offset=200, collapse=False):
         # 1 – x-position
         # 2 – y-position
     with open(file, mode='r+', encoding='utf-8', errors='ignore') as f:
-        print('Reading stream-file...')
+        print(f'Reading stream-file {file}  ...')
         data = np.genfromtxt(f, dtype=np.float64, comments='#', delimiter=delim, skip_header=header, usecols=columns,
                              invalid_raise=False)
         print('Done!')
 
+    # Converting to simulation units
+    data[:, 0] /= 1E7  # converting [0.1 µs] to [s]
+    data[:, 1] *= unit_pitch  # converting stream-file units to [nm]
+    data[:, 2] *= unit_pitch
     # Determining volume dimensions with an offset
-    # offset -= 1
     x_max, x_min = data[:, 1].max(), data[:, 1].min()
-    x_dim = (x_max - x_min) + offset*10
-    x_delta = offset * 10 / 2
+    x_dim = (x_max - x_min) + offset
+    x_delta = offset / 2
     y_max, y_min = data[:, 2].max(), data[:, 2].min()
-    y_dim = (y_max - y_min) + offset*10
-    y_delta = offset * 10 / 2
-    z_dim = max(x_dim, y_dim) * 2
+    y_dim = (y_max - y_min) + offset
+    y_delta = offset / 2
+    z_dim = 200
 
-    if x_dim < 1000 or y_dim < 1000: # checking if both dimensions are at least 100 nm
-        if x_dim < 1000:
-            x_dim = ((y_dim/2)//10)*10
+    if x_dim < 100 or y_dim < 100: # checking if both dimensions are at least 100 nm
+        if x_dim < 100:
+            x_dim = 200
             x_delta = x_dim/2
-        if y_dim < 1000:
+        if y_dim < 100:
             # y_dim = ((x_dim/2)//10)*10Y
-            y_dim = 2000
+            y_dim = 200
             y_delta = y_dim/2
     # Getting local coordinates
-    data[:, 0] /= 1E7  # converting [0.1 µs] to [s]
-    data[:, 1] -= x_min - x_delta
-    data[:, 1] /= 10 # converting [0.1 nm] to [nm]
-    # data[:, 1] += (x_dim - data[:, 1].max())/ 2 # shifting path center to the center of the volume
-    data[:, 2] -= y_min - y_delta
-    data[:, 2] /= 10
-    # data[:, 2] += (y_dim - data[:, 2].max())/ 2 # shifting path center to the center of the volume
+    data[:, 1] -= x_min - x_delta # shifting path center to the center of the volume
+    data[:, 2] -= y_min - y_delta # shifting path center to the center of the volume
     data = np.roll(data, -1, 1)
 
     # Summing dwell time of consecutive points with same coordinates
@@ -75,15 +73,69 @@ def open_stream_file(file=None, offset=200, collapse=False):
         i = 0
         while i < p_d.shape[0] - 1:
             b = np.copy(data[i])
-            while not p_d[i] and i < p_d.shape[0] - 1:
-                b[2] += data[i, 2]
+            while i < p_d.shape[0] and not p_d[i]:
                 i += 1
-            collapsed_arr.append(b)
+                b[2] += data[i, 2]
             i += 1
+            collapsed_arr.append(b)
+        # else:
+        #     b = np.copy(data[i])
+        #     try: # Sometimes loop exits with i equal to data.shape, if the last line is unique
+        #         b[2] += data[i+1, 2]
+        #     except IndexError:
+        #         pass
+        #     collapsed_arr.append(b)
         data = np.asarray(collapsed_arr)
 
-    return data, np.array([z_dim/10, y_dim/10, x_dim/10], dtype=int)
+    return data, np.array([z_dim, y_dim, x_dim], dtype=int)
 
+
+def analyze_pattern(file, unit_pitch):
+    """
+    Parse stream-file and split it into stages
+    """
+    data, shape = open_stream_file(file, collapse=True, unit_pitch=unit_pitch)
+    stages = []
+    total_time = data[:, 2].sum()
+    delta = data[1:] - data[:-1]
+    unique = np.unique(delta, axis=0, return_counts=True)
+    i = 0
+    while i < delta.shape[0]:
+        if data[i, 2] > 1: # considering 1 nm/s the lowest patterning speed and everything above is stationary
+            stages.append(('Stationary', data[i, 2]))
+            i += 1
+            continue
+        else:
+            t = 0
+            pos0 = np.array([data[i,0], data[i, 1]])  # x, y distance
+            pos = np.array([0, 0])
+            flag_end = False
+            while i < delta.shape[0]-1:
+                t += data[i, 2]
+                if np.isclose(delta[i, 0:2], delta[i + 1, 0:2], atol=unit_pitch).all() and delta[i, 2] == delta[i+1, 2]:
+                    i += 1
+                else:
+                    t += data[i+1, 2]
+                    flag_end = True # telling the loop, that termination was due to the end of a stage
+                    break
+            else:
+                if not flag_end: # if the loop exited due to array bounds, collect remaining cells
+                    t += data[i, 2]
+                    i += 1
+                    t += data[i, 2]
+                    flag_end = False
+                pos[:] = data[i, 0], data[i, 1]
+                lp = pos - pos0
+                l = math.sqrt(lp[0] ** 2 + lp[1] ** 2)
+                speed = round(l / t)
+                stages.append((f'{speed} nm/s', t))
+                i += 1
+    print(f'Total patterining time: {total_time:.4f} s')
+    print(f'Stages: |', end='')
+    for stage, d in stages:
+        print(f'{stage}, {d:.4f} | ', end='')
+    else:
+        print(' ')
 
 def generate_pattern(pattern, loops, dwell_time, x, y, params, step=1):
     """
