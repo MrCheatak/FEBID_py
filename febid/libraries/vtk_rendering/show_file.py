@@ -12,10 +12,12 @@ from febid.Structure import Structure
 def show_structure(filenames, solid=True, deposit=True, precursor=True, surface=True, semi_surface=True, ghost=True):
 
     font_size = 12
+    cam_pos = None
     for filename in filenames:
         print(f'Opening file {filename}')
+        vtk_obj = pv.read(filename)
         structure = Structure()
-        structure.load_from_vtk(pv.read(filename))
+        structure.load_from_vtk(vtk_obj)
         d = structure.deposit
         d_er = 0
         p = structure.precursor
@@ -45,8 +47,17 @@ def show_structure(filenames, solid=True, deposit=True, precursor=True, surface=
                     print(f'\t  Found {np.count_nonzero(p<0)} cells below zero, minimum value is {p.min()}')
         else:
             print('ok!')
+        t = vtk_obj.field_data.get('time', None)
+        sim_time = vtk_obj.field_data.get('simulation_time', None)
+        beam_position = vtk_obj.field_data.get('beam_position', None)
+        if t:
+            t = t[0]
+        if sim_time:
+            sim_time = sim_time[0]
+        if beam_position is not None:
+            beam_position = beam_position[0]
         render = vr.Render(structure.cell_dimension)
-        render.show_full_structure(structure, solid, deposit, precursor, surface, semi_surface, ghost)
+        cam_pos = render.show_full_structure(structure, solid, deposit, precursor, surface, semi_surface, ghost, t, sim_time, beam_position, cam_pos=cam_pos)
 
 
 if __name__ == '__main__':

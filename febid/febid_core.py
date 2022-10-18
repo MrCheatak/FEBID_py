@@ -405,7 +405,7 @@ def monitoring(pr: Process, l, stats: Statistics = None, location=None, stats_ra
                 stats.save_to_file()
             if pr.t > dump_time:
                 dump_time += dump_rate
-                dump_structure(pr.structure, f'{location}')
+                dump_structure(pr.structure, pr.t, now - start_time, (x_pos, y_pos), f'{location}')
             time.sleep(refresh_rate)
         else:
             if stats_time != np.inf:
@@ -414,7 +414,7 @@ def monitoring(pr: Process, l, stats: Statistics = None, location=None, stats_ra
                 stats.get_growth_rate()
                 stats.add_plots([('Sim.time', 'Min.precursor coverage'),('Sim.time', 'Growth rate')], position=['J1','J23'])
             if dump_time != np.inf:
-                dump_structure(pr.structure, f'{location}')
+                dump_structure(pr.structure, pr.t, now - start_time, (x_pos, y_pos), f'{location}')
             if frame != np.inf:
                 rn.p.close()
                 rn = vr.Render(pr.structure.cell_dimension)
@@ -468,9 +468,10 @@ def update_graphical(rn: vr.Render, pr: Process, time_step, time_spent, update=T
         rn.meshes_count += 1
         pr.redraw = False
     # Changing arrow position
-    if pr.max_z != pr.max_z_prev:
-        rn.arrow.SetPosition(x_pos, y_pos, (pr.max_z)*pr.cell_dimension+10) # relative to the initial position
-        pr.max_z_prev = pr.max_z
+    x, y, z = rn.arrow.GetPosition()
+    z_pos = pr.deposit[:, int(y_pos/pr.cell_dimension), int(x_pos/pr.cell_dimension)].nonzero()[0].max() * pr.cell_dimension
+    if z_pos != z or y_pos != y or x_pos != x:
+        rn.arrow.SetPosition(x_pos, y_pos, z_pos+30) # relative to the initial position
     # Calculating values to indicate
     pr.n_filled_cells.append(pr.filled_cells)
     i = len(pr.n_filled_cells) - 1
@@ -510,8 +511,8 @@ def update_graphical(rn: vr.Render, pr: Process, time_step, time_spent, update=T
     return redrawed
 
 
-def dump_structure(structure: Structure, filename='FEBID_result'):
-    vr.save_deposited_structure(structure, filename)
+def dump_structure(structure: Structure, sim_t=None, t=None, beam_position=None, filename='FEBID_result'):
+    vr.save_deposited_structure(structure, sim_t, t, beam_position, filename)
 
 
 if __name__ == '__main__':

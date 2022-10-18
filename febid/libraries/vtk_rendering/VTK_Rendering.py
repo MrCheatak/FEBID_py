@@ -1,7 +1,7 @@
 # Default packages
 import os, sys, time
 import timeit
-from datetime import datetime
+import datetime
 import copy
 
 # Core packages
@@ -52,7 +52,7 @@ class Render:
         def __call__(self, state):
             self.actor.SetVisibility(state)
 
-    def show_full_structure(self, structure:Structure, struct=True, deposit=True, precursor=True, surface=True, semi_surface=True, ghosts=True):
+    def show_full_structure(self, structure:Structure, struct=True, deposit=True, precursor=True, surface=True, semi_surface=True, ghosts=True, t=None, sim_time=None, beam=None, cam_pos=None):
         """
         Render and plot all the structure components
 
@@ -84,9 +84,26 @@ class Render:
                         f'Height: {int(np.nonzero(structure.deposit)[0].max() * structure.cell_dimension)} nm \n'                           # showing current height of the structure
                         f'Deposited volume: {int(total_dep_cells + structure.deposit[structure.deposit>0].sum()) * structure.cell_dimension**3} nm^3\n',
                         position='upper_right', font_size=self.font)
-        cam_pos = [(463.14450307610286, 271.1171723376318, 156.56895424388603),
-                   (225.90027381807235, 164.9577775224395, 71.42188811921902),
-                   (-0.27787912231751677, -0.1411181984824172, 0.950194110399093)]
+        text = ''
+        if t:
+            text += f'Time: {t} \n'
+        if sim_time:
+            text += f'Simulation time: {sim_time:.7f} s \n'
+        self.p.add_text(text, position='upper_left', font_size=self.font)
+
+        if beam is not None:
+            x_pos, y_pos = beam
+            x, y = int(x_pos/self.cell_dim), int(y_pos/self.cell_dim)
+            max_z = structure.deposit[:, y, x].nonzero()[0].max()
+            start = np.array([0, 0, 100]).reshape(1, 3)  # position of the center of the arrow
+            end = np.array([0, 0, -100]).reshape(1, 3)  # direction and resulting size
+            self.arrow = self.p.add_arrows(start, end, color='tomato')
+            self.arrow.SetPosition(x_pos, y_pos, (max_z) * self.cell_dim + 30)  # relative to the initial position
+
+        if cam_pos is None:
+            cam_pos = [(463.14450307610286, 271.1171723376318, 156.56895424388603),
+                       (225.90027381807235, 164.9577775224395, 71.42188811921902),
+                       (-0.27787912231751677, -0.1411181984824172, 0.950194110399093)]
         return self.show(cam_pos=cam_pos)
 
     def show_mc_result(self, grid, pe_traj=None, deposited_E=None, surface_flux=None, se_traj=None, cam_pos=None, interactive=True):
@@ -329,7 +346,7 @@ def numpy_to_vtk(arr, cell_dim, data_name='scalar', grid=None, unstructured=Fals
             grid = grid.cast_to_unstructured_grid()
         return grid
 
-def save_deposited_structure(structure, filename=None):
+def save_deposited_structure(structure, sim_t=None, t=None, beam_position=None, filename=None):
     """
     Saves current deposition result to a vtk file
     if filename does not contain path, saves to the current directory
@@ -344,19 +361,12 @@ def save_deposited_structure(structure, filename=None):
     vtk_obj = numpy_to_vtk(structure.surface_bool, cell_dim, data_name='surface_bool', grid=vtk_obj)
     vtk_obj = numpy_to_vtk(structure.semi_surface_bool, cell_dim, data_name='semi_surface_bool', grid=vtk_obj)
     vtk_obj = numpy_to_vtk(structure.ghosts_bool, cell_dim, data_name='ghosts_bool', grid=vtk_obj)
-    # vtk_obj.__setattr__('features', True) # Availability of this parameter will show if vtk file is either just a structure or a simulation result
-    # vtk_obj.__setattr__('substrate_val', structure.substrate_val)
-    # vtk_obj.__setattr__('substrate_height', structure.substrate_height)
-    # vtk_obj.__setattr__('deposit_val', structure.deposit_val)
-    # vtk_obj.__setattr__('volume_prefill', structure.vol_prefill)
-    # a = vtk_obj.features
-    # b = vtk_obj.cell_data['surface_bool']
-    # c = vtk_obj.cell_data['deposit']
+    vtk_obj.field_data['date'] = [datetime.datetime.now()]
+    vtk_obj.field_data['time'] = [str(datetime.timedelta(seconds=int(t)))]
+    vtk_obj.field_data['simulation_time'] = [sim_t]
+    vtk_obj.field_data['beam_position'] = [beam_position]
     if filename == None:
         filename = "Structure"
-    # file = open(f'{filename}{time.strftime("%H:%M:%S", time.localtime())}.vtk', 'wb')
-    # pickle.dump(vtk_obj, file,protocol=4)
-    # Eventually, vtk does not save those new attributes
     vtk_obj.save(f'{filename}_{time.strftime("%H:%M:%S", time.localtime())}.vtk')
 
 def open_deposited_structure(filename=None, return_structure=False):
@@ -480,7 +490,7 @@ def open_file(directory=''):
     # directory = '/Users/sandrik1742/Documents/PycharmProjects/FEBID/code/Experiment runs/gr=0'
     files = sorted(os.listdir(directory))[1:]
     ctimes = [time.ctime(os.path.getmtime(os.path.join(directory, file))) for file in files]
-    times = [datetime.strptime(t, '%a %b %d %H:%M:%S %Y') for t in ctimes]
+    times = [datetime.datetime.strptime(t, '%a %b %d %H:%M:%S %Y') for t in ctimes]
     # occurences = [re.findall("^\d+",file) for file in files]
     # ocurrences = [int(item[0]) for item in occurences]
     ocurrences = zip(times, files)
