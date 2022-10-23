@@ -6,7 +6,7 @@ import pyvista as pv
 from febid.ui import ui_shell
 import febid.simple_patterns as sp
 from febid import febid_core
-from febid import Structure
+from febid.Structure import Structure
 
 def start_ui(config_f=None):
     ui_shell.start(config_f)
@@ -76,8 +76,9 @@ def start_no_ui(config_f=None):
         except Exception as e:
             print(f'Failed to open stream-file: {e.args}')
             return
-        shape = shape[::-1] // cell_dimension
-        structure.create_from_parameters(cell_dimension, *shape, substrate_height)
+        if params['structure_source'] == 'auto':
+            shape = shape[::-1] // cell_dimension
+            structure.create_from_parameters(cell_dimension, *shape, substrate_height)
 
     # Opening beam and precursor files
     try:

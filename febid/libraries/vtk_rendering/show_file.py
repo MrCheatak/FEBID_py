@@ -13,6 +13,8 @@ def show_structure(filenames, solid=True, deposit=True, precursor=True, surface=
 
     font_size = 12
     cam_pos = None
+    if type(filenames) not in [list, tuple]:
+        filenames = [filenames]
     for filename in filenames:
         print(f'Opening file {filename}')
         vtk_obj = pv.read(filename)

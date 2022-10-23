@@ -25,9 +25,9 @@ from tqdm import tqdm
 
 from febid.Statistics import Statistics
 # Local packages
-from .Structure import Structure
-from .Process import Process
-from febid import VTK_Rendering as vr
+from febid.Structure import Structure
+from febid.Process import Process
+from febid.libraries.vtk_rendering import VTK_Rendering as vr
 from febid.monte_carlo import etraj3d
 import febid.simple_patterns as sp
 

@@ -9,7 +9,7 @@ import numpy as np
 from numexpr_mod import evaluate_cached, cache_expression
 
 # Local packages
-from .Structure import Structure
+from febid.Structure import Structure
 import febid.diffusion as diffusion
 
 # TODO: look into k-d trees
@@ -336,7 +336,7 @@ class Process():
             # precursor_kern[condition] += 0.000001
 
             self.__get_max_z()
-            self.irradiated_area_2D = np.s_[self.structure.substrate_height-1:self.max_z, :, :] # a volume encapsulating the whole surface
+            self.irradiated_area_2D = np.s_[self.structure.substrate_height - 1:self.max_z, :, :]  # a volume encapsulating the whole surface
             self.__update_views_2d()
             # Updating surface nearest neighbors array
             vert_slice = (self.irradiated_area_2D[1], self.irradiated_area_3D[1], self.irradiated_area_3D[2])
@@ -511,7 +511,7 @@ class Process():
         return diffusion.laplace_term_rolling(grid, surface, ghosts, self.D, self.dt, self.cell_dimension, flat=True, add=add, div=div)
 
     # Data maintenance methods
-    # These methods represent an optimization path that provides up to 100x speed up
+    # These methods support an optimization path that provides up to 100x speed up
     # 1. By selecting and processing chunks of arrays (views) that are effectively changing
     # 2. By preparing indexes for arrays
     def update_helper_arrays(self):
