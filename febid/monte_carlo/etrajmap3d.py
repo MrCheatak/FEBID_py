@@ -31,6 +31,7 @@ class ETrajMap3d(object):
 
         self.amplifying_factor = 10000 # artificially increases SE yield to preserve accuracy
         self.emission_fraction = 0.6 # fraction of total lost energy spent on secondary electron emission
+        self.se_E = 19 # eV, average SE energy
         # self.e = e # fitting parameter related to energy required to initiate a SE cascade, material specific, eV
         self.deponat = sim.deponat
         self.substrate = sim.substrate
@@ -38,6 +39,8 @@ class ETrajMap3d(object):
         # self.dn = floor(self.lambda_escape * 2 / self.cell_dim) # number of cells an SE can intersect
         self.trajectories = [] # holds all trajectories mapped to 3d structure
         self.se_traj = [] # holds all trajectories mapped to 3d structure
+        self.se_coords_all = None # array coordinates of all the SE sources
+        self.se_coords_included = None # array of coordinates of SEs that are close to the surface
         self.wasted_se = None # SEs that did not escape the surface, used for Joule heating
         self.heat_pe = None # Energy deposiuted by the PEs that is converted to heat
         self.heat = None # total heating from the inelastic energy
@@ -230,9 +233,9 @@ class ETrajMap3d(object):
 
         :return:
         """
-        coords_all = np.int32(ne.evaluate('a/b', global_dict={'a': self.coords_all.T, 'b': self.cell_dim}))
+        self.se_coords_all = coords_all = np.int32(ne.evaluate('a/b', global_dict={'a': self.coords_all.T, 'b': self.cell_dim}))
         neighbors = self.s_neighb
-        include = neighbors[coords_all[0], coords_all[1], coords_all[2]]
+        self.se_coords_included = include = neighbors[coords_all[0], coords_all[1], coords_all[2]]
         in_index = include.nonzero()[0]
 
         coords = self.coords_all[in_index]
@@ -273,20 +276,29 @@ class ETrajMap3d(object):
         # is collected in the cell crossed.
         traversal.generate_flux(self.flux, self.surface.view(dtype=np.uint8), self.cell_dim, coords, pn, direction, sign, t, step_t, n_se, max_traversed_cells) # Cython script
 
-        # Collecting SEs that did not escape the surface
-        exclude = ~include
-        exclude_index = exclude.nonzero()[0]
-        coords_ind = coords_all[:, exclude_index]
-        index = (coords_ind[0], coords_ind[1], coords_ind[2])
-        self.wasted_se = np.zeros_like(self.DE)
-        np.add.at(self.wasted_se, index, self.dEs_all[exclude_index])
-        self.wasted_se[self.grid>=0] = 0
         self.coords = np.empty((coords.shape[0], 2, 3))
         self.coords[:,0] = coords[...]
         self.coords[:,1] = pn[...]
 
+    def extract_se_heat(self):
+        # Collecting SEs that did not escape the surface
+        exclude = self.se_coords_included
+        exclude_index = exclude.nonzero()[0]
+        coords_ind = self.se_coords_all[:, exclude_index]
+        index = (coords_ind[0], coords_ind[1], coords_ind[2])
+        cell_material = self.grid[coords_ind[0], coords_ind[1], coords_ind[2]]
+        e = np.empty_like(cell_material)
+        e[cell_material == -1] = self.deponat.e
+        e[cell_material == -2] = self.substrate.e
+        e[cell_material >= 0] = 1e6
+        n_se = self.dEs_all[exclude_index] / e
+        self.wasted_se = np.zeros_like(self.DE)
+        wasted_se_flat = self.se_E * n_se
+        np.add.at(self.wasted_se, index, wasted_se_flat)
+        self.wasted_se[self.grid >= 0] = 0
 
     def joule_heating(self):
+        self.extract_se_heat()
         self.heat_pe = self.DE * (1 - self.emission_fraction)
         self.heat = self.heat_pe + self.wasted_se
 
@@ -343,11 +355,12 @@ class ETrajMap3d(object):
         return self.flux, self.DE
 
 
-    def map_follow(self, passes):
+    def map_follow(self, passes, heating=True):
         """
         Get energy losses in the structure per cell
 
         :param passes: a collection of trajectories
+        :param heating: True will calculate collective heat effect from PEs and SEs
         :return:
         """
         # Segments in all the trajectories deposit energy and emit SEs independently.
@@ -397,10 +410,11 @@ class ETrajMap3d(object):
         self.generate_se()
         print(f'finished. \t {timeit.default_timer() - start}')
 
-        print(f'****Running \'joule_heating\'...', end='')
-        start = timeit.default_timer()
-        self.joule_heating()
-        print(f'finished. \t {timeit.default_timer() - start}')
+        if heating:
+            print(f'****Running \'joule_heating\'...', end='')
+            start = timeit.default_timer()
+            self.joule_heating()
+            print(f'finished. \t {timeit.default_timer() - start}')
         a=0
 
-        return self.flux, self.heat # has to be returned, as every process (when using multiprocessing) gets its own copy of the whole class and thus does not write to the original
+        return self.flux, self.heat, self.dEs_all # has to be returned, as every process (when using multiprocessing) gets its own copy of the whole class and thus does not write to the original

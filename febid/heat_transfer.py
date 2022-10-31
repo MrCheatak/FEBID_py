@@ -9,7 +9,7 @@ import numpy as np
 from febid.libraries.rolling import roll
 from febid.libraries.pde import tridiag
 from numexpr_mod import cache_expression, evaluate_cached, evaluate
-from diffusion import laplace_term_rolling, laplace_term_stencil, prepare_ghosts_index, prepare_surface_index
+from febid.diffusion import laplace_term_rolling, laplace_term_stencil, prepare_ghosts_index, prepare_surface_index
 
 # Heat transfer is solved according to finite-difference explicit
 # FTCS (Forward in Time Central in Space) method.
@@ -161,7 +161,6 @@ def heat_transfer_BE(grid, conditions, k, cp, rho, dt, dl, heat_source = 0, subs
 def heat_transfer_steady_sor(grid, k, dl, s, eps, index=None):
     print(f'\nFinding steady state solution using Simulateous Over-Relaxation:')
     p_j = 1 - np.pi ** 2 / grid.shape[0] ** 2 / 2
-    global a
     S = s*dl**2/k * 1.60217733E-19
     anormf = np.abs(S).sum()
     if index:

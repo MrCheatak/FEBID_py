@@ -51,7 +51,7 @@ class Render:
         def __call__(self, state):
             self.actor.SetVisibility(state)
 
-    def show_full_structure(self, structure:Structure, struct=True, deposit=True, precursor=True, surface=True, semi_surface=True, ghosts=True):
+    def show_full_structure(self, structure:Structure, struct=True, deposit=True, precursor=True, surface=True, semi_surface=True, temperature=True, ghosts=True):
         """
         Render and plot all the structure components
 
@@ -76,7 +76,8 @@ class Render:
             self._add_3Darray(structure.semi_surface_bool, 1, 1, False, opacity=0.7, show_edges=True, scalar_name="Semi surface prec. density", button_name='Semi-surface', color='green', show_scalar_bar=False)
         if ghosts:
             self._add_3Darray(structure.ghosts_bool, 1, 1, False, opacity = 0.7, show_edges=True, scalar_name='ghosts', button_name="Ghosts", color='brown', show_scalar_bar=False)
-
+        if temperature:
+            self._add_3Darray(structure.temperature, 1, opacity=1, scalar_name='temperature', button_name='Max. temperature', cmap='inferno')
         init_layer = np.count_nonzero(structure.deposit == -2)  # substrate layer
         total_dep_cells = np.count_nonzero(structure.deposit[structure.deposit < 0]) - init_layer  # total number of fully deposited cells
         self.p.add_text(f'Cells: {total_dep_cells} \n'  # showing total number of deposited cells
@@ -352,7 +353,7 @@ def save_deposited_structure(structure, filename=None):
     vtk_obj = numpy_to_vtk(structure.surface_bool, cell_dim, data_name='surface_bool', grid=vtk_obj)
     vtk_obj = numpy_to_vtk(structure.semi_surface_bool, cell_dim, data_name='semi_surface_bool', grid=vtk_obj)
     vtk_obj = numpy_to_vtk(structure.ghosts_bool, cell_dim, data_name='ghosts_bool', grid=vtk_obj)
-    vtk_obj = numpy_to_vtk(structure.temperature, cell_dim, data_name='te', grid=vtk_obj)
+    vtk_obj = numpy_to_vtk(structure.temperature, cell_dim, data_name='temperature', grid=vtk_obj)
     # vtk_obj.__setattr__('features', True) # Availability of this parameter will show if vtk file is either just a structure or a simulation result
     # vtk_obj.__setattr__('substrate_val', structure.substrate_val)
     # vtk_obj.__setattr__('substrate_height', structure.substrate_height)

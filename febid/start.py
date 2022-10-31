@@ -120,10 +120,12 @@ def start_no_ui(config_f=None):
             pass
         saving_params['filename'] = os.path.join(saving_params['filename'], params['unique_name'])
 
+    temperature_tracking = params.get('temperature_tracking', False)
+
     rendering = {'show_process': params['show_process'], 'frame_rate': 0.2}
     # Starting the process
-    process_obj, sim = febid_core.run_febid_interface(structure, precursor_params, beam_params, sim_volume_params, printing_path,
-                                   saving_params, rendering)
+    process_obj, sim = febid_core.run_febid_interface(structure, precursor_params, beam_params, sim_volume_params,
+                                                      printing_path, temperature_tracking, saving_params, rendering)
 
     return process_obj, sim
 

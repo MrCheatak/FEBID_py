@@ -358,7 +358,7 @@ def start_from_command_line():
     run_febid(structure, precursor_params, settings, sim_params, path)
 
 
-def run_febid_interface(structure, precursor_params, settings, sim_params, path, saving_params, rendering):
+def run_febid_interface(structure, precursor_params, settings, sim_params, path, temperature_tracking, saving_params, rendering):
 
     if saving_params['monitoring']:
         dump_stats = True
@@ -376,7 +376,7 @@ def run_febid_interface(structure, precursor_params, settings, sim_params, path,
     kwargs = dict(location=saving_params['filename'], stats_rate=stats_rate,
                   dump_rate=dump_rate, render=rendering['show_process'],
                   frame_rate=rendering['frame_rate'], refresh_rate=0.5)
-    process_obj, sim = run_febid(structure, precursor_params, settings, sim_params, path, dump_stats, kwargs)
+    process_obj, sim = run_febid(structure, precursor_params, settings, sim_params, path, temperature_tracking,  dump_stats, kwargs)
     return process_obj, sim
 
 
@@ -390,7 +390,7 @@ def run_febid_test(geom, path, dwell_time, loops, files, kwargs):
     run_febid(structure, precursor_params, settings, sim_params, path, True, kwargs)
 
 
-def run_febid(structure, precursor_params, settings, sim_params, path, gather_stats=False, monitor_kwargs=None):
+def run_febid(structure, precursor_params, settings, sim_params, path, temperature_tracking, gather_stats=False, monitor_kwargs=None):
     """
         Create necessary objects and start the FEBID process
 
@@ -410,7 +410,7 @@ def run_febid(structure, precursor_params, settings, sim_params, path, gather_st
         stats.get_params(precursor_params, 'Precursor parameters')
         stats.get_params(settings, 'Beam parameters and settings')
         stats.get_params(sim_params, 'Simulation volume parameters')
-    process_obj = Process(structure, equation_values, timings)
+    process_obj = Process(structure, equation_values, timings, temp_tracking=temperature_tracking)
     sim = etraj3d.cache_params(mc_config, structure.deposit, structure.surface_bool, structure.surface_neighbors_bool)
     process_obj.max_neib = math.ceil(np.max([sim.deponat.lambda_escape, sim.substrate.lambda_escape])/process_obj.cell_dimension)
     process_obj.structure.define_surface_neighbors(process_obj.max_neib)
@@ -433,14 +433,15 @@ def print_all(path, process_obj, sim):
     total_time = path[:,2].sum()
     t = tqdm(total=av_loops, desc='total', position=0)
     for x, y, step in path[start:]:
-        beam_matrix = etraj3d.rerun_simulation(y, x, sim, process_obj.dt)
+        beam_matrix = etraj3d.rerun_simulation(y, x, sim, process_obj.temperature_tracking, process_obj.dt)
         process_obj.beam_matrix[:, :, :] = beam_matrix
         if process_obj.beam_matrix.max() <= 1:
             warnings.warn('No surface flux!', RuntimeWarning)
             process_obj.beam_matrix[...] = 1
-        process_obj.get_dt()
         process_obj.update_helper_arrays()
-        process_obj.heat_transfer(sim.m3d.heat)
+        process_obj.get_dt()
+        if process_obj.temperature_tracking:
+            process_obj.heat_transfer(sim.m3d.heat)
         av_loops = path[:, 2].sum() / process_obj.dt
         t.total = av_loops
         print_step(y, x, step, process_obj, sim, t)
@@ -469,17 +470,17 @@ def print_step(y, x, dwell_time, pr: Process, sim, t):
                 sim.surface = sim.m3d.surface = pr.surface
                 sim.s_neighb = sim.m3d.s_neighb = pr.surface_n_neighbors
             start = timeit.default_timer()
-            beam_matrix= etraj3d.rerun_simulation(y, x, sim, pr.dt)
+            beam_matrix= etraj3d.rerun_simulation(y, x, sim, pr.temperature_tracking, pr.dt)
             pr.beam_matrix[...] = beam_matrix
             print(f'Finished MC in {timeit.default_timer()-start} s')
             if pr.beam_matrix.max() <= 1:
                 warnings.warn('No surface flux!', RuntimeWarning)
                 pr.beam_matrix[...] = 1
                 continue
-            pr.get_dt()
             pr.update_helper_arrays()
-            pr.heat_transfer(sim.m3d.heat)
-            a = 1
+            if pr.temperature_tracking:
+                pr.heat_transfer(sim.m3d.heat)
+            pr.get_dt()
         pr.precursor_density()
         pr.t += pr.dt
         time += pr.dt
@@ -583,15 +584,19 @@ def update_graphical(rn: vr.Render, pr: Process, time_step, time_spent, displaye
     if displayed_data == 'precursor':
         data = pr.precursor
         mask = pr.surface
+        cmap = 'plasma'
     if displayed_data == 'deposit':
         data = pr.deposit
         mask = pr.surface
+        cmap = 'viridis'
     if displayed_data == 'temperature':
         data = pr.temp
         mask = pr.deposit < 0
+        cmap = 'inferno'
     if displayed_data == 'surface_temperature':
         data = pr.surface_temp
         mask = pr.surface
+        cmap = 'inferno'
     # data = pr.temp
     redrawed = pr.redraw
     if pr.redraw:
@@ -604,7 +609,7 @@ def update_graphical(rn: vr.Render, pr: Process, time_step, time_spent, displaye
             rn.p.clear()
             current = 'precursor'
             rn._add_3Darray(data, opacity=1, scalar_name=displayed_data,
-                            button_name=displayed_data, show_edges=True, cmap='plasma')
+                            button_name=displayed_data, show_edges=True, cmap=cmap)
             scalar = rn.p.mesh.active_scalars_name
             rn.p.mesh[scalar] = data.reshape(-1)
             rn.update_mask(mask)
@@ -626,7 +631,7 @@ def update_graphical(rn: vr.Render, pr: Process, time_step, time_spent, displaye
     speed = pr.t / time_spent
     height = (pr.max_z - pr.substrate_height) * pr.structure.cell_dimension
     try:
-        total_V = int((pr.filled_cells + pr.deposit[pr.surface].sum()) * pr.cell_V)
+        total_V = pr.deposited_vol
         growth_rate = int((total_V-pr.vol_prev) / (pr.t-pr.t_prev) / pr.deposition_scaling)
     except ZeroDivisionError:
         warnings.warn('Zero time difference in growth rate calculation', RuntimeWarning)
@@ -644,7 +649,7 @@ def update_graphical(rn: vr.Render, pr: Process, time_step, time_spent, displaye
     rn.p.textActor.renderer.actors['stats'].SetText(3,
                     f'Cells: {pr.n_filled_cells[i]} \n'  # showing total number of deposited cells
                     f'Height: {height} nm \n'
-                    f'Volume: {total_V} nm^3')
+                    f'Volume: {total_V:.0f} nm^3')
     # Updating scene
     rn.update_mask(mask)
     try:
