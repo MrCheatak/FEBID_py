@@ -3,7 +3,6 @@ Tridiagonal parallel matrix solver
 """
 
 import cython
-import numpy as np
 from libc.stdlib cimport malloc, free
 from cython.parallel cimport prange
 
@@ -30,10 +29,10 @@ cpdef adi_3d_indexing(double[:,:,:] d, double[:,:,:] x, long[:,:] s1, long[:,:] 
 
         :param d: right hand side vector
         :param x: vector to be solved
-        :param s1: index tripples for x-axis 
-        :param s2: index tripples for y-axis
-        :param s3: index tripples for z-axis
-        :param a: equation coefficient
+        :param s1: index triples for x-axis, that define a 1d slice
+        :param s2: index triples for y-axis, that define a 1d slice
+        :param s3: index triples for z-axis, that define a 1d slice
+        :param a: equation coefficient, proportional to diffusivity
         :param boundaries: type of boundary conditions: 0 for 0 at boundaries, 1 for fixed boundaries, 2 for no flow through boundaries
         """
     cdef:
@@ -118,12 +117,16 @@ cpdef adi_3d(double[:, :, :] d, double[:, :, :] x, double a, long boundaries):
 
 cpdef tridiag_1d(double[:] d, double[:] x, double b, double c, double b0, double c0):
     """
+    Tridiagonal matrix solver
     
-    :param d: 
-    :param x: 
-    :param a: 
-    :param b: 
-    :param c: 
+    The solver uses Thomas algorithm.
+    
+    :param d: right hand side vector
+    :param x: output vector
+    :param b: main diagonal value
+    :param c: upper and lower diagonal value
+    :param b0: boundary value for main diagonal
+    :param c0: boundary value for upper and lower diagonals 
     :return: 
     """
     tridiag_1d_c(d, x, b, c, b0, c0, b0, c0)
@@ -134,7 +137,7 @@ cdef void tridiag_1d_c(double[:] d, double[:] x, double b, double c, double b0, 
     """
     Tridiagonal matrix solver
     
-    The solver uses Thompson algorithm.
+    The solver uses Thomas algorithm.
     
     :param d: right hand side vector
     :param x: output vector

@@ -258,6 +258,7 @@ class ETrajectory(object):
         #TODO: material tracking can be more universal
         # instead of using deponat and substrate variables, there can be a dictionary, where substrate is always last
         self.E0 = params['E0']
+        self.I0 = params['N']
         self.Emin = params['Emin']
         self.grid = deposit
         self.surface = surface
@@ -266,7 +267,7 @@ class ETrajectory(object):
         self.sigma = params['sigma']
         self.n = params.get('n', 1)
         self.N = stat
-        self.norm_factor = params['N'] / self.N / self.elementary_charge
+        self.norm_factor = self.get_norm_factor()
 
         self.deponat = Element(params['name'], params['Z'], params['A'], params['rho'], params['e'], params['l'], -1)
         self.substrate = substrates[params['sub']]
@@ -300,6 +301,11 @@ class ETrajectory(object):
         self.zdim_abs, self.ydim_abs, self.xdim_abs = self.zdim * self.cell_dim, self.ydim * self.cell_dim, self.xdim * self.cell_dim
         self.chamber_dim = np.asarray([self.zdim_abs, self.ydim_abs, self.xdim_abs])
         self.ztop = np.nonzero(self.surface)[0].max() + 1  # highest point of the structure
+
+    def get_norm_factor(self, N=None):
+        if N is None:
+            N = self.N
+        return self.I0 / N / self.elementary_charge
 
     def rnd_super_gauss(self, x0, y0, N):
         """

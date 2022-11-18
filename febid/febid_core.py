@@ -411,6 +411,7 @@ def run_febid(structure, precursor_params, settings, sim_params, path, temperatu
         stats.get_params(settings, 'Beam parameters and settings')
         stats.get_params(sim_params, 'Simulation volume parameters')
     process_obj = Process(structure, equation_values, timings, temp_tracking=temperature_tracking)
+    process_obj.stats_freq = monitor_kwargs['stats_rate']
     sim = etraj3d.cache_params(mc_config, structure.deposit, structure.surface_bool, structure.surface_neighbors_bool)
     process_obj.max_neib = math.ceil(np.max([sim.deponat.lambda_escape, sim.substrate.lambda_escape])/process_obj.cell_dimension)
     process_obj.structure.define_surface_neighbors(process_obj.max_neib)
@@ -433,8 +434,10 @@ def print_all(path, process_obj, sim):
     total_time = path[:,2].sum()
     t = tqdm(total=av_loops, desc='total', position=0)
     for x, y, step in path[start:]:
-        beam_matrix = etraj3d.rerun_simulation(y, x, sim, process_obj.temperature_tracking, process_obj.dt)
+        start = timeit.default_timer()
+        beam_matrix = etraj3d.rerun_simulation(y, x, sim, process_obj.request_temp_recalc)
         process_obj.beam_matrix[:, :, :] = beam_matrix
+        print(f'Finished MC in {timeit.default_timer() - start} s')
         if process_obj.beam_matrix.max() <= 1:
             warnings.warn('No surface flux!', RuntimeWarning)
             process_obj.beam_matrix[...] = 1
@@ -442,6 +445,7 @@ def print_all(path, process_obj, sim):
         process_obj.get_dt()
         if process_obj.temperature_tracking:
             process_obj.heat_transfer(sim.m3d.heat)
+            process_obj.request_temp_recalc = False
         av_loops = path[:, 2].sum() / process_obj.dt
         t.total = av_loops
         print_step(y, x, step, process_obj, sim, t)
@@ -470,7 +474,7 @@ def print_step(y, x, dwell_time, pr: Process, sim, t):
                 sim.surface = sim.m3d.surface = pr.surface
                 sim.s_neighb = sim.m3d.s_neighb = pr.surface_n_neighbors
             start = timeit.default_timer()
-            beam_matrix= etraj3d.rerun_simulation(y, x, sim, pr.temperature_tracking, pr.dt)
+            beam_matrix= etraj3d.rerun_simulation(y, x, sim, pr.request_temp_recalc)
             pr.beam_matrix[...] = beam_matrix
             print(f'Finished MC in {timeit.default_timer()-start} s')
             if pr.beam_matrix.max() <= 1:
@@ -480,6 +484,7 @@ def print_step(y, x, dwell_time, pr: Process, sim, t):
             pr.update_helper_arrays()
             if pr.temperature_tracking:
                 pr.heat_transfer(sim.m3d.heat)
+                pr.request_temp_recalc = False
             pr.get_dt()
         pr.precursor_density()
         pr.t += pr.dt

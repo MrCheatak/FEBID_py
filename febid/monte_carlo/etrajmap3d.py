@@ -355,7 +355,7 @@ class ETrajMap3d(object):
         return self.flux, self.DE
 
 
-    def map_follow(self, passes, heating=True):
+    def map_follow(self, passes, heating=False):
         """
         Get energy losses in the structure per cell
 
@@ -393,25 +393,25 @@ class ETrajMap3d(object):
         dEs_all = np.concatenate(dEs, axis=0)
         print(f'finished. \t {timeit.default_timer() - start}')
 
-        print(f'**Running \'traverse_segment\'...', end='')
-        start = timeit.default_timer()
-        self.follow_segment(segments_all, dEs_all)
-        print(f'finished. \t {timeit.default_timer() - start}')
-
-        print(f'***Running \'divide_segments\'....', end='')
+        print(f'**Running \'divide_segments\'....', end='')
         start = timeit.default_timer()
         self.prep_se_emission(segments_all, dEs_all, traj_lengths-1)
         print(f'finished. \t {timeit.default_timer() - start}')
 
         self.flux = np.zeros_like(self.grid)
 
-        print(f'****Running \'generate_flux\'...', end='')
+        print(f'***Running \'generate_flux\'...', end='')
         start = timeit.default_timer()
         self.generate_se()
         print(f'finished. \t {timeit.default_timer() - start}')
 
         if heating:
-            print(f'****Running \'joule_heating\'...', end='')
+            print(f'****Running \'traverse_segment\'...', end='')
+            start = timeit.default_timer()
+            self.follow_segment(segments_all, dEs_all)
+            print(f'finished. \t {timeit.default_timer() - start}')
+
+            print(f'*****Running \'joule_heating\'...', end='')
             start = timeit.default_timer()
             self.joule_heating()
             print(f'finished. \t {timeit.default_timer() - start}')

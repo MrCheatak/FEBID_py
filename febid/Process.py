@@ -104,6 +104,7 @@ class Process():
         self.__neibs_edges = None # a similar stencil
         self.irradiated_area_3D = np.s_[:,:,:]
         self.irradiated_area_2D = np.s_[:,:,:]
+        self.__area_2D_no_sub = np.s_[:, :, :]
         self.deposition_scaling = deposition_scaling # multiplier of the deposit increment; used to speed up the process
         self.redraw = True # flag for external functions saying that surface has been updated
         self.t_prev = 0
@@ -153,6 +154,7 @@ class Process():
         self.__get_max_z()
         self.substrate_height = structure.substrate_height
         self.irradiated_area_2D = np.s_[self.structure.substrate_height - 1:self.max_z, :, :]
+        self.__area_2D_no_sub = np.s_[self.substrate_height + 1:self.max_z, :, :]
         self.__update_views_2d()
         self.__update_views_3d()
         self.__generate_surface_index()
@@ -381,7 +383,11 @@ class Process():
                 temp_kern = self.__temp_reduced_3d[neighbors_1st]
                 condition = (temp_kern > 0)
                 self.__temp_reduced_3d[cell] = temp_kern[condition].sum() / np.count_nonzero(condition)
-                self._get_solid_index()
+                self.request_temp_recalc = self.filled_cells > self.temp_calc_count * self.temp_step_cells
+                if self.request_temp_recalc:
+                    self._get_solid_index()
+
+            self.__area_2D_no_sub = np.s_[self.substrate_height + 1:self.max_z, :, :]
             self.irradiated_area_2D = np.s_[self.structure.substrate_height-1:self.max_z, :, :] # a volume encapsulating the whole surface
             self.__update_views_2d()
             # Updating surface nearest neighbors array
@@ -420,7 +426,7 @@ class Process():
                                                     surface_red_2d[n_3d],
                                                     neighbors_2d[n_3d])
 
-        self._get_solid_index()
+
 
         if self.max_z + 5 > self.structure.shape[0]:
             # Here the Structure is extended in height
@@ -534,9 +540,9 @@ class Process():
 
     def heat_transfer(self, heating):
         if self.max_z - self.substrate_height - 3 > 2:
-            if self.filled_cells > self.temp_calc_count * self.temp_step_cells:
+            if self.request_temp_recalc:
                 self.temp_calc_count += 1
-                slice = np.s_[self.substrate_height+1:self.max_z,:,:] # using only top layer of the substrate
+                slice = self.__area_2D_no_sub # using only top layer of the substrate
                 if type(heating) is np.ndarray:
                     heat = heating[slice]
                 else:
@@ -668,7 +674,8 @@ class Process():
         self.__beam_matrix_surface = self.__beam_matrix_reduced_2d[self.__surface_reduced_2d]
 
     def _get_solid_index(self):
-        index = self.deposit[self.substrate_height+1:].nonzero()
+        index = self.deposit[self.__area_2D_no_sub]
+        index = (index<0).nonzero()
         self._solid_index = (np.intc(index[0]), np.intc(index[1]), np.intc(index[2]))
         return self._solid_index
 

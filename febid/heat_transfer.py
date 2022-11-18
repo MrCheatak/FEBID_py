@@ -2,54 +2,72 @@
 Heat equation solution
 """
 
-import math
 import warnings
 
 import numpy as np
 from febid.libraries.rolling import roll
 from febid.libraries.pde import tridiag
-from numexpr_mod import cache_expression, evaluate_cached, evaluate
-from febid.diffusion import laplace_term_rolling, laplace_term_stencil, prepare_ghosts_index, prepare_surface_index
+from numexpr_mod import cache_expression, evaluate_cached
+from febid.diffusion import laplace_term_stencil, prepare_surface_index
 
-# Heat transfer is solved according to finite-difference explicit
-# FTCS (Forward in Time Central in Space) method.
-# Stability condition in 3D space: ∆t<=∆x^2/6k
+# Heat transfer is currently solved statically for a steady-state condition according to
+# Simultaneous Over-Relaxation (SOR) method.
+
+# FTCS (Forward in Time Central in Space) scheme is implemented as well for a real-time solution.
+# Stability condition for FTCS in 3D space: ∆t<=∆x^2/6k
+# Implicit Euler ADI method is implemented as well.
+# Keep in mind, that while relaxation (SOR) requires only thermal conductivity,
+# real-time solvers require density and heat capacity as well.
 
 # Algorithm works with 3-dimensional arrays, which represent a discretized space with a cubic cell.
-# A value held in a cell corresponds to the temperature in that point.
-# In order to manage and index cells that hold a temperature value, a boolean array with the same shape is used.
-# Where True marks cells with a value.
+# A value held in a cell corresponds to the temperature of that volume.
+# In order to manage and index cells that hold a temperature value, a boolean array with the same shape is used,
+# where True flag marks cells with a value.
+# This algorithm defines temperature of the solid.
+# Surface temperature is calculated later by averaging neighboring solid cells.
 
 heat_equation = cache_expression('a*temp', signature=[('a', np.float64), ('temp', np.float64)])
 eV_J = 1.60217733E-19
 
+
 def get_heat_transfer_stability_time(k, rho, cp, dx):
+    """
+    Get the largest stable time step for the FTCS scheme.
+
+    :param k: thermal conductivity, [W/m/K]
+    :param rho: density, [g/cm^3]
+    :param cp: heat capacity, [J/kg/K]
+    :param dx: grid step (cell size), nm
+    :return: time step in seconds
+    """
     heat_dt = dx**2*cp*rho*1e-24 / (6 * k) # maximum stability
     return heat_dt
 
-def temperature_stencil(grid, k, cp, rho, dt, dl, heat_source=0, solid_index=None, substrate_T=294, flat=False, add=0, div=0):
+
+def temperature_stencil(grid, k, cp, rho, dt, dl, heat_source=0, solid_index=None, substrate_T=294, flat=False, add=0):
     """
     Calculates diffusion term for the surface cells using stencil operator
 
-        Nevertheless 'surface_index' is an optional argument,
-    it is highly recommended to handle index from the caller function
+        Nevertheless, 'solid_index' is an optional argument,
+    it is highly recommended to handle index from the caller function.
 
-    :param grid: 3D precursor density array, normalized
-    :param surface: 3D boolean surface array
-    :param D: diffusion coefficient, nm^2/s
+    :param grid: 3D temperature array
+    :param k: thermal conductivity, [W/K/m]
+    :param cp: heat capacity, [J/kg/K]
+    :param rho: density, [g/cm^3]
     :param dt: time interval over which diffusion term is calculated, s
-    :param dl: grid space step, nm
-    :param surface_index: a tuple of indices of surface cells for the 3 dimensions
-    :param substrate_T: constant temperature of the substrate
-    :param flat: if True, returns a flat array of surface cells. Otherwise returns a 3d array with the same shape as grid.
-    :param add: Runge-Kutta intermediate member
-    :param div:
+    :param dl: grid spacing (cell size), nm
+    :param heat_source: 3D volumetric heating source array, [W/nm^3]
+    :param solid_index: indexes of solid cells
+    :param substrate_T: temperature of the substrate
+    :param flat: if True, returns a flat array of surface cells. Otherwise, returns a 3d array with the same shape as grid.
+    :param add:
     :return: 3d or 1d ndarray
     """
     if solid_index is None:
         solid_index = prepare_surface_index(grid)
     y, x = (grid[0]).nonzero()
-    # Getting equation constanats
+    # Getting equation constants
     a = k / cp / rho * 1e24 # thermal diffusivity
     A = dt * a / dl ** 2 # base matrix coefficient
     S = heat_source * (dt / cp / rho * 1e24 * 1.60217733E-19)# heating source
@@ -59,44 +77,10 @@ def temperature_stencil(grid, k, cp, rho, dt, dl, heat_source=0, solid_index=Non
     grid_out += S
     grid[0, y, x] = substrate_T
     grid_out[0, y, x] = 0
-    g = grid[:, :, 10]
     if flat:
         return evaluate_cached(heat_equation, local_dict={'a': A, 'temp': grid_out[solid_index]}, casting='same_kind')
     else:
         return evaluate_cached(heat_equation, local_dict={'a': A, 'temp': grid_out}, casting='same_kind')
-
-
-def temperature_rolling(grid, solid, heat, ghosts_bool, k, cp, rho, dt, cell_dim, ghost_index=None, flat=False, add=0, div=0):
-    """
-        Calculates diffusion term for all surface cells using rolling
-
-            Nevertheless 'ghosts_index' is an optional argument,
-        it is highly recommended to handle index from the caller function
-
-        :param grid: 3D precursor density array, normalized
-        :param surface: 3D boolean surface array
-        :param ghosts_bool: array representing ghost cells
-        :param D: diffusion coefficient, nm^2/s
-        :param dt: time interval over which diffusion term is calculated, s
-        :param cell_dim: grid space step, nm
-        :param ghosts_index: 7 index arrays
-        :param flat: if True, returns a flat array of surface cells. Otherwise returns a 3d array with the same shape as grid.
-        :param add: Runge-Kutta intermediate member
-        :param div:
-        :return: 3d or 1d ndarray
-        """
-    if not ghosts_index:
-        ghosts_index = prepare_ghosts_index(ghosts_bool)
-    grid += add
-    grid_out = laplace_term_rolling(grid, ghosts_bool)
-    grid -= add
-    a = dt / cp / rho / 1000 * 1e27  # [K*nm^3/W]
-    if flat:
-        return evaluate_cached(heat_equation, local_dict={'temp':grid_out[solid_index], 'q': heat[solid_index],
-                                                          'k': k/cell_dim**2, 'a': a}, casting='same_kind')
-    else:
-        return evaluate_cached(heat_equation, local_dict={'temp':grid_out, 'q': heat, 'k': k, 'a': a},
-                                                           casting='same_kind')
 
 
 def prepare_solid_index(grid):
@@ -106,16 +90,16 @@ def prepare_solid_index(grid):
 
 def heat_transfer_BE(grid, conditions, k, cp, rho, dt, dl, heat_source = 0, substrate_T = 294):
     """
-        Calculate temperature distribution after the specified time step by solving the parabollic heat equation.
+    Calculate temperature distribution after the specified time step by solving the parabollic heat equation.
 
-        The heat equation with the heat source term is solved by backward Euler scheme.
+    The heat equation with the heat source term is solved by backward Euler scheme.
 
-        Fractional step method is used to numerically solve the PDE in 3D space.
+    Fractional step method is used to numerically solve the PDE in 3D space.
 
-            There are two options for boundary conditions:
-                'isolated': the structure is isolated from both void and substrate
+        There are two options for boundary conditions:
+            'isolated': the structure is isolated from both void and substrate
 
-                "heatsink': the structure disipates heat through the substarete that has a constant temperature.
+            "heatsink': the structure disipates heat through the substarete that has a constant temperature.
 
 
 
@@ -158,40 +142,104 @@ def heat_transfer_BE(grid, conditions, k, cp, rho, dt, dl, heat_source = 0, subs
     return True
 
 
-def heat_transfer_steady_sor(grid, k, dl, s, eps, index=None):
-    print(f'\nFinding steady state solution using Simulateous Over-Relaxation:')
-    p_j = 1 - np.pi ** 2 / grid.shape[0] ** 2 / 2
-    S = s*dl**2/k * 1.60217733E-19
-    anormf = np.abs(S).sum()
-    if index:
-        z, y, x = index
-    else:
-        z, y, x = grid.nonzero()
-        z, y, x = z.astype(np.intc), y.astype(np.intc), x.astype(np.intc)
-    iy, ix = (grid[0]>0).nonzero()
-    for i in range(100000):
-        if i == 0:
+def heat_transfer_steady_sor(grid, k, dl, heat_source, eps, solid_index=None):
+    """
+    Find steady-state solution to the heat equation with the given accuracy
+
+    :param grid: 3D temperature array
+    :param k: thermal conductivity, [W/K/m]
+    :param dl: grid spacing (cell size), nm
+    :param heat_source: 3D volumetric heating source array, [W/nm^3]
+    :param eps: desired accuracy
+    :param solid_index: indexes of solid cells
+    :return: 3D temperature array
+    """
+
+    # For any arbitrary big structure the number of iterations required is significant for a small difference (0.5 K)
+    # and scales with the number of cells, thus there is no need to check for desired accuracy often.
+    # Accuracy check requires a full array copy, while SOR calculation is done in-place.
+    # The accuracy evaluation is itself incredibly intensive and takes 80% of the function run time,
+    # if called on every iteration.
+    # Here, accuracy evaluation is done only a few times.
+    # Initially, an accuracy check step is evaluated based on the number of cells.
+    # After 3 checks the total required number of iterations is predicted
+    # and SOR runs uninterrupted to it. This algorithm is then repeated until the desired accuracy is reached.
+    # It takes only up to 18 accuracy evaluations and consequently up to 15 predictions for any relaxation task.
+    # The overrun(excessive iterations) is up to 6% which goes down for longer runs.
+    #
+    # The prediction is based on exponential behaviour of accuracy propagation (vs N of iterations).
+    # By consequently fitting calculated norms to the exp. equation and calculating the number of required iterations
+    # it is possible to keep the number of required accuracy evaluations almost constant for any case.
+    # An important remark: the predicted N of iterations has to always be overcompensated, otherwise the algorithm will
+    # check accuracy with an increasing frequency.
+
+    def get_index(grid):
+        if solid_index:
+            z, y, x = solid_index
+        else:
+            z, y, x = grid.nonzero()
+            z, y, x = z.astype(np.intc), y.astype(np.intc), x.astype(np.intc)
+        return z, y, x
+    print(f'\nFinding steady state solution using Simultaneous Over-Relaxation:')
+    p_j = 1 - np.pi ** 2 / grid.shape[0] ** 2 / 2 # spectral radius of the Jacobi iteration
+    S = heat_source * dl ** 2 / k * 1.60217733E-19
+    grid_gs = np.zeros_like(grid)
+    z, y, x = get_index(grid)
+    norm = 1  # achieved accuracy
+    base_step = np.ceil(z.shape[0] / 1000) * 10 # accuracy checks step
+    skip_step = base_step * 5
+    skip = skip_step # next planned accuracy check iteration
+    prediction_step = skip_step * 3
+    n_predictions = 0
+    norm_array = []
+    iters = []
+    for i in range(1000000):
+        if i == 0: # over-relaxation parameter
             w = 1 / (1 - p_j ** 2 / 2)
         else:
             w = 1 / (1 - p_j ** 2 * w / 4)
-        grid_gs = grid.copy()
+        if i % skip == 0 and i != 0: # skipping array copy
+            grid_gs[...] = grid
         roll.stencil_sor(grid, S, w, z, y, x)
-        # grid -= w*grid_gs/6
-        # anorm = np.abs(grid_gs).sum()
-        norm = 0
-        norm = (np.linalg.norm(grid[1:]-grid_gs[1:])/ np.linalg.norm(grid[1:]))
-        grid[0, iy, ix] = 294
-        if eps> norm:
-            print(f'Reached solution with an error of {norm}')
+        if i % skip == 0 and i != 0: # skipping achieved accuracy evaluation
+            norm = (np.linalg.norm(grid[1:]-grid_gs[1:])/ np.linalg.norm(grid[1:]))
+            norm_array.append(norm) # recording achieved accuracy for fitting
+            iters.append(i)
+            skip += skip_step
+        if eps > norm:
+            print(f'Reached solution with an error of {norm:.3e}')
             return grid
+        if i % prediction_step == 0 and i != 0:
+            a, b = fit_exponential(iters, norm_array)
+            skip = int((np.log(eps) - a)/b) + skip_step * n_predictions # making a prediction with overcompensation
+            prediction_step = skip # next prediction will be after another norm is calculated
+            n_predictions += 1
+    raise RuntimeError(f'Exceeded a million iterations during solving a steady-state heat transfer problem. \n'
+                       f'function: febid.heat_transfer.heat_transfer_steady_sor')
 
+
+def fit_exponential(x0, y0):
+    """
+    Fit data to an exponential equation y = a*exp(b*x)
+
+    :param x0: x coordinates
+    :param y0: y coordinates
+    :return: ln(a), b
+    """
+    x = np.array(x0)
+    y = np.array(y0)
+    p = np.polyfit(x, np.log(y), 1)
+    a = p[1]
+    b = p[0]
+    # returning ln(a) to directly solve for desired x
+    return a, b
 
 def fragmentise(grid):
     """
     Collect columns along each axis that do not contain zero cells
 
     :param grid: 3d array
-    :return: array of index tripples
+    :return: array of index triples
     """
     index_x = []
     index_y = []
@@ -224,7 +272,7 @@ def subdivide_list(grid, i=0, j=0, axis=2):
     """
     Extract start and end indexes of the non-zero sections in the array.
 
-    This function virtually prevents zeros from appering in a solution matrix by extracting the 'solid' cells along
+    This function virtually prevents zeros from appearing in a solution matrix by extracting the 'solid' cells along
     the slice.
 
     :param grid: 1D array

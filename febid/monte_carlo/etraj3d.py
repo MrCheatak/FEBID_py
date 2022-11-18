@@ -247,7 +247,7 @@ def cache_params(params, deposit, surface, surface_neighbors):
     return sim
 
 
-def rerun_simulation(y0, x0, sim:et.ETrajectory, heat, dt):
+def rerun_simulation(y0, x0, sim:et.ETrajectory, heat):
     """
     Rerun simulation using existing MC simulation instance
 
@@ -259,14 +259,16 @@ def rerun_simulation(y0, x0, sim:et.ETrajectory, heat, dt):
     :param heat: True will enable calculation of the beam heating
     :return:
     """
-    start = timeit.default_timer()
-    # sim.map_wrapper(y0, x0)
-    sim.map_wrapper_cy(y0, x0)
-    t = timeit.default_timer() - start
+
+    if heat:
+        N = 20000
+        norm_factor = sim.get_norm_factor(N)
+    else:
+        N = sim.N
+        norm_factor = sim.norm_factor
+    sim.map_wrapper_cy(y0, x0, N)
     m3d = sim.m3d
-    start = timeit.default_timer()
     m3d.map_follow(sim.passes, heat)
-    t = timeit.default_timer() - start
     # plot(m3d, sim, True, True, True, True, True, True, True)
     if m3d.flux.max() > 10000*m3d.amplifying_factor:
         print(f' Encountered infinity in the beam matrix: {np.nonzero(m3d.flux>10000*m3d.amplifying_factor)}')
@@ -274,9 +276,9 @@ def rerun_simulation(y0, x0, sim:et.ETrajectory, heat, dt):
     if m3d.flux.min() < 0:
         print(f'Encountered negative in beam matrix: {np.nonzero(m3d.flux<0)}')
         m3d.flux[m3d.flux<0] = 0
-    const = sim.norm_factor/m3d.amplifying_factor/sim.cell_dim**2/sim.m3d.segment_min_length
+    const = norm_factor/m3d.amplifying_factor/sim.cell_dim**2/sim.m3d.segment_min_length
     if heat:
-        m3d.heat *= sim.norm_factor/sim.cell_dim**3
+        m3d.heat *= norm_factor/sim.cell_dim**3
     return np.int32(m3d.flux*const)
 
 
