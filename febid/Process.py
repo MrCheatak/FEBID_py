@@ -494,10 +494,10 @@ class Process():
         """
         if self.temperature_tracking:
             tau = self.__tau_flat
-            return evaluate_cached(self.expressions['precursor_density_tau'],
-                                   local_dict={'F_dt': self.F * dt, 'F_dt_n0': self.F*self.n0*dt,
-                                               'sigma_dt':self.sigma*dt, 'dt': dt, 'sub': precursor+addon, 'tau': tau,
-                                               'flux_matrix': beam_matrix}, casting='same_kind')
+            return evaluate_cached(self.expressions['precursor_density_temp'],
+                                    local_dict={'F': self.F, 'dt': dt, 'n0':self.n0,
+                                    'sigma':self.sigma, 'sub': precursor+addon, 'tau': tau,
+                                    'flux_matrix': beam_matrix}, casting='same_kind')
         else:
             return evaluate_cached(self.expressions["precursor_density"],
                                local_dict={'F_dt': self.F * dt,
@@ -735,10 +735,9 @@ class Process():
                                     signature=[('F_dt', np.float64), ('F_dt_n0_1_tau_dt', np.float64),
                                                ('addon', np.float64), ('flux_matrix', np.int64),
                                                ('sigma_dt', np.float64), ('sub', np.float64)]),
-                                precursor_density_tau = cache_expression("F_dt-F_dt_n0*sub - sub/tau*dt - sub*sigma_dt * flux_matrix",
-                                            signature=[('F_dt', np.float64), ('F_dt_n0', np.float64), ('dt', np.float64),
-                                                       ('flux_matrix', np.int32), ('sigma_dt', np.float64),
-                                                       ('sub', np.float64), ('tau', np.float64)]),
+                                precursor_density_temp = cache_expression("F*dt*(1-sub/n0) - sub*dt/tau - sub*sigma*flux_matrix*dt",
+                                            signature=[('F', np.float64), ('dt', np.float64), ('flux_matrix', np.int32), ('n0', np.float64),
+                                                        ('sigma', np.float64), ('sub', np.float64), ('tau', np.float64), ]),
                                 laplace1=cache_expression("grid_out*dt_D",
                                                           signature=[('dt_D', np.float64), ('grid_out', np.float64)]),
                                 laplace2=cache_expression("grid_out*dt_D_div", signature=[('dt_D_div', np.float64),
