@@ -71,7 +71,23 @@ def show_animation(directory='', show='precursor'):
                                                                                  structure.surface_bool, \
                                                                                  structure.semi_surface_bool, \
                                                                                  structure.ghosts_bool
+    data = None
+    if show not in ['precursor', 'deposit', 'temperature']:
+        raise RuntimeError(f'The specified dataset \'{show}\' is not supported.')
+    if show == 'precursor':
+        data_name = show.capitalize()
+        cmap = 'plasma'
+        mask_name = 'surface_bool'
+    if show == 'deposit':
+        data_name = show.capitalize()
+        cmap = 'viridis'
+        mask_name = 'surface_bool'
+    if show == 'temperature':
+        data_name = show.capitalize()
+        cmap = 'inferno'
+        mask_name = 'deposit'
     data = structure.__getattribute__(show)
+    mask = structure.__getattribute__(mask_name)
     # Pre-setting scene
     render = vr.Render(cell_dim)
     render._add_3Darray(data)
@@ -83,7 +99,7 @@ def show_animation(directory='', show='precursor'):
                         scalar_name=data_name, button_name=data_name, cmap=cmap)
     # Hiding non-surface cells
     index = np.zeros_like(data, dtype=np.uint8)
-    index[surface_bool == False] = vtk.vtkDataSetAttributes.HIDDENCELL
+    index[mask == False] = vtk.vtkDataSetAttributes.HIDDENCELL
     render.p.mesh.cell_data[vtk.vtkDataSetAttributes.GhostArrayName()] = index.ravel()
     render.p.mesh.set_active_scalars(data_name)
     # Adding text
@@ -105,6 +121,12 @@ def show_animation(directory='', show='precursor'):
         surface_bool = structure.surface_bool
         deposit = structure.deposit
         data = structure.__getattribute__(show)
+        if show == 'precursor':
+            mask = surface_bool
+        if show == 'deposit':
+            mask = surface_bool
+        if show == 'temperature':
+            mask = deposit<0
         total_dep_cells.append(np.count_nonzero(deposit[deposit < 0]) - init_layer)
         volume = int((total_dep_cells[i] + deposit[surface_bool].sum())*cell_dim**3)
         delta_t = (times[i] - times[i - 1]).total_seconds()
@@ -119,7 +141,7 @@ def show_animation(directory='', show='precursor'):
             render.y_pos = 5
             render.p.button_widgets.clear()
             render._add_3Darray(data, opacity=1, show_edges=True,
-                            scalar_name=data_name, button_name=data_name, cmap='plasma')
+                            scalar_name=data_name, button_name=data_name, cmap=cmap)
             index = np.zeros_like(data, dtype=np.uint8)
             render.p.mesh.cell_data[vtk.vtkDataSetAttributes.GhostArrayName()] = index.ravel()
             render.p.mesh.set_active_scalars(data_name)
@@ -130,10 +152,10 @@ def show_animation(directory='', show='precursor'):
         render.p.textActor.renderer.actors['time'].SetText(2, str(times[i]-times[0]))
         render.p.textActor.renderer.actors['stats'].SetText(3, stats)
         # Updating hidden cells
-        index[surface_bool == 0] = vtk.vtkDataSetAttributes.HIDDENCELL
-        index[surface_bool == 1] = 0 # surface_bool is not bool type and cannot be used directly as index
+        index[mask == 0] = vtk.vtkDataSetAttributes.HIDDENCELL
+        index[mask == 1] = 0 # surface_bool is not bool type and cannot be used directly as index
         # render.p.mesh.cell_data[vtk.vtkDataSetAttributes.GhostArrayName()] = index.ravel()
-        p=data[surface_bool]
+        p=data[mask]
         try:
             render.p.update_scalar_bar_range([np.partition(p[p!=p.min()], 4)[2], p.max()])
         except: pass
@@ -162,4 +184,4 @@ def show_animation(directory='', show='precursor'):
         render.show(interactive_update=False)
 
 if __name__ == '__main__':
-    show_animation()
+    show_animation(show='temperature')

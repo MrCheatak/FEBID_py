@@ -109,7 +109,9 @@ class Process():
         self.redraw = True # flag for external functions saying that surface has been updated
         self.t_prev = 0
         self.vol_prev = 0
-        self.temperature_tracking = True
+        self.allow = True # prevent r/w operations on main arrays (i.e. during resizing)
+        self.temperature_tracking = temp_tracking
+        self.request_temp_recalc = temp_tracking
         self.temp_step = 10000 # amount of volume to be deposited before next temperature calculation
         self.temp_step_cells = 0 # number of cells to be filled before next temperature calculation
         self.temp_calc_count = 0 # counting number of times temperature has been calculated
@@ -361,7 +363,7 @@ class Process():
             ghosts_kern[...] = False
             deposit_kern[surf_kern] += surplus/np.count_nonzero(surf_kern) # distributing among the neighbors
             condition = (temp_kern > 0)
-            self.__temp_reduced_3d[cell] = temp_kern[condition].sum()/np.count_nonzero(condition)
+            self.__temp_reduced_3d[cell] = temp_kern[condition].sum() / np.count_nonzero(condition)
 
             surf_kern = self.__surface_reduced_3d[neighbors_2nd]
             semi_s_kern = self.__semi_surface_reduced_3d[neighbors_2nd]
@@ -552,7 +554,10 @@ class Process():
                 # self.temp[slice] += heat_transfer.temperature_stencil(self.temp[slice], self.heat_cond, self.cp,
                 #                                    self.rho, self.dt, self.cell_dimension, heat,)
                 start = df()
-                heat_transfer.heat_transfer_steady_sor(self.temp[slice], self.heat_cond, self.cell_dimension, heat, 1e-7, self._solid_index)
+                print(f'Current max. temperature: {self.max_T} K')
+                print(f'Total heating power: {heat.sum()/1e6:.3f} W/nm/K/1e6')
+                heat_transfer.heat_transfer_steady_sor(self.temp[slice], self.heat_cond, self.cell_dimension, heat, 1e-8)
+                print(f'New max. temperature {self.temp.max():.3f} K')
                 print(f'Temperature recalculation took {df() - start:.4f} s')
         self.temp[self.substrate_height] = self.room_temp
         self.__get_surface_temp()
