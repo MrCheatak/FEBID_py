@@ -14,7 +14,6 @@ from febid.Structure import Structure
 import febid.diffusion as diffusion
 
 # TODO: look into k-d trees
-# TODO: add a benchmark to determine optimal threads number for current machine
 
 def restrict(func):
     """
@@ -38,7 +37,7 @@ def restrict(func):
 class Process():
     """
     Class representing the core deposition process.
-    It contains all necessary arrays, variables, parameters and methods to support a continuous deposition process.
+    It contains all necessary arrays, variables, parameters and methods to construct a continuous deposition process.
     """
 
     ### A note_ to value correspondance:
@@ -174,9 +173,6 @@ class Process():
         self.D = params['D']
         self.deposition_scaling = params['deposition_scaling']
 
-    def __setup_MC_module(self, params):
-        pass
-
     def __get_timings(self, timings):
         # Stability time steps
         self.t_diffusion = diffusion.get_diffusion_stability_time(self.D, self.cell_dimension)
@@ -253,7 +249,7 @@ class Process():
             z_min, z_max, y_min, y_max, x_min, x_max = 0, 0, 0, 0, 0, 0
             # Taking into account cases when the cell is at the edge:
             # Small note_: views should be first decreased from the end ([:2])
-            # and then from the begining. Otherwise desreasing from the end will have no effect.
+            # and then from the beginning. Otherwise, decreasing from the end will have no effect.
             if cell[0] + 2 > self.__deposit_reduced_3d.shape[0]:
                 z_max = self.__deposit_reduced_3d.shape[0]
                 neibs_sides = neibs_sides[:2, :, :]
@@ -531,6 +527,7 @@ class Process():
     def update_helper_arrays(self):
         """
         Define new views to data arrays, create axillary indexes and flatten beam_matrix array
+
         :return:
         """
         # Basically, procedure provided by this method is optional and serves as an optimisation.
@@ -626,6 +623,7 @@ class Process():
     def __get_max_z(self):
         """
         Get z position of the highest not empty cell in the structure
+
         :return:
         """
         self.max_z = self.deposit.nonzero()[0].max() + 3
@@ -668,8 +666,6 @@ class Process():
                                 laplace2=cache_expression("grid_out*dt_D_div", signature=[('dt_D_div', np.float64),
                                                                                           ('grid_out', np.float64)]))
 
-    def printing(self, x, y, dwell_time):
-        pass
     @property
     def kd(self):
         return self.F/self.n0 + 1/self.tau + self.sigma * self.beam_matrix.max()

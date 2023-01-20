@@ -20,7 +20,7 @@ def laplace_term_stencil(grid, surface, D, dt, cell_dim, surface_index=None, fla
     """
     Calculates diffusion term for the surface cells using stencil operator
 
-        Nevertheless 'surface_index' is an optional argument,
+        Nevertheless, 'surface_index' is an optional argument,
     it is highly recommended to handle index from the caller function
 
     :param grid: 3D precursor density array, normalized
@@ -29,7 +29,7 @@ def laplace_term_stencil(grid, surface, D, dt, cell_dim, surface_index=None, fla
     :param dt: time interval over which diffusion term is calculated, s
     :param cell_dim: grid space step, nm
     :param surface_index: a tuple of indices of surface cells for the 3 dimensions
-    :param flat: if True, returns a flat array of surface cells. Otherwise returns a 3d array with the same shape as grid.
+    :param flat: if True, returns a flat array of surface cells. Otherwise, returns a 3d array with the same shape as grid.
     :param add: Runge-Kutta intermediate member
     :param div:
     :return: 3d or 1d ndarray

@@ -317,10 +317,10 @@ class ETrajectory(object):
         # with a given probability density function
         # Firstly, probability density is calculated for a number of generated points within the given boundaries.
         # Then, points of the meshgrid are assigned random probability r values (0>r>p.max()).
-        # If the r value in the given point is less then p value, the point is saved. Otherwise it is disgarded.
+        # If the r value in the given point is less than p value, the point is saved. Otherwise, it is disgarded.
 
         # Keeping in mind, that electrons might miss the target, a given number of points is generated first and then
-        # checked to be inside of the main grid boundaries.
+        # checked to be inside the main grid boundaries.
 
         # Probability density function
         def super_gauss_2d_mod(x, y, st_dev, n):

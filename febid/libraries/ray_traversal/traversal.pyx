@@ -10,6 +10,7 @@
 #cython: language_level=3
 #cython: cdivision=True
 #in particular enables special integer division
+#cython: embedsignature=True
 
 import cython
 from cython.parallel cimport prange

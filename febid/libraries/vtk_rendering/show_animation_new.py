@@ -21,7 +21,7 @@ def open_file(directory=''):
     # Getting all filenames in the specified directory
     # Getting creation dates of the files
     # Zipping them together and sorting by the creation date
-    # Unzipping and returning in the order sorted
+    # Unzipping and returning to the order sorted
     # directory = '/Users/sandrik1742/Documents/PycharmProjects/FEBID/code/Experiment runs/gr=0'
     files = sorted(os.listdir(directory))[:]
     n = 0

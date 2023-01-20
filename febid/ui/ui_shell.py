@@ -740,7 +740,7 @@ class MainPannel(QMainWindow, UI_MainPanel):
                 'cell_size: ''\n',
                 'substrate_height: ''\n',
                 '\n',
-                'pattern_source: '' # simple - print a simple figure, stream-file - load printing path from file\n',
+                'pattern_source: '' # simple - print a simple figure, stream_file - load printing path from file\n',
                 'pattern: '' # available: point, line, square, circle, rectangle\n',
                 '# For the point these parameters are position coordinates, while other patterns are automatically\n',
                 '# positioned in the center and these parameters define the figures.\n',

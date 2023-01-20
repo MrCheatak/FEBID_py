@@ -372,7 +372,7 @@ class Structure:
         :param n: order of nearest neighbor, if 0, then index all the solid cells
         :return:
         """
-        print(f'generating surface nearest neighbors index...', end='')
+        # print(f'generating surface nearest neighbors index...', end='')
         if deposit is None:
             deposit = self.deposit
         if surface is None:
@@ -417,7 +417,7 @@ class Structure:
         g = grid[1:-1, 1:-1, 1:-1]
         neigb[...] = 0
         neigb[g > 0] = True
-        print(f'done!', end=' ')
+        # print(f'done!', end=' ')
 
     def define_ghosts(self):
         """

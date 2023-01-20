@@ -287,7 +287,6 @@ class ETrajMap3d(object):
         # This reduces the unnecessary analysis of trajectory segments that lie in void(geometry features or backscattered electrons)
         try:
             mask = mask.astype(bool)
-            s = points.shape, energies.shape
             pnp = points
             dE = energies
         except AttributeError:

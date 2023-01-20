@@ -5,7 +5,7 @@ import warnings
 import numpy as np
 import pyvista as pv
 
-# Axillary packeges
+# Axillary packages
 from tkinter import filedialog as fd
 import timeit
 
@@ -263,10 +263,9 @@ def rerun_simulation(y0, x0, sim:et.ETrajectory):
     :param sim: MC simulation instance
     :return:
     """
-    start = timeit.default_timer()
+    print('\n')
     # sim.map_wrapper(y0, x0)
     sim.map_wrapper_cy(y0, x0)
-    t = timeit.default_timer() - start
     m3d = sim.m3d
     start = timeit.default_timer()
     m3d.map_follow(sim.passes)

@@ -194,32 +194,6 @@ def buffer_constants(precursor: dict, settings: dict, cell_dimension: int):
     return mc_config, equation_values, timings, nr
 
 
-def start_from_command_line():
-    """
-    Simulation entry point from a command line
-    :return:
-    """
-    from_file = input("Open predefined structure? [y/n] Otherwise a clear substrate will be created.")
-    from_file = from_file.strip()
-    if from_file not in ['y', 'n']:
-        raise RuntimeError('Unacceptable input! Exiting.')
-    elif from_file == 'y':
-        from_file = True
-    else:
-        from_file = False
-    structure, precursor_params, settings, sim_params = initialize_framework(from_file)
-    print(f'Specify a stream file. If no file is specified, beam will be stationed in the center.')
-    path = fd.askopenfilename()
-    if not path:
-        x, y = structure.shape[2] // 2, structure.shape[1] // 2
-        path = sp.generate_pattern(path[0], 100000000, 1e-4, x, y, None)
-    else:
-        path, shape = sp.open_stream_file(path, True)
-        structure.create_from_parameters(2, int(shape[2]) // 2, int(shape[1]) // 2, int(shape[0]) // 2, 4)
-
-    run_febid(structure, precursor_params, settings, sim_params, path)
-
-
 def run_febid_interface(structure, precursor_params, settings, sim_params, path, saving_params, rendering):
 
     if saving_params['monitoring']:
@@ -242,19 +216,9 @@ def run_febid_interface(structure, precursor_params, settings, sim_params, path,
     return process_obj, sim
 
 
-def run_febid_test(geom, path, dwell_time, loops, files, kwargs):
-    x, y = geom[0] // 2 * geom[4], geom[1] // 2 * geom[4]  # center
-    path = sp.generate_pattern(path[0], loops, dwell_time, x, y, path[1:], step=2)
-
-    structure, precursor_params, settings, sim_params = initialize_framework(False, files['precursor'],
-                                                                             files['settings'], geom_params=geom)
-    saving_params = {}
-    run_febid(structure, precursor_params, settings, sim_params, path, True, kwargs)
-
-
 def run_febid(structure, precursor_params, settings, sim_params, path, gather_stats=False, monitor_kwargs=None):
     """
-        Create necessary objects and start the FEBID process
+        Create necessary objects and start the FEBID process.
 
     :param structure: structure object
     :param precursor_params: precursor properties
@@ -287,7 +251,16 @@ def run_febid(structure, precursor_params, settings, sim_params, path, gather_st
     print('Finished path.')
     return process_obj, sim
 
+
 def print_all(path, process_obj, sim):
+    """
+    Main event loop, that iterates through consequent points in a stream-file.
+
+    :param path: patterning path from a stream file
+    :param process_obj: Process class instance
+    :param sim: Monte Carlo simulation class instance
+    :return:
+    """
     global flag, x_pos, y_pos
     x_pos, y_pos = path[0, 0:2]
     start = 0
@@ -325,7 +298,13 @@ def print_step(y, x, dwell_time, pr: Process, sim, t):
         pr.dt = dwell_time
     time = 0
     flag = True
-    while flag:  # loop repeats
+    flag_resize = True
+    # THE core loop.
+    # Any changes to the events sequence are defined by or stem from this loop.
+    # The FEBID process is 'constructed' here by arranging events like deposition(dissociated volume calculation),
+    # precursor coverage recalculation, execution of the MC simulation, temperature profile recalculation and other.
+    # If any additional calculations and to be included, they shall be run from this loop
+    while flag:
         if time+pr.dt>dwell_time: # stepping only for remaining dwell time to avoid accumulating of excessive deposit
             pr.dt = dwell_time - time
             flag = False
@@ -337,7 +316,7 @@ def print_step(y, x, dwell_time, pr: Process, sim, t):
                 sim.surface = sim.m3d.surface = pr.surface
                 sim.s_neighb = sim.m3d.s_neighb = pr.surface_n_neighbors
             start = timeit.default_timer()
-            pr.beam_matrix[...] = etraj3d.rerun_simulation(y, x, sim, pr.dt)
+            pr.beam_matrix[...] = etraj3d.rerun_simulation(y, x, sim) # run MC sim. and retrieve SE surface flux
             print(f'Finished MC in {timeit.default_timer()-start} s')
             if pr.beam_matrix.max() <= 1:
                 warnings.warn('No surface flux!', RuntimeWarning)
@@ -347,10 +326,9 @@ def print_step(y, x, dwell_time, pr: Process, sim, t):
                 pr.get_dt()
             else:
                 pr.dt = dwell_time
-            pr.update_helper_arrays()
+            pr.update_helper_arrays() # auxiliary method that maintains an efficiency increasing infrastructure
             # pr.equilibrate()
-            a = 1
-        pr.precursor_density()
+        pr.precursor_density() # recalculate precursor coverage
         pr.t += pr.dt*pr.deposition_scaling
         time += pr.dt
         t.update(pr.dt * pr.deposition_scaling * 1e6)
@@ -363,7 +341,7 @@ def print_step(y, x, dwell_time, pr: Process, sim, t):
 def monitoring(pr: Process, l, stats: Statistics = None, location=None, stats_rate=60, dump_rate=60, render=False,
                frame_rate=1, refresh_rate=0.5, displayed_data='precursor'):
     """
-    A daemon process function to manage statistics gathering and graphics update
+    A daemon process function to manage statistics gathering and graphics update.
 
     :param pr: object of the core deposition process
     :param l: approximate number of iterations
@@ -459,6 +437,7 @@ def update_graphical(rn: vr.Render, pr: Process, time_step, time_spent, displaye
     redrawed = pr.redraw
     if pr.redraw:
         try:
+            # Clearing scene
             rn.y_pos = 5
             try:
                 rn.p.button_widgets.clear()
@@ -538,14 +517,5 @@ def dump_structure(structure: Structure, sim_t=None, t=None, beam_position=None,
 
 
 if __name__ == '__main__':
-    print(f'##################### FEBID Simulator ###################### \n\n'
-          f'Two modes are available: deposition process and Monte Carlo electron beam-matter simulation\n'
-          f'Type \'febid\' to enter deposition mode or \'mc\' for electron trajectory simulation:')
-    mode_choice = input("Enter 'febid', 'mc' or press Enter to exit:")
-    if mode_choice not in ['febid', 'mc']:
-        sys.exit("Exit program.")
-    if mode_choice == 'mc':
-        print(f'Entering Monte Carlo electron beam-matter simulation module')
-        etraj3d.mc_simulation()
-    if mode_choice == 'febid':
-        start_from_command_line()
+    print(f'##################### FEBID Simulator ###################### \n')
+    print('Please use `python -m febid` for launching')
