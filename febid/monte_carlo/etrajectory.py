@@ -330,9 +330,10 @@ class ETrajectory(object):
         if N == 0: N = self.N
         rnd = np.random.default_rng()
         # Boundaries of the distribution
-        bonds = self.sigma ** (1 / 2 / self.n) * 2.355 * sqrt(self.sigma) * 2
+        bonds = self.sigma * 5
         x_all = np.array([0])
         y_all = np.array([0])
+        N = N + 1 # because the first element [0] is discarded regardless
         i = 0
         while x_all.shape[0] <= N:
             # Uniform meshgrid
@@ -340,6 +341,7 @@ class ETrajectory(object):
             y = rnd.uniform(-bonds+y0, bonds+y0, 100)
             # Probability density grid
             p = super_gauss_2d(x, y, self.sigma, self.n)
+            # p = super_gauss_2d_mod(x, y, self.sigma, self.n)
             # Assigning random numbers
             rand = rnd.uniform(0, p.max(), x.shape[0])
             # Sieving out points
@@ -1094,6 +1096,84 @@ class ETrajectory(object):
             E = coords.E
         return -7.85E-3*self.material.rho*self.material.Z/(self.material.A*E)*log(1.166*(E/self.material.J + 0.85))
 
+    def plot_distribution(self, x, y, func=None):
+        import matplotlib.pyplot as plt
+        from matplotlib.axes import Axes
+        # global fig, scatter, x_hist, y_hist, bins
+        print('Preparing plot:')
+        left, width = 0.1, 0.6
+        bottom, height = 0.1, 0.6
+        spacing = 0.005
+
+        print('Creating canvas and axes...')
+        rect_scatter = [left, bottom, width, height]
+        rect_histx = [left, bottom + height + spacing, width, 0.2]
+        rect_histy = [left + width + spacing, bottom, 0.2, height]
+
+        # start with a square Figure
+        fig = plt.figure(figsize=(9, 9))
+
+        ax:Axes = fig.add_axes(rect_scatter)
+        ax_histx = fig.add_axes(rect_histx, sharex=ax)
+        ax_histy = fig.add_axes(rect_histy, sharey=ax)
+
+        # the scatter plot:
+        print('Drawing scatter plot...')
+        scatter = ax.scatter(x, y, s=1, linewidths=0, alpha=0.7, label=f'{x.shape[0]} points \n'
+                                                                       f'{self.sigma} st_dev \n'
+                                                                       f'{self.n} order')
+
+        # no labels
+        ax_histx.tick_params(axis="x", labelbottom=False)
+        ax_histy.tick_params(axis="y", labelleft=False)
+
+        # now determine nice limits by hand:
+        n_bins = 200
+        binwidth = (x.max() - x.min()) / 100
+        xymax = max(np.max(np.abs(x)), np.max(np.abs(y)))
+        lim = (int(xymax / binwidth) + 1) * binwidth
+
+        # making histograms
+        print('Drawing histograms...')
+        center = x.mean()
+        margin = lim - center
+        bins = np.arange(center - margin, center + margin + binwidth, binwidth)
+
+        nx, _ = np.histogram(x, bins, density=True)
+        ny, _ = np.histogram(y, bins, density=True)
+
+        x_p = x[np.fabs(y - center) < (x.max()-center)*0.1]
+        y_p = y[np.fabs(x - center) < (y.max()-center)*0.1]
+        _, _, x_hist = ax_histx.hist(x_p, bins=bins, density=True)
+        _, _, y_hist = ax_histy.hist(y_p, bins=bins, density=True, orientation='horizontal')
+        if func is not None:
+            # div = 1.5 if self.n > 1 else 1
+            x_p = np.arange(x.min(), x.max(), 0.01)
+            p_x = func(x_p, center, self.sigma, self.n)
+            ax_histx.plot(x_p, p_x, lw=3, label="Probability density distr.")
+            y_p = np.arange(y.min(), y.max(), 0.01)
+            p_y = func(y_p, center, self.sigma, self.n)
+            ax_histy.plot(p_y, y_p, lw=3)
+            ax.set_title(f"Super Gauss distribution, σ={self.sigma} n={self.n}", pad=170, fontdict={'fontsize': 18})
+            ax_histx.legend(loc='upper left')
+
+        print('Setting sliders...')
+        ax_histx.set_title('x distribution')
+        ax_histy.set_title('y distribution')
+        ax.legend()
+        ax.grid(True, 'both')
+
+        # axstdev = plt.axes([0.25, 0.01, 0.65, 0.03])
+        # axnorder = plt.axes([0.25, 0.05, 0.65, 0.03])
+
+        # s_stdev = Slider(axstdev, 'Standard deviation', 0.1, 30.0, valinit=3, valstep=0.1)
+        # s_order = Slider(axnorder, 'Function order', 0.1, 20.0, valinit=1, valstep=1)
+
+        # s_stdev.on_changed(update_stdev)
+        # s_order.on_changed(update_order)
+
+        print('Plotting...')
+        plt.show()
 
 class Element:
     """

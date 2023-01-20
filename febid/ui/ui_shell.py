@@ -523,7 +523,7 @@ class MainPannel(QMainWindow, UI_MainPanel):
         if self.pattern_source == 'stream_file': # importing printing path from stream_file
             try:
                 printing_path, shape = sp.open_stream_file(self.stream_file_filename, 200, True)
-            except:
+            except Exception as e:
                 if not self.stream_file_filename:
                     self.view_message('File not specified',
                                       'Stream-file not specified. Please choose the file and try again.')
@@ -688,6 +688,43 @@ class MainPannel(QMainWindow, UI_MainPanel):
         msgBox.setStandardButtons(QMessageBox.Ok)
         msgBox.setIcon(icon)
         msgBox.exec()
+    def read_yaml(self, file):
+        """
+        Read YAML file with units
+
+        :param file: full path to YAML file
+        :return: values dict, units dict
+        """
+        values = {}
+        units = {}
+        with open(file, mode='rb') as f:
+            config = yaml.load(f, Loader=yaml.FullLoader)
+            for key, entry in config.items():
+                if type(entry) is str:
+                    entry_splitted = entry.split(' ')
+                    try:
+                        value, unit = entry_splitted
+                    except ValueError:
+                        value = entry_splitted[0]
+                        unit = ''
+                    except Exception as e:
+                        print(f'An error occurred while reading units from YAML file:')
+                        raise e
+                    try:
+                        val = int(value)
+                    except ValueError:
+                        try:
+                            val = float(value)
+                        except ValueError:
+                            val = value
+                    values[key] = val
+                    units[key] = unit
+                else:
+                    values[key] = entry
+                    units[key] = ''
+        return values, units
+
+
     @property
     def last_session_stub(self):
         stub = ['# Settings from the last session are saved here and loaded\n',

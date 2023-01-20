@@ -222,6 +222,18 @@ def plot(m3d:map3d.ETrajMap3d, sim:et.ETrajectory, primary_e=True, deposited_E=T
         kwargs['se_traj'] = m3d.coords
     render.show_mc_result(sim.grid, **kwargs, interactive=False)
 
+def plot_flux_2d(flux, cell_size):
+    import matplotlib.pyplot as plt
+    summed = np.sum(flux, 0)
+    x, y = np.mgrid[0:summed.shape[1]+1, 0:summed.shape[0]+1] # +1 because 'shading=flat' requires dropping last column and row
+    fig, ax = plt.subplots()
+    ax.pcolormesh(x, y, summed, cmap='plasma', shading='flat')
+    locator = plt.MultipleLocator(cell_size)
+    # ax.xaxis.set_major_locator(locator)
+    # ax.yaxis.set_major_locator(locator)
+    plt.show()
+
+
 
 def cache_params(params, deposit, surface, surface_neighbors):
     """
@@ -240,7 +252,7 @@ def cache_params(params, deposit, surface, surface_neighbors):
     return sim
 
 
-def rerun_simulation(y0, x0, sim:et.ETrajectory, dt):
+def rerun_simulation(y0, x0, sim:et.ETrajectory):
     """
     Rerun simulation using existing MC simulation instance
 
@@ -267,7 +279,8 @@ def rerun_simulation(y0, x0, sim:et.ETrajectory, dt):
         print(f'Encountered negative in beam matrix: {np.nonzero(m3d.flux<0)}')
         m3d.flux[m3d.flux<0] = 0
     const = sim.norm_factor/m3d.amplifying_factor/sim.cell_dim**2/sim.m3d.segment_min_length
-    return np.int32(m3d.flux*const)
+    m3d.flux = np.int32(m3d.flux*const)
+    return m3d.flux
 
 
 if __name__ == '__main__':

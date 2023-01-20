@@ -227,13 +227,13 @@ def run_febid_interface(structure, precursor_params, settings, sim_params, path,
         stats_rate = saving_params['monitoring']
     else:
         dump_stats = False
-        stats_rate = math.inf
+        stats_rate = sys.maxsize
     if saving_params['snapshot']:
         dump_vtk = True
         dump_rate = saving_params['snapshot']
     else:
         dump_vtk = False
-        dump_rate = math.inf
+        dump_rate = sys.maxsize
 
     kwargs = dict(location=saving_params['filename'], stats_rate=stats_rate,
                   dump_rate=dump_rate, render=rendering['show_process'],
@@ -273,6 +273,7 @@ def run_febid(structure, precursor_params, settings, sim_params, path, gather_st
         stats.get_params(settings, 'Beam parameters and settings')
         stats.get_params(sim_params, 'Simulation volume parameters')
     process_obj = Process(structure, equation_values, timings)
+    process_obj.stats_freq = min(monitor_kwargs['stats_rate'], monitor_kwargs['dump_rate'], monitor_kwargs['refresh_rate'])
     sim = etraj3d.cache_params(mc_config, structure.deposit, structure.surface_bool, structure.surface_neighbors_bool)
     process_obj.max_neib = math.ceil(np.max([sim.deponat.lambda_escape, sim.substrate.lambda_escape])/process_obj.cell_dimension)
     process_obj.structure.define_surface_neighbors(process_obj.max_neib)
@@ -291,10 +292,12 @@ def print_all(path, process_obj, sim):
     x_pos, y_pos = path[0, 0:2]
     start = 0
     total_time = int(path[:,2].sum() * process_obj.deposition_scaling * 1e6)
-    t = tqdm(total=total_time, desc='Patterning', position=0, unit='µs')
+    bar_format = "{desc}: {percentage:.1f}%|{bar}| {n:.0f}/{total_fmt} [{elapsed}<{remaining}, {rate_fmt}{postfix}]"
+    t = tqdm(total=total_time, desc='Patterning', position=0, unit='µs',
+             bar_format=bar_format) # the displayed execution speed is shown in µs of simulation time per s of real time
     for x, y, step in path[start:]:
         x_pos, y_pos = x, y
-        beam_matrix = etraj3d.rerun_simulation(y, x, sim, process_obj.dt)
+        beam_matrix = etraj3d.rerun_simulation(y, x, sim)
         process_obj.beam_matrix[:, :, :] = beam_matrix
         if process_obj.beam_matrix.max() <= 1:
             warnings.warn('No surface flux!', RuntimeWarning)
@@ -307,7 +310,7 @@ def print_all(path, process_obj, sim):
 
 def print_step(y, x, dwell_time, pr: Process, sim, t):
     """
-    Run deposition on a single spot
+    Sub-loop, that iterates through the dwell time by a time step
 
     :param x: spot x-coordinate
     :param y: spot y-coordinate
@@ -328,8 +331,8 @@ def print_step(y, x, dwell_time, pr: Process, sim, t):
             flag = False
         pr.deposition()  # depositing on a selected area
         if pr.check_cells_filled():
-            flag = pr.update_surface()  # updating surface on a selected area
-            if flag:
+            flag_resize = pr.update_surface()  # updating surface on a selected area
+            if flag_resize: # update references if the allocated simulation volume was increased
                 sim.grid = sim.m3d.grid = pr.deposit
                 sim.surface = sim.m3d.surface = pr.surface
                 sim.s_neighb = sim.m3d.s_neighb = pr.surface_n_neighbors
@@ -350,11 +353,15 @@ def print_step(y, x, dwell_time, pr: Process, sim, t):
         pr.precursor_density()
         pr.t += pr.dt*pr.deposition_scaling
         time += pr.dt
-        t.update(pr.dt*pr.deposition_scaling*1e6)
+        t.update(pr.dt * pr.deposition_scaling * 1e6)
+        if time % pr.stats_freq < pr.dt*1.5:
+            pr.min_precursor_covearge = pr.precursor_min
+            pr.dep_vol = pr.deposited_vol
+
 
 
 def monitoring(pr: Process, l, stats: Statistics = None, location=None, stats_rate=60, dump_rate=60, render=False,
-               frame_rate=1, refresh_rate=0.5):
+               frame_rate=1, refresh_rate=0.5, displayed_data='precursor'):
     """
     A daemon process function to manage statistics gathering and graphics update
 
@@ -384,14 +391,14 @@ def monitoring(pr: Process, l, stats: Statistics = None, location=None, stats_ra
         pr.redraw = True
     else:
         frame = np.inf  # current time is always less than infinity
-    if not stats_rate or stats_rate == np.inf:
-        stats_time = np.inf
-        stats_rate = np.inf
+    if not stats_rate or stats_rate == sys.maxsize:
+        stats_time = sys.maxsize
+        stats_rate = sys.maxsize
     else:
         stats_rate = 1e-1 * stats_rate
-    if not dump_rate or dump_rate == np.inf:
-        dump_time = np.inf
-        dump_rate = np.inf
+    if not dump_rate or dump_rate == sys.maxsize:
+        dump_time = sys.maxsize
+        dump_rate = sys.maxsize
     else:
         dump_rate = 1e-1 * dump_rate
     # Event loop
@@ -403,10 +410,10 @@ def monitoring(pr: Process, l, stats: Statistics = None, location=None, stats_ra
                 # print(f'Time passed: {time_spent}, Av.speed: {l / time_spent}')
             if now > frame:  # graphical
                 frame += frame_rate
-                redrawed = update_graphical(rn, pr, frame_rate, now - start_time)
+                redrawed = update_graphical(rn, pr, frame_rate, now - start_time, displayed_data)
             if pr.t > stats_time:
                 stats_time += stats_rate
-                stats.append(pr.t, pr.filled_cells, pr.deposited_vol, pr.precursor_min)
+                stats.append(pr.t, pr.min_precursor_covearge, pr.dep_vol)
                 stats.save_to_file()
             if pr.t > dump_time:
                 dump_time += dump_rate
@@ -414,23 +421,23 @@ def monitoring(pr: Process, l, stats: Statistics = None, location=None, stats_ra
             time.sleep(refresh_rate)
         else:
             if stats_time != np.inf:
-                stats.append(pr.t, pr.filled_cells, pr.deposited_vol, pr.precursor_min)
-                stats.save_to_file(force=True)
+                stats.append(pr.t, pr.min_precursor_covearge, pr.dep_vol)
                 stats.get_growth_rate()
-                stats.add_plots([('Sim.time', 'Min.precursor coverage'),('Sim.time', 'Growth rate')], position=['J1','J23'])
+                # stats.add_plots([('Sim.time', 'Min.precursor coverage'),('Sim.time', 'Growth rate')], position=['J1','J23'])
+                stats.save_to_file()
             if dump_time != np.inf:
                 dump_structure(pr.structure, pr.t, now - start_time, (x_pos, y_pos), f'{location}')
             if frame != np.inf:
                 rn.p.close()
                 rn = vr.Render(pr.structure.cell_dimension)
                 pr.redraw = True
-                update_graphical(rn, pr, time_step, now-start_time, False)
+                update_graphical(rn, pr, time_step, now-start_time, displayed_data, False)
                 rn.show(interactive_update=False)
     flag = False
     print('Exiting monitoring.')
 
 
-def update_graphical(rn: vr.Render, pr: Process, time_step, time_spent, update=True):
+def update_graphical(rn: vr.Render, pr: Process, time_step, time_spent, displayed_data='precursor', update=True):
     """
     Update the visual representation of the current process state
 
@@ -440,7 +447,15 @@ def update_graphical(rn: vr.Render, pr: Process, time_step, time_spent, update=T
     :param time_spent:
     :return:
     """
-    data = pr.precursor
+    if displayed_data == 'precursor':
+        data = pr.precursor
+        mask = pr.surface
+        cmap = 'plasma'
+    if displayed_data == 'deposit':
+        data = pr.deposit
+        mask = pr.surface
+        cmap = 'viridis'
+
     redrawed = pr.redraw
     if pr.redraw:
         try:
@@ -455,12 +470,11 @@ def update_graphical(rn: vr.Render, pr: Process, time_step, time_spent, update=T
             rn.arrow = rn.p.add_arrows(start, end, color='tomato')
             rn.arrow.SetPosition(x_pos, y_pos, (pr.max_z) * pr.cell_dimension + 10)  # relative to the initial position
             # Plotting data
-            current = 'precursor'
-            rn._add_3Darray(data, opacity=1, scalar_name='Precursor',
-                            button_name='precursor', show_edges=True, cmap='plasma')
+            rn._add_3Darray(data, opacity=1, scalar_name=displayed_data,
+                            button_name=displayed_data, show_edges=True, cmap=cmap)
             scalar = rn.p.mesh.active_scalars_name
             rn.p.mesh[scalar] = data.reshape(-1)
-            rn.update_mask(pr.surface)
+            rn.update_mask(mask)
             rn.p.add_text('.', position='upper_left', font_size=12, name='time')
             rn.p.add_text('.', position='upper_right', font_size=12, name='stats')
             rn.show(interactive_update=True, cam_pos=[(206.34055818793468, 197.6510638707941, 100.47106597548205),
@@ -483,7 +497,7 @@ def update_graphical(rn: vr.Render, pr: Process, time_step, time_spent, update=T
     time_real = str(datetime.timedelta(seconds=int(time_spent)))
     speed = pr.t / time_spent
     height = (pr.max_z - pr.substrate_height) * pr.structure.cell_dimension
-    total_V = int(pr.deposited_vol)
+    total_V = int(pr.dep_vol)
     delta_t = pr.t-pr.t_prev
     delta_V = total_V-pr.vol_prev
     if delta_t == 0 or delta_V == 0:
@@ -502,7 +516,7 @@ def update_graphical(rn: vr.Render, pr: Process, time_step, time_spent, update=T
     rn.p.textActor.renderer.actors['stats'].SetText(3,
                     f'Cells: {pr.n_filled_cells[i]} \n'  # showing total number of deposited cells
                     f'Height: {height} nm \n'
-                    f'Volume: {total_V} nm^3')
+                    f'Volume: {total_V:.0f} nm^3')
     # Updating scene
     try:
         rn.update_mask(pr.surface)

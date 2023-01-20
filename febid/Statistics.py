@@ -22,10 +22,10 @@ class Statistics():
     def __init__(self, filename=f'run_id{rnd.randint(100000, 999999)}'):
         self.filename = filename + '.xlsx'
         self.sheet_name = 'Data'
-        self.columns = ['Time', 'Time passed', 'Sim.time', 'N of cells', 'Volume', 'Min.precursor coverage']
+        self.columns = ['Time', 'Time passed', 'Sim.time', 'Min.precursor coverage', 'Volume',]
         # self.units = ['', 's', 's', '', '', '1/s', '1/s']
         self.data = pd.DataFrame(columns=self.columns)
-        self.data.loc[0] = [pd.Timestamp.now(), 0, 0, 0, 0, 0]
+        self.data.loc[0] = [pd.Timestamp.now(), 0, 0, 0, 0]
         self.step = self.data.copy()
         self.parameters = []
         self.parameters_units = []

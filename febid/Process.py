@@ -29,6 +29,12 @@ def restrict(func):
         return return_vals
     return inner
 
+# Deprication note:
+# At some point, due to efficiency advantages, the diffusion calculation approach switched from 'rolling' to 'stencil'.
+# The rolling approach explicitly requires the array of ghost cells, while stencil does not, although still relying
+# on this approach. Instead of the ghost cell array, it checks the same 'precursor' array, that it gets as a base argument,
+# for zero cells.
+# The ghost array is still kept and maintained throughout the simulation for conceptual clearness and visualisation
 class Process():
     """
     Class representing the core deposition process.
@@ -118,8 +124,14 @@ class Process():
         self.max_z_prev = 0
         self.filled_cells = 0 # current number of filled cells
         self.n_filled_cells = []
+        self.growth_rate = []
+        self.dep_vol = 0 # deposited volume
         self.execution_speed = 0
         self.profiler= None
+        self.stats_freq = 1e-2 # s
+        self.min_precursor_covearge = 0
+
+        self.lock = Lock()
 
         self.lock = Lock()
 
@@ -677,7 +689,7 @@ class Process():
     @property
     @restrict
     def precursor_min(self):
-        return self.__precursor_reduced_3d[self.__surface_reduced_3d].min()
+        return self.__precursor_reduced_2d[self.__surface_reduced_2d].min()
 
 if __name__ == '__main__':
     print("Current script does not have an entry point.....")
