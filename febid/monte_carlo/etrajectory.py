@@ -323,8 +323,10 @@ class ETrajectory(object):
         # checked to be inside of the main grid boundaries.
 
         # Probability density function
-        def super_gauss_2d(x, y, st_dev, n):
+        def super_gauss_2d_mod(x, y, st_dev, n):
             return 1 / sqrt(2 * pi) / st_dev * e ** (-0.5 * (((x-x0) ** 2 + (y-y0) ** 2) / (st_dev ** 2*(1+5*(n-1))**0.5+(n-1)**1.5)) ** n)
+        def super_gauss_2d(x, y, st_dev, n):
+            return 1 / sqrt(2 * pi) / st_dev * e ** (-0.5 * (((x - x0) ** 2 + (y - y0) ** 2) / (st_dev ** 2)) ** n)
         if N == 0: N = self.N
         rnd = np.random.default_rng()
         # Boundaries of the distribution
