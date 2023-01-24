@@ -198,7 +198,7 @@ def buffer_constants(precursor: dict, settings: dict, cell_dimension: int):
     return mc_config, equation_values, timings, nr
 
 
-def run_febid_interface(structure, precursor_params, settings, sim_params, path, saving_params, rendering):
+def run_febid_interface(structure, precursor_params, settings, sim_params, path, temperature_tracking, saving_params, rendering):
 
     if saving_params['monitoring']:
         dump_stats = True
@@ -216,7 +216,7 @@ def run_febid_interface(structure, precursor_params, settings, sim_params, path,
     kwargs = dict(location=saving_params['filename'], stats_rate=stats_rate,
                   dump_rate=dump_rate, render=rendering['show_process'],
                   frame_rate=rendering['frame_rate'], refresh_rate=1e-5)
-    process_obj, sim = run_febid(structure, precursor_params, settings, sim_params, path, dump_stats, kwargs)
+    process_obj, sim = run_febid(structure, precursor_params, settings, sim_params, path, temperature_tracking, dump_stats, kwargs)
     return process_obj, sim
 
 
@@ -285,8 +285,6 @@ def print_all(path, process_obj, sim):
         if process_obj.temperature_tracking:
             process_obj.heat_transfer(sim.m3d.heat)
             process_obj.request_temp_recalc = False
-        av_loops = path[:, 2].sum() / process_obj.dt
-        t.total = av_loops
         print_step(y, x, step, process_obj, sim, t)
     flag = True
 
@@ -404,7 +402,7 @@ def monitoring(pr: Process, l, stats: Statistics = None, location=None, stats_ra
                 redrawed = update_graphical(rn, pr, frame_rate, now - start_time, displayed_data)
             if pr.t > stats_time:
                 stats_time += stats_rate
-                stats.append(pr.t, pr.min_precursor_covearge, pr.dep_vol)
+                stats.append(pr.t, pr.min_precursor_covearge, pr.dep_vol, pr.max_T,)
                 stats.save_to_file()
             if pr.t > dump_time:
                 dump_time += dump_rate
@@ -412,7 +410,7 @@ def monitoring(pr: Process, l, stats: Statistics = None, location=None, stats_ra
             time.sleep(refresh_rate)
         else:
             if stats_time != np.inf:
-                stats.append(pr.t, pr.min_precursor_covearge, pr.dep_vol)
+                stats.append(pr.t, pr.min_precursor_covearge, pr.dep_vol, pr.max_T,)
                 stats.get_growth_rate()
                 # stats.add_plots([('Sim.time', 'Min.precursor coverage'),('Sim.time', 'Growth rate')], position=['J1','J23'])
                 stats.save_to_file()
@@ -438,97 +436,104 @@ def update_graphical(rn: vr.Render, pr: Process, time_step, time_spent, displaye
     :param time_spent:
     :return:
     """
-    if displayed_data == 'precursor':
-        data = pr.precursor
-        mask = pr.surface
-        cmap = 'plasma'
-    if displayed_data == 'deposit':
-        data = pr.deposit
-        mask = pr.surface
-        cmap = 'viridis'
-    if displayed_data == 'temperature':
-        data = pr.temp
-        mask = pr.deposit < 0
-        cmap = 'inferno'
-    if displayed_data == 'surface_temperature':
-        data = pr.surface_temp
-        mask = pr.surface
-        cmap = 'inferno'
-    # data = pr.temp
-    redrawed = pr.redraw
-    if pr.redraw:
-        try:
-            # Clearing scene
-            rn.y_pos = 5
-            try:
-                rn.p.button_widgets.clear()
-            except: pass
-            rn.p.clear()
-            # Putting an arrow to indicate beam position
-            start = np.array([0, 0, 100]).reshape(1, 3) # position of the center of the arrow
-            end =  np.array([0, 0, -100]).reshape(1, 3) # direction and resulting size
-            rn.arrow = rn.p.add_arrows(start, end, color='tomato')
-            rn.arrow.SetPosition(x_pos, y_pos, (pr.max_z) * pr.cell_dimension + 10)  # relative to the initial position
-            # Plotting data
-            rn._add_3Darray(data, opacity=1, scalar_name=displayed_data,
-                            button_name=displayed_data, show_edges=True, cmap=cmap)
-            scalar = rn.p.mesh.active_scalars_name
-            rn.p.mesh[scalar] = data.reshape(-1)
-            rn.update_mask(mask)
-            rn.p.add_text('.', position='upper_left', font_size=12, name='time')
-            rn.p.add_text('.', position='upper_right', font_size=12, name='stats')
-            rn.show(interactive_update=True, cam_pos=[(206.34055818793468, 197.6510638707941, 100.47106597548205),
-                                                      (0.0, 0.0, 0.0),
-                                                      (-0.23307751464125356, -0.236197909312718, 0.9433373838690787)])
-        except Exception as e:
-            print('An error occurred while redrawing the scene.')
-            print(e.args)
-            pass
-        rn.meshes_count += 1
-        pr.redraw = False
-    # Changing arrow position
-    x, y, z = rn.arrow.GetPosition()
-    z_pos = pr.deposit[:, int(y_pos/pr.cell_dimension), int(x_pos/pr.cell_dimension)].nonzero()[0].max() * pr.cell_dimension
-    if z_pos != z or y_pos != y or x_pos != x:
-        rn.arrow.SetPosition(x_pos, y_pos, z_pos+30) # relative to the initial position
-    # Calculating values to indicate
-    pr.n_filled_cells.append(pr.filled_cells)
-    i = len(pr.n_filled_cells) - 1
-    time_real = str(datetime.timedelta(seconds=int(time_spent)))
-    speed = pr.t / time_spent
-    height = (pr.max_z - pr.substrate_height) * pr.structure.cell_dimension
-    total_V = int(pr.dep_vol)
-    delta_t = pr.t-pr.t_prev
-    delta_V = total_V-pr.vol_prev
-    if delta_t == 0 or delta_V == 0:
-        growth_rate = pr.growth_rate
-    else:
-        growth_rate = delta_V / delta_t
-        growth_rate = int(growth_rate)
-    pr.t_prev += delta_t
-    pr.vol_prev = total_V
-    max_T = pr.temp.max()
-    # Updating displayed text
-    rn.p.textActor.renderer.actors['time'].SetText(2,
-                    f'Time: {time_real} \n' # showing real time passed 
-                    f'Sim. time: {(pr.t):.8f} s \n' # showing simulation time passed
-                    f'Speed: {speed:.8f} \n'  
-                    f'Av. growth rate: {growth_rate} nm^3/s \n'
-                    f'Max. temperature: {max_T:.3f} K')
-    rn.p.textActor.renderer.actors['stats'].SetText(3,
-                    f'Cells: {pr.n_filled_cells[i]} \n'  # showing total number of deposited cells
-                    f'Height: {height} nm \n'
-                    f'Volume: {total_V:.0f} nm^3')
-    # Updating scene
-    rn.update_mask(mask)
     try:
-        min = data[data > 0.00001].min()
-    except:
-        min = 1e-8
-    rn.p.update_scalar_bar_range(clim=[min, data.max()])
+        if displayed_data == 'precursor':
+            data = pr.precursor
+            mask = pr.surface
+            cmap = 'plasma'
+        if displayed_data == 'deposit':
+            data = pr.deposit
+            mask = pr.surface
+            cmap = 'viridis'
+        if displayed_data == 'temperature':
+            data = pr.temp
+            mask = pr.deposit < 0
+            cmap = 'inferno'
+        if displayed_data == 'surface_temperature':
+            data = pr.surface_temp
+            mask = pr.surface
+            cmap = 'inferno'
+        # data = pr.temp
+        redrawed = pr.redraw
+        if pr.redraw:
+            try:
+                # Clearing scene
+                rn.y_pos = 5
+                try:
+                    rn.p.button_widgets.clear()
+                except: pass
+                rn.p.clear()
+                # Putting an arrow to indicate beam position
+                start = np.array([0, 0, 100]).reshape(1, 3) # position of the center of the arrow
+                end =  np.array([0, 0, -100]).reshape(1, 3) # direction and resulting size
+                rn.arrow = rn.p.add_arrows(start, end, color='tomato')
+                rn.arrow.SetPosition(x_pos, y_pos, (pr.max_z) * pr.cell_dimension + 10)  # relative to the initial position
+                # Plotting data
+                rn._add_3Darray(data, opacity=1, scalar_name=displayed_data,
+                                button_name=displayed_data, show_edges=True, cmap=cmap)
+                scalar = rn.p.mesh.active_scalars_name
+                rn.p.mesh[scalar] = data.reshape(-1)
+                rn.update_mask(mask)
+                rn.p.add_text('.', position='upper_left', font_size=12, name='time')
+                rn.p.add_text('.', position='upper_right', font_size=12, name='stats')
+                rn.show(interactive_update=True, cam_pos=[(206.34055818793468, 197.6510638707941, 100.47106597548205),
+                                                          (0.0, 0.0, 0.0),
+                                                          (-0.23307751464125356, -0.236197909312718, 0.9433373838690787)])
+            except Exception as e:
+                print('An error occurred while redrawing the scene.')
+                print(e.args)
+                pass
+            rn.meshes_count += 1
+            pr.redraw = False
+        # Changing arrow position
+        x, y, z = rn.arrow.GetPosition()
+        z_pos = pr.deposit[:, int(y_pos/pr.cell_dimension), int(x_pos/pr.cell_dimension)].nonzero()[0].max() * pr.cell_dimension
+        if z_pos != z or y_pos != y or x_pos != x:
+            rn.arrow.SetPosition(x_pos, y_pos, z_pos+30) # relative to the initial position
+        # Calculating values to indicate
+        pr.n_filled_cells.append(pr.filled_cells)
+        i = len(pr.n_filled_cells) - 1
+        time_real = str(datetime.timedelta(seconds=int(time_spent)))
+        speed = pr.t / time_spent
+        height = (pr.max_z - pr.substrate_height) * pr.structure.cell_dimension
+        total_V = int(pr.dep_vol)
+        delta_t = pr.t-pr.t_prev
+        delta_V = total_V-pr.vol_prev
+        if delta_t == 0 or delta_V == 0:
+            growth_rate = pr.growth_rate
+        else:
+            growth_rate = delta_V / delta_t
+            growth_rate = int(growth_rate)
+            pr.growth_rate = growth_rate
+        pr.t_prev += delta_t
+        pr.vol_prev = total_V
+        max_T = pr.temp.max()
+        # Updating displayed text
+        rn.p.textActor.renderer.actors['time'].SetText(2,
+                        f'Time: {time_real} \n' # showing real time passed 
+                        f'Sim. time: {(pr.t):.8f} s \n' # showing simulation time passed
+                        f'Speed: {speed:.8f} \n'  
+                        f'Av. growth rate: {growth_rate} nm^3/s \n'
+                        f'Max. temperature: {max_T:.3f} K')
+        rn.p.textActor.renderer.actors['stats'].SetText(3,
+                        f'Cells: {pr.n_filled_cells[i]} \n'  # showing total number of deposited cells
+                        f'Height: {height} nm \n'
+                        f'Volume: {total_V:.0f} nm^3')
+        # Updating scene
+        rn.update_mask(mask)
+        try:
+            min = data[data > 0.00001].min()
+        except:
+            min = 1e-8
+        rn.p.update_scalar_bar_range(clim=[min, data.max()])
 
-    if update:
-        rn.update()
+        if update:
+            rn.update()
+    except Exception as e:
+        warnings.warn(f"Failed to redraw the scene.\n"
+                      f"{e.args}")
+        pr.redraw = True
+        redrawed = False
     return redrawed
 
 

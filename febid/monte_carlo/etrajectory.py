@@ -302,6 +302,11 @@ class ETrajectory(object):
         self.chamber_dim = np.asarray([self.zdim_abs, self.ydim_abs, self.xdim_abs])
         self.ztop = np.nonzero(self.surface)[0].max() + 1  # highest point of the structure
 
+    def get_norm_factor(self, N=None):
+        if N is None:
+            N = self.N
+        return self.I0 / N / self.elementary_charge
+
     def rnd_super_gauss(self, x0, y0, N):
         """
         Generate a specified number of points according to a Super Gaussian distribution.

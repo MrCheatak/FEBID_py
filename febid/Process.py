@@ -536,12 +536,12 @@ class Process():
 
     def __rk4_diffusion(self, grid, surface):
         dt = self.dt
-        k1 = diffusion.laplace_term_stencil(grid, surface, self.D, dt, self.cell_dimension, self.__surface_index, flat=False)
+        k1 = self._laplace_term_stencil(grid, surface, dt, flat=False)
         k1[surface] /= 2
-        k2 = diffusion.laplace_term_stencil(grid, surface, self.D, dt/2, self.cell_dimension, self.__surface_index, add=k1, flat=False)
+        k2 = self._laplace_term_stencil(grid, surface, dt/2, add=k1, flat=False)
         k2[surface] /= 2
-        k3 = diffusion.laplace_term_stencil(grid, surface, self.D, dt/2, self.cell_dimension, self.__surface_index, add=k2, flat=False)
-        k4 = diffusion.laplace_term_stencil(grid, surface, self.D, dt, self.cell_dimension, self.__surface_index, add=k3, flat=False)
+        k3 = self._laplace_term_stencil(grid, surface, dt/2, add=k2, flat=False)
+        k4 = self._laplace_term_stencil(grid, surface, dt, add=k3, flat=False)
         return evaluate_cached(self.expressions['rk4'], casting='same_kind')
 
     def __precursor_density_increment(self, precursor, beam_matrix, dt, addon=0.0):
@@ -568,7 +568,7 @@ class Process():
                                            'addon': addon, 'flux_matrix': beam_matrix, 'sigma_dt': self.sigma * dt,
                                            'sub': precursor}, casting='same_kind')
 
-    def _laplace_term_stencil(self, grid, surface, add=0, div=0):
+    def _laplace_term_stencil(self, grid, surface, dt=0, add=0, flat=True):
         """
         Calculates diffusion term for all surface cells using stencil operator
 
@@ -578,11 +578,13 @@ class Process():
         :param div:
         :return: flat ndarray
         """
+        if not dt:
+            dt = self.dt
         if self.temperature_tracking:
             D_param = self.__D_temp_reduced_2d
         else:
             D_param = self.D
-        return diffusion.diffusion_stencil(grid, surface, D_param, self.dt, self.cell_dimension, self.__surface_all_index, add=add, div=div)
+        return diffusion.diffusion_stencil(grid, surface, D_param, dt, self.cell_dimension, self.__surface_all_index, add=add, flat=flat)
         # return evaluate_cached(expressions["laplace1"], local_dict={'dt_D': dt*D, 'grid_out':grid_out[surface]}, casting='same_kind')
 
     def _laplace_term_rolling(self, grid, surface, ghosts=None, add=0, div: int = 0):
@@ -625,11 +627,16 @@ class Process():
         self.residence_time()
 
     def diffusion_coefficient(self):
-        self.D_temp[self._surface_all] = self.D0 * np.exp(-self.Ed / self.kb / self.surface_temp[self._surface_all])
+        self.D_temp[self._surface_all] = self.diffusion_coefficient_expression(self.surface_temp[self._surface_all])
+    def diffusion_coefficient_expression(self, temp=294):
+        return self.D0 * np.exp(-self.Ed / self.kb / temp)
 
     def residence_time(self):
-        self.__tau_flat = 1 / self.k0 * np.exp(self.Ea / self.kb / self.__surface_temp_reduced_2d[self.__surface_reduced_2d])
+        self.__tau_flat = self. residence_time_expression(self.__surface_temp_reduced_2d[self.__surface_reduced_2d])
         self.__tau_temp_reduced_2d[self.__surface_reduced_2d] = self.__tau_flat
+
+    def residence_time_expression(self, temp=294):
+        return 1 / self.k0 * np.exp(self.Ea / self.kb / temp)
 
     # Data maintenance methods
     # These methods support an optimization path that provides up to 100x speed up
@@ -804,10 +811,18 @@ class Process():
 
     @property
     def kd(self):
-        return self.F/self.n0 + 1/self.tau + self.sigma * self.beam_matrix.max()
+        if self.temperature_tracking:
+            tau = self.residence_time_expression(self.room_temp)
+        else:
+            tau = self.tau
+        return self.F/self.n0 + 1/tau + self.sigma * self.beam_matrix.max()
     @property
     def kr(self):
-        return self.F/self.n0 + 1/self.tau
+        if self.temperature_tracking:
+            tau = self.residence_time_expression(self.room_temp)
+        else:
+            tau = self.tau
+        return self.F/self.n0 + 1/tau
     @property
     def nr(self):
         return self.F/self.kr
