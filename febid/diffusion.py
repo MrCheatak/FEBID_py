@@ -16,7 +16,8 @@ def get_diffusion_stability_time(D, dx):
     diffusion_dt = math.pow(dx, 2) / (6 * D)  # maximum stability
     return diffusion_dt
 
-def laplace_term_stencil(grid, surface, D, dt, cell_dim, surface_index=None, flat=True, add=0, div=0):
+
+def diffusion_stencil(grid, surface, D, dt, cell_dim, surface_index=None, flat=True, add=0, div=0):
     """
     Calculates diffusion term for the surface cells using stencil operator
 
@@ -37,11 +38,13 @@ def laplace_term_stencil(grid, surface, D, dt, cell_dim, surface_index=None, fla
     if surface_index is None:
         surface_index = prepare_surface_index(surface)
     grid += add
-    grid_out = -6 * grid
-    roll.stencil(grid_out, grid, *surface_index)
+    grid_out = laplace_term_stencil(grid, surface_index)
     # stencil_debug(grid_out, grid, *surface_index)
     grid -= add
-    a = dt * D/(cell_dim * cell_dim)
+    if type(D) in [int, float]:
+        a = dt * D / (cell_dim * cell_dim)
+    else:
+        a = dt * D[surface] / (cell_dim * cell_dim)
     if flat:
         return grid_out[surface] * a
     else:
@@ -49,35 +52,50 @@ def laplace_term_stencil(grid, surface, D, dt, cell_dim, surface_index=None, fla
         return grid_out
 
 
-def laplace_term_rolling(grid, surface, ghosts_bool, D, dt, cell_dim, ghosts_index=None, flat=True, add = 0, div: int = 0):
+def diffusion_rolling(grid, surface, ghosts_bool, D, dt, cell_dim, ghosts_index=None, flat=True, add = 0, div: int = 0):
     """
-    Calculates diffusion term for all surface cells using rolling
+        Calculates diffusion term for all surface cells using rolling
 
-        Nevertheless 'ghosts_index' is an optional argument,
-    it is highly recommended to handle index from the caller function
+            Nevertheless 'ghosts_index' is an optional argument,
+        it is highly recommended to handle index from the caller function
 
-    :param grid: 3D precursor density array, normalized
-    :param surface: 3D boolean surface array
-    :param ghosts_bool: array representing ghost cells
-    :param D: diffusion coefficient, nm^2/s
-    :param dt: time interval over which diffusion term is calculated, s
-    :param cell_dim: grid space step, nm
-    :param ghosts_index: 7 index arrays
-    :param flat: if True, returns a flat array of surface cells. Otherwise returns a 3d array with the same shape as grid.
-    :param add: Runge-Kutta intermediate member
-    :param div:
-    :return: 3d or 1d ndarray
-    """
+        :param grid: 3D precursor density array, normalized
+        :param surface: 3D boolean surface array
+        :param ghosts_bool: array representing ghost cells
+        :param D: diffusion coefficient, nm^2/s
+        :param dt: time interval over which diffusion term is calculated, s
+        :param cell_dim: grid space step, nm
+        :param ghosts_index: 7 index arrays
+        :param flat: if True, returns a flat array of surface cells. Otherwise returns a 3d array with the same shape as grid.
+        :param add: Runge-Kutta intermediate member
+        :param div:
+        :return: 3d or 1d ndarray
+        """
+    if not ghosts_index:
+        ghosts_index = prepare_ghosts_index(ghosts_bool)
+    grid += add
+    grid_out = laplace_term_rolling(grid, ghosts_bool)
+    a = dt * D/(cell_dim * cell_dim)
+    if flat:
+        return grid_out[surface] * a
+    else:
+        grid_out[surface] *= a
+        return grid_out
+
+def laplace_term_stencil(grid, surface_index):
+    grid_out = -6 * grid
+    roll.stencil(grid_out, grid, *surface_index)
+    return grid_out
+
+def laplace_term_rolling(grid, ghosts_bool):
+
 
     # Debugging note_: it would be more elegant to just use numpy.roll() on the ghosts_bool to assign neighboring values
     # to ghost cells. But Numpy doesn't retain array structure when utilizing boolean index streaming. It rather extracts all the cells
     # (that correspond to True in our case) and processes them as a flat array. It caused the shifted values for ghost cells to
     # be assigned to the previous(first) layer, which was not processed by numpy.roll() when it rolled backwards.
     # Thus, borders(planes) that are not taking part in rolling(shifting) are cut off by using views to an array
-    if not ghosts_index:
-        ghosts_index = prepare_ghosts_index(ghosts_bool)
 
-    grid += add
     grid_out = -6 * grid
 
     # X axis:
@@ -140,12 +158,7 @@ def laplace_term_rolling(grid, surface, ghosts_bool, D, dt, cell_dim, ghosts_ind
     grid.reshape(-1)[index] = 0
     # grid_out[ghosts_bool]=0
     grid_out.reshape(-1)[index] = 0 # result also has to be cleaned as it contains redundant values in ghost cells
-    a = dt * D/(cell_dim * cell_dim)
-    if flat:
-        return grid_out[surface] * a
-    else:
-        grid_out[surface] *= a
-        return grid_out
+    return grid_out
 
 
 def prepare_ghosts_index(ghosts_bool:np.ndarray):

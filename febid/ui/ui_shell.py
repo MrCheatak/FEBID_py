@@ -40,6 +40,7 @@ class MainPannel(QMainWindow, UI_MainPanel):
         self.stream_file_filename = ''
         self.settings_filename = ''
         self.precursor_parameters_filename = ''
+        self.temperature_tracking = False
         self.save_directory = ''
         self.show_process = True
         # Groups of controls on the panel for easier Enabling/Disabling
@@ -137,6 +138,8 @@ class MainPannel(QMainWindow, UI_MainPanel):
                         self.settings_filename_display.setText(self.settings_filename)
                         self.precursor_parameters_filename = params['precursor_filename']
                         self.precursor_parameters_filename_display.setText(self.precursor_parameters_filename)
+                        self.temperature_tracking = params['temperature_tracking']
+                        self.checkbox_temperature_tracking.setChecked(self.temperature_tracking)
 
                         self.change_state_save_sim_data(params['save_simulation_data'])
                         self.change_state_save_snapshots(params['save_structure_snapshot'])
@@ -446,6 +449,12 @@ class MainPannel(QMainWindow, UI_MainPanel):
         self.show_process = switch
         self.save_parameter('show_process', switch)
 
+    def change_state_temperature_tracking(self, param):
+        switch = True if param else False
+        self.checkbox_temperature_tracking.setChecked(switch)
+        self.temperature_tracking = switch
+        self.save_parameter('temperature_tracking', switch)
+
     def unique_name_changed(self):
         self.save_parameter('unique_name', self.input_unique_name.text())
 
@@ -458,7 +467,7 @@ class MainPannel(QMainWindow, UI_MainPanel):
 
     def tab_switched(self, current):
         if current == 0:
-            self.resize(self.width(), 630)
+            self.resize(self.width(), 684)
         if current == 1:
             self.resize(self.width(), 500)
 
@@ -601,7 +610,7 @@ class MainPannel(QMainWindow, UI_MainPanel):
 
         rendering = {'show_process': self.show_process, 'frame_rate': 0.5}
         # Starting the process
-        febid_core.run_febid_interface(structure, precursor_params, settings, sim_volume_params, printing_path, saving_params, rendering)
+        febid_core.run_febid_interface(structure, precursor_params, settings, sim_volume_params, printing_path, self.temperature_tracking, saving_params, rendering)
 
         return
 
@@ -753,6 +762,7 @@ class MainPannel(QMainWindow, UI_MainPanel):
                 '\n',
                 'settings_filename: ''\n',
                 'precursor_filename: ''\n',
+                'temperature_tracking: ''\n',
                 '\n',
                 'save_simulation_data: ''\n',
                 'save_structure_snapshot: ''\n',

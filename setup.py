@@ -48,6 +48,13 @@ ext_modules = [
                          libraries=libraries,
                          extra_link_args=[openMP_arg]
                          ),
+              Extension("febid.libraries.pde.tridiag", ['febid/libraries/pde/tridiag.pyx'],
+                         include_dirs=["/usr/local/opt/llvm/include"],
+                         library_dirs=["/usr/local/opt/llvm/lib"],
+                         extra_compile_args=["-w", "-fopenmp"],
+                         libraries=libraries,
+                         extra_link_args=[openMP_arg]
+                         ),
                ]
 
 setuptools.setup(
@@ -62,7 +69,7 @@ setuptools.setup(
     project_urls = {},
     license='MIT',
     packages=['febid', 'febid.monte_carlo', 'febid.monte_carlo.compiled', 'febid.ui', 'febid.libraries.vtk_rendering',
-              'febid.libraries.rolling', 'febid.libraries.ray_traversal'],
+              'febid.libraries.rolling', 'febid.libraries.ray_traversal', 'febid.libraries.pde'],
     package_data = {'': ['*.pyx']},
     include_package_data=True,
     install_requires=['numpy<1.23.0', 'pyvista', 'pandas', 'ruamel.yaml', 'cython', 'openpyxl', 'tqdm', 'pyqt5', 'pyaml',

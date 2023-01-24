@@ -14,7 +14,7 @@ from PyQt5 import QtCore, QtGui, QtWidgets
 class Ui_MainWindow(object):
     def setupUi(self, MainWindow):
         MainWindow.setObjectName("MainWindow")
-        MainWindow.resize(615, 630)
+        MainWindow.resize(605, 684)
         self.centralwidget = QtWidgets.QWidget(MainWindow)
         self.centralwidget.setObjectName("centralwidget")
         self.verticalLayout = QtWidgets.QVBoxLayout(self.centralwidget)
@@ -24,7 +24,7 @@ class Ui_MainWindow(object):
         self.tab = QtWidgets.QWidget()
         self.tab.setObjectName("tab")
         self.groupBox = QtWidgets.QGroupBox(self.tab)
-        self.groupBox.setGeometry(QtCore.QRect(6, 0, 573, 127))
+        self.groupBox.setGeometry(QtCore.QRect(6, 15, 580, 127))
         self.groupBox.setObjectName("groupBox")
         self.choice_geom_parameters_file = QtWidgets.QRadioButton(self.groupBox)
         self.choice_geom_parameters_file.setGeometry(QtCore.QRect(12, 60, 119, 20))
@@ -101,7 +101,7 @@ class Ui_MainWindow(object):
         self.l_substrate_height.setGeometry(QtCore.QRect(382, 96, 105, 16))
         self.l_substrate_height.setObjectName("l_substrate_height")
         self.groupBox_2 = QtWidgets.QGroupBox(self.tab)
-        self.groupBox_2.setGeometry(QtCore.QRect(8, 134, 573, 127))
+        self.groupBox_2.setGeometry(QtCore.QRect(6, 149, 580, 127))
         self.groupBox_2.setObjectName("groupBox_2")
         self.choice_stream_file = QtWidgets.QRadioButton(self.groupBox_2)
         self.choice_stream_file.setGeometry(QtCore.QRect(12, 94, 119, 20))
@@ -178,7 +178,7 @@ class Ui_MainWindow(object):
         self.l_pitc_units.setGeometry(QtCore.QRect(262, 62, 19, 16))
         self.l_pitc_units.setObjectName("l_pitc_units")
         self.groupBox_4 = QtWidgets.QGroupBox(self.tab)
-        self.groupBox_4.setGeometry(QtCore.QRect(6, 270, 573, 93))
+        self.groupBox_4.setGeometry(QtCore.QRect(6, 285, 580, 121))
         self.groupBox_4.setObjectName("groupBox_4")
         self.open_settings_file_button = QtWidgets.QPushButton(self.groupBox_4)
         self.open_settings_file_button.setGeometry(QtCore.QRect(158, 20, 113, 32))
@@ -200,11 +200,14 @@ class Ui_MainWindow(object):
         self.label_13 = QtWidgets.QLabel(self.groupBox_4)
         self.label_13.setGeometry(QtCore.QRect(8, 62, 143, 16))
         self.label_13.setObjectName("label_13")
+        self.checkbox_temperature_tracking = QtWidgets.QCheckBox(self.groupBox_4)
+        self.checkbox_temperature_tracking.setGeometry(QtCore.QRect(400, 90, 161, 21))
+        self.checkbox_temperature_tracking.setObjectName("checkbox_temperature_tracking")
         self.start_febid_button = QtWidgets.QPushButton(self.tab)
-        self.start_febid_button.setGeometry(QtCore.QRect(244, 500, 113, 45))
+        self.start_febid_button.setGeometry(QtCore.QRect(245, 535, 113, 45))
         self.start_febid_button.setObjectName("start_febid_button")
         self.groupBox_7 = QtWidgets.QGroupBox(self.tab)
-        self.groupBox_7.setGeometry(QtCore.QRect(10, 370, 573, 117))
+        self.groupBox_7.setGeometry(QtCore.QRect(6, 410, 580, 117))
         self.groupBox_7.setObjectName("groupBox_7")
         self.checkbox_save_simulation_data = QtWidgets.QCheckBox(self.groupBox_7)
         self.checkbox_save_simulation_data.setGeometry(QtCore.QRect(14, 30, 157, 20))
@@ -251,11 +254,11 @@ class Ui_MainWindow(object):
         self.save_folder_display.setReadOnly(True)
         self.save_folder_display.setObjectName("save_folder_display")
         self.checkbox_show = QtWidgets.QCheckBox(self.tab)
-        self.checkbox_show.setGeometry(QtCore.QRect(404, 510, 133, 20))
+        self.checkbox_show.setGeometry(QtCore.QRect(405, 550, 133, 20))
         self.checkbox_show.setChecked(False)
         self.checkbox_show.setObjectName("checkbox_show")
         self.checkbox_load_last_session = QtWidgets.QCheckBox(self.tab)
-        self.checkbox_load_last_session.setGeometry(QtCore.QRect(410, 0, 133, 16))
+        self.checkbox_load_last_session.setGeometry(QtCore.QRect(430, 5, 133, 16))
         self.checkbox_load_last_session.setChecked(False)
         self.checkbox_load_last_session.setObjectName("checkbox_load_last_session")
         self.tabWidget.addTab(self.tab, "")
@@ -500,6 +503,7 @@ class Ui_MainWindow(object):
         self.checkbox_show.stateChanged['int'].connect(MainWindow.change_state_show_process) # type: ignore
         self.checkbox_load_last_session.stateChanged['int'].connect(MainWindow.change_state_load_last_session) # type: ignore
         self.input_unique_name.editingFinished.connect(MainWindow.unique_name_changed) # type: ignore
+        self.checkbox_temperature_tracking.stateChanged['int'].connect(MainWindow.change_state_temperature_tracking)  # type: ignore
         self.open_settings_file_button.clicked.connect(MainWindow.open_settings_file) # type: ignore
         QtCore.QMetaObject.connectSlotsByName(MainWindow)
 
@@ -567,6 +571,8 @@ class Ui_MainWindow(object):
         self.precursor_parameters_filename_display.setPlaceholderText(_translate("MainWindow", "Select file..."))
         self.label_12.setText(_translate("MainWindow", "Settings"))
         self.label_13.setText(_translate("MainWindow", "Precursor parameters"))
+        self.checkbox_temperature_tracking.setToolTip(_translate("MainWindow", "Enable tracking of the temperature during deposition and temperature dependece of residence time and diffusion"))
+        self.checkbox_temperature_tracking.setText(_translate("MainWindow", "Temperature tracking"))
         self.start_febid_button.setText(_translate("MainWindow", "Start"))
         self.groupBox_7.setTitle(_translate("MainWindow", "Save file"))
         self.checkbox_save_simulation_data.setText(_translate("MainWindow", "Save simulation data"))

@@ -185,7 +185,11 @@ def buffer_constants(precursor: dict, settings: dict, cell_dimension: int):
     # Parameters for reaction-equation solver
     equation_values = {'F': settings["precursor_flux"], 'n0': precursor["max_density"],
                        'sigma': precursor["cross_section"], 'tau': precursor["residence_time"] * 1E-6,
+                       'Ea': precursor['desorption_activation_energy'], 'k0': precursor['desorption_attempt_frequency'],
                        'V': precursor["dissociated_volume"], 'D': precursor["diffusion_coefficient"],
+                       'Ed': precursor['diffusion_activation_energy'], 'D0': precursor['diffusion_prefactor'],
+                       'rho': precursor['average_density'], 'heat_cond': precursor['thermal_conductivity'],
+                       'cp': precursor['heat_capacity'],
                        'dt': dt, 'deposition_scaling': settings['deposition_scaling']}
     # Stability time steps
     timings = {'t_diff': diffusion_dt, 't_flux': t_flux, 't_desorption': tau, 'dt': dt}
@@ -216,7 +220,7 @@ def run_febid_interface(structure, precursor_params, settings, sim_params, path,
     return process_obj, sim
 
 
-def run_febid(structure, precursor_params, settings, sim_params, path, gather_stats=False, monitor_kwargs=None):
+def run_febid(structure, precursor_params, settings, sim_params, path, temperature_tracking, gather_stats=False, monitor_kwargs=None):
     """
         Create necessary objects and start the FEBID process.
 
@@ -236,7 +240,7 @@ def run_febid(structure, precursor_params, settings, sim_params, path, gather_st
         stats.get_params(precursor_params, 'Precursor parameters')
         stats.get_params(settings, 'Beam parameters and settings')
         stats.get_params(sim_params, 'Simulation volume parameters')
-    process_obj = Process(structure, equation_values, timings)
+    process_obj = Process(structure, equation_values, timings, temp_tracking=temperature_tracking)
     process_obj.stats_freq = min(monitor_kwargs['stats_rate'], monitor_kwargs['dump_rate'], monitor_kwargs['refresh_rate'])
     sim = etraj3d.cache_params(mc_config, structure.deposit, structure.surface_bool, structure.surface_neighbors_bool)
     process_obj.max_neib = math.ceil(np.max([sim.deponat.lambda_escape, sim.substrate.lambda_escape])/process_obj.cell_dimension)
@@ -270,13 +274,19 @@ def print_all(path, process_obj, sim):
              bar_format=bar_format) # the displayed execution speed is shown in µs of simulation time per s of real time
     for x, y, step in path[start:]:
         x_pos, y_pos = x, y
-        beam_matrix = etraj3d.rerun_simulation(y, x, sim)
+        beam_matrix = etraj3d.rerun_simulation(y, x, sim, process_obj.request_temp_recalc)
         process_obj.beam_matrix[:, :, :] = beam_matrix
         if process_obj.beam_matrix.max() <= 1:
             warnings.warn('No surface flux!', RuntimeWarning)
             process_obj.beam_matrix[...] = 1
         process_obj.get_dt()
         process_obj.update_helper_arrays()
+        process_obj.get_dt()
+        if process_obj.temperature_tracking:
+            process_obj.heat_transfer(sim.m3d.heat)
+            process_obj.request_temp_recalc = False
+        av_loops = path[:, 2].sum() / process_obj.dt
+        t.total = av_loops
         print_step(y, x, step, process_obj, sim, t)
     flag = True
 
@@ -316,18 +326,21 @@ def print_step(y, x, dwell_time, pr: Process, sim, t):
                 sim.surface = sim.m3d.surface = pr.surface
                 sim.s_neighb = sim.m3d.s_neighb = pr.surface_n_neighbors
             start = timeit.default_timer()
-            pr.beam_matrix[...] = etraj3d.rerun_simulation(y, x, sim) # run MC sim. and retrieve SE surface flux
+            beam_matrix= etraj3d.rerun_simulation(y, x, sim, pr.request_temp_recalc) # run MC sim. and retrieve SE surface flux
+            pr.beam_matrix[...] = beam_matrix
             print(f'Finished MC in {timeit.default_timer()-start} s')
             if pr.beam_matrix.max() <= 1:
                 warnings.warn('No surface flux!', RuntimeWarning)
                 pr.beam_matrix[...] = 1
                 continue
+            pr.update_helper_arrays() # auxiliary method that maintains an efficiency increasing infrastructure
+            if pr.temperature_tracking:
+                pr.heat_transfer(sim.m3d.heat)
+                pr.request_temp_recalc = False
             if dwell_time >= pr.dt:
                 pr.get_dt()
             else:
                 pr.dt = dwell_time
-            pr.update_helper_arrays() # auxiliary method that maintains an efficiency increasing infrastructure
-            # pr.equilibrate()
         pr.precursor_density() # recalculate precursor coverage
         pr.t += pr.dt*pr.deposition_scaling
         time += pr.dt
@@ -433,7 +446,15 @@ def update_graphical(rn: vr.Render, pr: Process, time_step, time_spent, displaye
         data = pr.deposit
         mask = pr.surface
         cmap = 'viridis'
-
+    if displayed_data == 'temperature':
+        data = pr.temp
+        mask = pr.deposit < 0
+        cmap = 'inferno'
+    if displayed_data == 'surface_temperature':
+        data = pr.surface_temp
+        mask = pr.surface
+        cmap = 'inferno'
+    # data = pr.temp
     redrawed = pr.redraw
     if pr.redraw:
         try:
@@ -486,21 +507,20 @@ def update_graphical(rn: vr.Render, pr: Process, time_step, time_spent, displaye
         growth_rate = int(growth_rate)
     pr.t_prev += delta_t
     pr.vol_prev = total_V
+    max_T = pr.temp.max()
     # Updating displayed text
     rn.p.textActor.renderer.actors['time'].SetText(2,
                     f'Time: {time_real} \n' # showing real time passed 
                     f'Sim. time: {(pr.t):.8f} s \n' # showing simulation time passed
                     f'Speed: {speed:.8f} \n'  
-                    f'Av. growth rate: {growth_rate} nm^3/s')
+                    f'Av. growth rate: {growth_rate} nm^3/s \n'
+                    f'Max. temperature: {max_T:.3f} K')
     rn.p.textActor.renderer.actors['stats'].SetText(3,
                     f'Cells: {pr.n_filled_cells[i]} \n'  # showing total number of deposited cells
                     f'Height: {height} nm \n'
                     f'Volume: {total_V:.0f} nm^3')
     # Updating scene
-    try:
-        rn.update_mask(pr.surface)
-    except ValueError:
-        print(f'Was unable to set mask in the scene, due to possible Structure resizing: {ValueError.args}')
+    rn.update_mask(mask)
     try:
         min = data[data > 0.00001].min()
     except:

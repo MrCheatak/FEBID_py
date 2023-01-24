@@ -37,6 +37,8 @@ class Structure:
         self.d_full_s = deposit_full_substrate
         self.d_full_d = deposit_full_deponat
 
+        self.room_temp = 294 # K, room temperature
+
         self.cell_dimension = 1
 
         self.precursor = None
@@ -45,6 +47,8 @@ class Structure:
         self.semi_surface_bool = None
         self.surface_neighbors_bool = None
         self.ghosts_bool = None
+        self.temperature = None
+        # self.t_cond_coeff = None
 
         self.substrate_height = 0
         self.nr = 0.000001
@@ -130,14 +134,21 @@ class Structure:
                 print('failed to retrieve ghost cells index data...', end='')
                 self.ghosts_bool = np.zeros_like(self.deposit, dtype=bool)
                 self.define_ghosts()
-            # An attempt to attach new attributes to vtk object failed:
-            # self.substrate_height = vtk_obj['substrate_height']
-            # self.substrate_val = vtk_obj['substrate_val']
-            # self.deposit_val = vtk_obj['deposit_val']
-            # self.vol_prefill = vtk_obj['volume_prefill']
-            self.substrate_height = np.nonzero(self.deposit == self.d_full_s)[0].max() + 1
-            # self.vol_prefill = self.deposit[-1,-1,-1]
-            print('...finished reading!')
+            try:
+                self.temperature = np.asarray(vtk_obj.cell_data['temperature'].reshape(shape))
+                print(f'retrieved temperature data...', end='')
+            except:
+                print('failed to retrieve temperature data...', end='')
+                self.temperature = np.zeros_like(self.deposit)
+                self.temperature[self.deposit<0] = self.room_temp
+            # try:
+            #     self.t_cond_coeff = np.asarray(vtk_obj.cell_data['heat_conductance'].reshape(shape))
+            #     print(f'retrieved heat conductance data...', end='')
+            # except:
+            #     print('failed to retrieve heat conductance data...', end='')
+            #     self.t_cond_coeff = np.zeros_like(self.deposit)
+            # self.substrate_height = np.nonzero(self.deposit == self.d_full_s)[0].max() + 1
+            # print('...finished reading!')
         else:
             # TODO: if a sample structure would be provided, it will be necessary to create a substrate under it
             print(f'VTK file is a regular file, generating auxiliary arrays...', end='')
@@ -166,6 +177,8 @@ class Structure:
         self.precursor[self.precursor < 0] = 0
         self.shape = (self.zdim, self.ydim, self.xdim)
         self.shape_abs = (self.zdim_abs, self.ydim_abs, self.xdim_abs)
+        if self.substrate_height == 0:
+            self.substrate_height = (self.deposit==-2).nonzero()[0].max()
         self.initialized = True
 
     def create_from_parameters(self, cell_dim=5, width=50, length=50, height=100, substrate_height=4, nr=0):
@@ -193,6 +206,10 @@ class Structure:
         self.semi_surface_bool = np.zeros((self.zdim + substrate_height, self.ydim, self.xdim), dtype=bool)
         self.surface_neighbors_bool = np.zeros((self.zdim + substrate_height, self.ydim, self.xdim), dtype=bool)
         self.ghosts_bool = np.zeros((self.zdim + substrate_height, self.ydim, self.xdim), dtype=bool)
+        self.temperature = np.zeros_like(self.deposit)
+        # self.t_cond_coeff = np.zeros(self.deposit)
+        # self.t_cond_coeff[self.deposit < 0] = 1
+        self.temperature[self.deposit<0] = self.room_temp
         self.define_surface()
         self.define_surface_neighbors(1)
         self.define_ghosts()
@@ -270,6 +287,9 @@ class Structure:
             temp = np.copy(self.ghosts_bool)
             self.ghosts_bool = np.zeros(shape_new, dtype=bool)
             self.ghosts_bool[:self.zdim, :self.ydim, :self.xdim] = temp[:]
+            temp = np.copy(self.temperature)
+            self.temperature = np.zeros(shape_new)
+            self.temperature[:self.zdim, :self.ydim, :self.xdim] = temp[:]
             if d_j > 0 or d_k > 0:
                 self.deposit[:self.substrate_height] = self.d_full_s
                 self.define_surface()

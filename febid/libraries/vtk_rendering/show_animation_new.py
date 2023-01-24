@@ -89,6 +89,10 @@ def show_animation(directory='', show='precursor'):
         data_name = show.capitalize()
         cmap = 'viridis'
         mask_name = 'surface_bool'
+    if show == 'temperature':
+        data_name = show.capitalize()
+        cmap = 'inferno'
+        mask_name = 'deposit'
     data = structure.__getattribute__(show)
     mask = structure.__getattribute__(mask_name)
     t, sim_time, beam_position = read_field_data()
@@ -149,6 +153,8 @@ def show_animation(directory='', show='precursor'):
             mask = surface_bool
         if show == 'deposit':
             mask = surface_bool
+        if show == 'temperature':
+            mask = deposit<0
         total_dep_cells.append(np.count_nonzero(deposit[deposit < 0]) - init_layer)
         volume = int((total_dep_cells[i] + deposit[surface_bool].sum())*cell_dim**3)
         delta_t = (times[i] - times[i - 1]).total_seconds()
