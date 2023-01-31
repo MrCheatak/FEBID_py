@@ -137,6 +137,7 @@ class Render:
                    (-0.27787912231751677, -0.1411181984824172, 0.950194110399093)]
         return self.show(cam_pos=cam_pos, interactive_update=interactive)
 
+
     def _add_trajectory(self, traj, energies=None, radius=0.7, step=1, scalar_name='scalars_t', button_name='1', color='', cmap='plasma'):
         """
         Adds trajectories to the Pyvista plot
@@ -188,7 +189,7 @@ class Render:
             except Exception as e:
                 print(f'Error:{e.args}')
                 return
-        self.p.add_text(name, font_size=self.font, position=(self.x_pos + 5, self.y_pos)) # captioning button
+        self.p.add_text(name, font_size=self.font, position=(self.x_pos + 5, self.y_pos), name=name+'_caption') # captioning button
         obj_aa = self.SetVisibilityCallback(obj_a)
         self.p.add_checkbox_button_widget(obj_aa, value=True, position=(5, self.y_pos), size=self.size, color_on='blue') # adding button
         self.y_pos += self.size
@@ -341,6 +342,19 @@ class Render:
         self.y_pos -= self.size*self.meshes_count
         self.meshes_count = 0
         # self.p.clear()
+
+
+def read_field_data(vtk_obj):
+    t = vtk_obj.field_data.get('time', None)
+    sim_time = vtk_obj.field_data.get('simulation_time', None)
+    beam_position = vtk_obj.field_data.get('beam_position', None)
+    if t:
+        t = t[0]
+    if sim_time:
+        sim_time = sim_time[0]
+    if beam_position is not None:
+        beam_position = beam_position[0]
+    return t, sim_time, beam_position
 
 
 def numpy_to_vtk(arr, cell_dim, data_name='scalar', grid=None, unstructured=False):

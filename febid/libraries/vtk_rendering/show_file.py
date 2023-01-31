@@ -49,17 +49,9 @@ def show_structure(filenames, solid=True, deposit=True, precursor=True, surface=
                     print(f'\t  Found {np.count_nonzero(p<0)} cells below zero, minimum value is {p.min()}')
         else:
             print('ok!')
-        t = vtk_obj.field_data.get('time', None)
-        sim_time = vtk_obj.field_data.get('simulation_time', None)
-        beam_position = vtk_obj.field_data.get('beam_position', None)
-        if t:
-            t = t[0]
-        if sim_time:
-            sim_time = sim_time[0]
-        if beam_position is not None:
-            beam_position = beam_position[0]
+        t, sim_time, beam_position = vr.read_field_data(vtk_obj)
         render = vr.Render(structure.cell_dimension)
-        cam_pos = render.show_full_structure(structure, solid, deposit, precursor, surface, semi_surface, ghost, t, sim_time, beam_position, cam_pos=cam_pos)
+        cam_pos = render.show_full_structure(structure, True, solid, deposit, precursor, surface, semi_surface, ghost, t, sim_time, beam_position, cam_pos=cam_pos)
 
 
 if __name__ == '__main__':
