@@ -6,7 +6,7 @@ import os, sys
 import warnings
 from threading import Lock
 import numpy as np
-from numexpr_mod import evaluate_cached, cache_expression
+import numexpr_mod as ne
 
 # Local packages
 from febid.Structure import Structure
@@ -532,7 +532,7 @@ class Process():
         k2 = self.__precursor_density_increment(precursor, beam_matrix, self.dt / 2, k1 / 2)
         k3 = self.__precursor_density_increment(precursor, beam_matrix, self.dt / 2, k2 / 2)
         k4 = self.__precursor_density_increment(precursor, beam_matrix, self.dt, k3)
-        return evaluate_cached(self.expressions["rk4"], casting='same_kind')
+        return ne.re_evaluate("rk4", casting='same_kind')
 
     def __rk4_diffusion(self, grid, surface):
         dt = self.dt
@@ -542,7 +542,7 @@ class Process():
         k2[surface] /= 2
         k3 = self._laplace_term_stencil(grid, surface, dt/2, add=k2, flat=False)
         k4 = self._laplace_term_stencil(grid, surface, dt, add=k3, flat=False)
-        return evaluate_cached(self.expressions['rk4'], casting='same_kind')
+        return ne.re_evaluate("rk4", casting='same_kind')
 
     def __precursor_density_increment(self, precursor, beam_matrix, dt, addon=0.0):
         """
@@ -556,17 +556,13 @@ class Process():
         """
         if self.temperature_tracking:
             tau = self.__tau_flat
-            return evaluate_cached(self.expressions['precursor_density_temp'],
-                                    local_dict={'F': self.F, 'dt': dt, 'n0':self.n0,
-                                    'sigma':self.sigma, 'sub': precursor+addon, 'tau': tau,
-                                    'flux_matrix': beam_matrix}, casting='same_kind')
         else:
-            return evaluate_cached(self.expressions["precursor_density"],
-                               local_dict={'F_dt': self.F * dt,
-                                           'F_dt_n0_1_tau_dt': (self.F * dt * self.tau + self.n0 * dt) / (
-                                                       self.tau * self.n0),
-                                           'addon': addon, 'flux_matrix': beam_matrix, 'sigma_dt': self.sigma * dt,
-                                           'sub': precursor}, casting='same_kind')
+            tau = self.tau
+        return ne.re_evaluate('precursor_temp',
+                                local_dict={'F': self.F, 'dt': dt, 'n0':self.n0,
+                                'sigma':self.sigma, 'n': precursor+addon, 'tau': tau,
+                                'se_flux': beam_matrix}, casting='same_kind')
+
 
     def _laplace_term_stencil(self, grid, surface, dt=0, add=0, flat=True):
         """
@@ -792,22 +788,29 @@ class Process():
 
     def __expressions(self):
         # Precompiled expressions for numexpr_mod.evaluate_cached function
-        self.expressions = dict(rk4=cache_expression("(k1+k4)/6 +(k2+k3)/3",
-                                                     signature=[('k1', np.float64), ('k2', np.float64),
-                                                                ('k3', np.float64), ('k4', np.float64)]),
-                                # precursor_density_=cache_expression("(F * (1 - (sub + addon) / n0) - (sub + addon) / tau - (sub + addon) * sigma * flux_matrix)*dt", [('F', np.int64), ('addon', np.float64), ('dt', np.float64), ('flux_matrix', np.int64), ('n0', np.float64), ('sigma',np.float64), ('sub', np.float64), ('tau', np.float64)]),
-                                precursor_density=cache_expression(
-                                    "F_dt - (sub + addon) * (F_dt_n0_1_tau_dt + sigma_dt * flux_matrix)",
-                                    signature=[('F_dt', np.float64), ('F_dt_n0_1_tau_dt', np.float64),
-                                               ('addon', np.float64), ('flux_matrix', np.int64),
-                                               ('sigma_dt', np.float64), ('sub', np.float64)]),
-                                precursor_density_temp = cache_expression("F*dt*(1-sub/n0) - sub*dt/tau - sub*sigma*flux_matrix*dt",
-                                            signature=[('F', np.float64), ('dt', np.float64), ('flux_matrix', np.int32), ('n0', np.float64),
-                                                        ('sigma', np.float64), ('sub', np.float64), ('tau', np.float64), ]),
-                                laplace1=cache_expression("grid_out*dt_D",
-                                                          signature=[('dt_D', np.float64), ('grid_out', np.float64)]),
-                                laplace2=cache_expression("grid_out*dt_D_div", signature=[('dt_D_div', np.float64),
-                                                                                          ('grid_out', np.float64)]))
+        # self.expressions = dict(rk4=cache_expression("(k1+k4)/6 +(k2+k3)/3",
+        #                                              signature=[('k1', np.float64), ('k2', np.float64),
+        #                                                         ('k3', np.float64), ('k4', np.float64)]),
+        #                         # precursor_density_=cache_expression("(F * (1 - (sub + addon) / n0) - (sub + addon) / tau - (sub + addon) * sigma * flux_matrix)*dt", [('F', np.int64), ('addon', np.float64), ('dt', np.float64), ('flux_matrix', np.int64), ('n0', np.float64), ('sigma',np.float64), ('sub', np.float64), ('tau', np.float64)]),
+        #                         precursor_density=cache_expression(
+        #                             "F_dt - (sub + addon) * (F_dt_n0_1_tau_dt + sigma_dt * flux_matrix)",
+        #                             signature=[('F_dt', np.float64), ('F_dt_n0_1_tau_dt', np.float64),
+        #                                        ('addon', np.float64), ('flux_matrix', np.int64),
+        #                                        ('sigma_dt', np.float64), ('sub', np.float64)]),
+        #                         precursor_density_temp = cache_expression("F*dt*(1-sub/n0) - sub*dt/tau - sub*sigma*flux_matrix*dt",
+        #                                     signature=[('F', np.float64), ('dt', np.float64), ('flux_matrix', np.int32), ('n0', np.float64),
+        #                                                 ('sigma', np.float64), ('sub', np.float64), ('tau', np.float64), ]),
+        #                         laplace1=cache_expression("grid_out*dt_D",
+        #                                                   signature=[('dt_D', np.float64), ('grid_out', np.float64)]),
+        #                         laplace2=cache_expression("grid_out*dt_D_div", signature=[('dt_D_div', np.float64),
+        #                                                                                   ('grid_out', np.float64)]))
+        # Creating dummy variables of necessary types
+        k1, k2, k3, k4, F, n, n0, tau, sigma, dt = np.arange(10, dtype=np.float64)
+        se_flux = np.arange(1, dtype=np.int64)
+        ne.cache_expression("(k1+k4)/6 +(k2+k3)/3", 'rk4')
+        ne.cache_expression("(F * (1 - n / n0) - n / tau - n * sigma * se_flux) * dt", 'precursor')
+        ne.cache_expression("F * dt * (1 - n / n0) - n * dt / tau - n * sigma * se_flux * dt", 'precursor_temp')
+
 
     @property
     def kd(self):

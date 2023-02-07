@@ -7,7 +7,7 @@ import warnings
 import numpy as np
 from febid.libraries.rolling import roll
 from febid.libraries.pde import tridiag
-from numexpr_mod import cache_expression, evaluate_cached
+import numexpr_mod as ne
 from febid.diffusion import laplace_term_stencil, prepare_surface_index
 
 # Heat transfer is currently solved statically for a steady-state condition according to
@@ -26,7 +26,8 @@ from febid.diffusion import laplace_term_stencil, prepare_surface_index
 # This algorithm defines temperature of the solid.
 # Surface temperature is calculated later by averaging neighboring solid cells.
 
-heat_equation = cache_expression('a*temp', signature=[('a', np.float64), ('temp', np.float64)])
+a, temp = 0.1, 0.1
+heat_equation = ne.cache_expression('a*temp', 'heat_equation')
 eV_J = 1.60217733E-19
 
 
@@ -78,9 +79,9 @@ def temperature_stencil(grid, k, cp, rho, dt, dl, heat_source=0, solid_index=Non
     grid[0, y, x] = substrate_T
     grid_out[0, y, x] = 0
     if flat:
-        return evaluate_cached(heat_equation, local_dict={'a': A, 'temp': grid_out[solid_index]}, casting='same_kind')
+        return ne.re_evaluate('heat_equation', local_dict={'a': A, 'temp': grid_out[solid_index]}, casting='same_kind')
     else:
-        return evaluate_cached(heat_equation, local_dict={'a': A, 'temp': grid_out}, casting='same_kind')
+        return ne.re_evaluate('heat_equation', local_dict={'a': A, 'temp': grid_out}, casting='same_kind')
 
 
 def prepare_solid_index(grid):

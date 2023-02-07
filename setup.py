@@ -73,7 +73,7 @@ setuptools.setup(
     package_data = {'': ['*.pyx']},
     include_package_data=True,
     install_requires=['numpy<1.23.0', 'pyvista', 'pandas', 'ruamel.yaml', 'cython', 'openpyxl', 'tqdm', 'pyqt5', 'pyaml',
-                      'numexpr_mod@git+https://github.com/MrCheatak/numexpr_mod.git#numexpr_mod'],
+                      'numexpr_mod'],
     ext_modules=cythonize(ext_modules),
     include_dirs=[np.get_include()],
     pyhton_requires='>=3.7',

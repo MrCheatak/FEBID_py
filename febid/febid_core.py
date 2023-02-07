@@ -509,13 +509,13 @@ def update_graphical(rn: vr.Render, pr: Process, time_step, time_spent, displaye
         pr.vol_prev = total_V
         max_T = pr.temp.max()
         # Updating displayed text
-        rn.p.textActor.renderer.actors['time'].SetText(2,
+        rn.p.actors['time'].SetText(2,
                         f'Time: {time_real} \n' # showing real time passed 
                         f'Sim. time: {(pr.t):.8f} s \n' # showing simulation time passed
                         f'Speed: {speed:.8f} \n'  
                         f'Av. growth rate: {growth_rate} nm^3/s \n'
                         f'Max. temperature: {max_T:.3f} K')
-        rn.p.textActor.renderer.actors['stats'].SetText(3,
+        rn.p.actors['stats'].SetText(3,
                         f'Cells: {pr.n_filled_cells[i]} \n'  # showing total number of deposited cells
                         f'Height: {height} nm \n'
                         f'Volume: {total_V:.0f} nm^3')

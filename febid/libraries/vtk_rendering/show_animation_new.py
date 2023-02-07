@@ -198,8 +198,8 @@ def show_animation(directory='', show='precursor'):
         index[mask == 0] = vtk.vtkDataSetAttributes.HIDDENCELL
         index[mask == 1] = 0  # surface_bool is not bool type and cannot be used directly as index
         # Updating text
-        render.p.textActor.renderer.actors['time'].SetText(2, text)
-        render.p.textActor.renderer.actors['stats'].SetText(3, stats)
+        render.p.actors['time'].SetText(2, text)
+        render.p.actors['stats'].SetText(3, stats)
 
         # render.p.mesh.cell_data[vtk.vtkDataSetAttributes.GhostArrayName()] = index.ravel()
         p=data[mask]
