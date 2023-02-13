@@ -14,44 +14,70 @@ from febid.Structure import Structure
 from febid.libraries.vtk_rendering import VTK_Rendering as vr
 from febid.monte_carlo import etrajectory as et
 from febid.monte_carlo import etrajmap3d as map3d
+from febid.monte_carlo.mc_base import MC_Sim_Base, Element, substrates
 
-# TODO: implement a global flag for collecting data(Se trajes) for plotting
 
-class MC_Simulation_instance():
-    def __init__(self, structure, **mc_params):
-        mc_params['substrate'] = substrates[mc_params['substarte_element']]
-        mc_params['deponat'] = Element(mc_params['name'], mc_params['Z'], mc_params['A'], mc_params['rho'], mc_params['e'], mc_params['l'], -1)
+class MC_Simulation(MC_Sim_Base):
+    """
+    Monte Carlo simulation main class
+    """
+    def __init__(self, structure, mc_params):
+        self.cell_dim = structure.cell_dimension
+        self.grid = structure.deposit
+        self.substrate = mc_params['substrate'] = substrates[mc_params['substrate_element']]
+        self.deponat = mc_params['deponat'] = Element(mc_params['name'], mc_params['Z'], mc_params['A'], mc_params['rho'], mc_params['e'], mc_params['l'], -1)
         self.pe_sim = et.ETrajectory()
-        self.pe_sim.setParameters(structure, surface_neighbors)
+        self.pe_sim.setParameters(structure, mc_params)
         self.se_sim = map3d.ETrajMap3d()
-        self.se_sim.setParametrs(structure, 0.3, mc_params)
+        self.se_sim.setParametrs(structure, mc_params, 0.3)
 
-        self.se_surface_flux = np.zeros(structure.shape, dtype=np.int32)
-        self.deposited_energy = np.zeros(structure.shape)
+        self.se_surface_flux = None
+        self.beam_heating = None
 
     def update_structure(self, structure):
+        """
+        Renew memory addresses of the arrays
+
+        :param structure:
+        :return:
+        """
         self.pe_sim.grid = self.se_sim.grid = structure.deposit
         self.pe_sim.surface = self.se_sim.surface = structure.surface_bool
         self.se_sim.s_neighb = structure.surface_neighbors_bool
         self.se_surface_flux = np.zeros(structure.shape, dtype=np.int32)
-        self.deposited_energy = np.zeros(structure.shape)
+        self.beam_heating = np.zeros(structure.shape)
 
-    def run_simulation(self, x0, y0, dt=1):
+    def run_simulation(self, y0, x0, heat):
+        """
+        Run MC simulation with the beam coordinates
+
+        :param y0: spot y-coordinate
+        :param x0: spot x-coordinate
+        :param heat: if True, calculate beam heating
+        :return: SE surface flux
+        """
+        if heat:
+            N = 20000
+            norm_factor = self.pe_sim.get_norm_factor(N)
+        else:
+            N = self.pe_sim.N
+            norm_factor = self.pe_sim.norm_factor
         start = timeit.default_timer()
         self.pe_sim.map_wrapper_cy(y0, x0)
-        self.se_sim.map_follow(self.pe_sim.passes)
-        if self.se_sim.flux.max() > 10000 * self.se_sim.amplifying_factor:
-            print(f' Encountered infinity in the beam matrix: {np.nonzero(m3d.flux > 10000 * m3d.amplifying_factor)}')
-            self.se_sim.flux[self.se_sim.flux > 10000 * self.se_sim.amplifying_factor] = 0
-        if self.se_sim.flux.min() < 0:
-            print(f'Encountered negative in beam matrix: {np.nonzero(m3d.flux < 0)}')
-            self.se_sim.flux[self.se_sim.flux < 0] = 0
-        const = self.pe_sim.norm_factor / (dt * self.pe_sim.cell_dim * self.pe_sim.cell_dim) / self.se_sim.amplifying_factor
-        self.se_surface_flux[...] = np.int32(self.se_sim.flux * const)
-        self.deposited_energy[...] = self.se_sim.DE * self.pe_sim.norm_factor
-        return self.se_surface_flux, self.deposited_energy
+        self.se_sim.map_follow(self.pe_sim.passes, heat)
+        const = norm_factor / self.se_sim.amplifying_factor / self.pe_sim.cell_dim ** 2 / self.se_sim.segment_min_length
+        if heat:
+            self.beam_heating = self.se_sim.heat * norm_factor / self.pe_sim.cell_dim ** 3
+        self.se_surface_flux = np.int32(self.se_sim.flux * const)
+        return self.se_surface_flux
 
-    def plot(self, primary_e=True, deposited_E=True, secondary_flux=True, secondary_e=False):
+    def plot(self, primary_e=True, deposited_E=True, secondary_flux=True,secondary_e=False, heat_total=False,
+             heat_pe=False, heat_se=False):  # plot energy loss and all trajectories
+        """
+        Show the structure with surface electron flux and electron trajectories
+
+        :return:
+        """
         render = vr.Render(self.pe_sim.cell_dim)
         kwargs = {}
         if primary_e:
@@ -62,39 +88,27 @@ class MC_Simulation_instance():
         if secondary_flux:
             kwargs['surface_flux'] = self.se_sim.flux
         if secondary_e:
-            kwargs['se_traj'] = self.se_sim.coords_all
+            kwargs['se_traj'] = self.se_sim.coords
+        if heat_total:
+            kwargs['heat_t'] = self.se_sim.heat
+        if heat_pe:
+            kwargs['heat_pe'] = self.se_sim.heat_pe
+        if heat_se:
+            kwargs['heat_se'] = self.se_sim.wasted_se
         render.show_mc_result(self.pe_sim.grid, **kwargs, interactive=False)
 
+    def plot_flux_2d(self):
+        import matplotlib.pyplot as plt
+        summed = np.sum(self.se_surface_flux, 0)
+        x, y = np.mgrid[0:summed.shape[1] + 1,
+               0:summed.shape[0] + 1]  # +1 because 'shading=flat' requires dropping last column and row
+        fig, ax = plt.subplots()
+        ax.pcolormesh(x, y, summed, cmap='plasma', shading='flat')
+        locator = plt.MultipleLocator(self.se_sim.cell_dim)
+        # ax.xaxis.set_major_locator(locator)
+        # ax.yaxis.set_major_locator(locator)
+        plt.show()
 
-class Element:
-    """
-    Represents a material
-    """
-    def __init__(self, name='noname', Z=1, A=1.0, rho=1.0, e=50, lambda_escape=1.0, mark=1):
-        self.name = name # name of the material
-        self.rho = rho # density, g/cm^3
-        self.Z = Z # atomic number (or average if compound)
-        self.A = A # molar mass, g/mol
-        self.J = (9.76*Z + 58.5/Z**0.19)*1.0E-3 # ionisation potential
-        self.e = e # effective energy required to produce an SE, eV [lin]
-        self.lambda_escape = lambda_escape # effective SE escape path, nm [lin]
-        self.mark = mark
-
-        # [lin] Lin Y., Joy D.C., Surf. Interface Anal. 2005; 37: 895–900
-
-    def __add__(self, other):
-        if other == 0:
-            return self
-
-    def __radd__(self, other):
-        if other == 0:
-            return self
-        else:
-            return self.__add__(other)
-
-substrates = {}
-substrates['Au'] = Element(name='Au', Z=79, A=196.967, rho=19.32, e=35, lambda_escape=0.5)
-substrates['Si'] = Element(name='Si', Z=14, A=29.09, rho=2.33, e=90, lambda_escape=2.7)
 
 def run_mc_simulation(vtk_obj, E0=20, sigma=5, N=100, pos='center', material='Au', Emin=0.1):
     """
@@ -126,8 +140,9 @@ def run_mc_simulation(vtk_obj, E0=20, sigma=5, N=100, pos='center', material='Au
         start = timeit.default_timer()
         sim.map_wrapper(x,y)
         print(f'{timeit.default_timer() - start}', end='\t\t')
-        m3d = map3d.ETrajMap3d(structure.deposit, structure.surface_bool, sim)
-        m3d.map_follow(sim.passes, 1)
+        m3d = map3d.ETrajMap3d()
+        m3d.setParametrs(structure, params)
+        m3d.map_follow(sim.passes, False)
         pe_trajectories = np.asarray(sim.passes)
         render = vr.Render(structure.cell_dimension)
         cam_pos = render.show_mc_result(sim.grid, pe_trajectories, m3d.DE, m3d.flux, cam_pos=cam_pos)
@@ -199,100 +214,6 @@ def read_param(name, expected_type, message="Inappropriate input for ", check_st
             warnings.warn(message+name)
             print(f'Try again')
             continue
-
-
-def plot(m3d:map3d.ETrajMap3d, sim:et.ETrajectory, primary_e=True, deposited_E=True, secondary_flux=True,
-         secondary_e=False, heat_total=False, heat_pe=False, heat_se=False): # plot energy loss and all trajectories
-    """
-    Show the structure with surface electron flux and electron trajectories
-
-    :param m3d:
-    :param sim:
-    :return:
-    """
-    render = vr.Render(sim.cell_dim)
-    kwargs = {}
-    if primary_e:
-        pe_trajectories = np.asarray(sim.passes)
-        kwargs['pe_traj'] = pe_trajectories
-    if deposited_E:
-        kwargs['deposited_E'] = m3d.DE
-    if secondary_flux:
-        kwargs['surface_flux'] = m3d.flux
-    if secondary_e:
-        kwargs['se_traj'] = m3d.coords
-    if heat_total:
-        kwargs['heat_t'] = m3d.heat
-    if heat_pe:
-        kwargs['heat_pe'] = m3d.heat_pe
-    if heat_se:
-        kwargs['heat_se'] = m3d.wasted_se
-    render.show_mc_result(sim.grid, **kwargs, interactive=False)
-
-def plot_flux_2d(flux, cell_size):
-    import matplotlib.pyplot as plt
-    summed = np.sum(flux, 0)
-    x, y = np.mgrid[0:summed.shape[1]+1, 0:summed.shape[0]+1] # +1 because 'shading=flat' requires dropping last column and row
-    fig, ax = plt.subplots()
-    ax.pcolormesh(x, y, summed, cmap='plasma', shading='flat')
-    locator = plt.MultipleLocator(cell_size)
-    # ax.xaxis.set_major_locator(locator)
-    # ax.yaxis.set_major_locator(locator)
-    plt.show()
-
-
-
-def cache_params(params, deposit, surface, surface_neighbors):
-    """
-    Creates an instance of simulation class and fetches necessary parameters
-
-    :param fn_cfg: dictionary with simulation parameters
-    :param deposit: initial structure
-    :param surface: array pointing to surface cells
-    :param cell_dim: dimensions of a cell
-    :param dt: time step of the simulation
-    :return:
-    """
-
-    sim = et.ETrajectory(name=params['name']) # creating an instance of Monte-Carlo simulation class
-    sim.setParameters(params, deposit, surface, surface_neighbors) # setting parameters
-    return sim
-
-
-def rerun_simulation(y0, x0, sim:et.ETrajectory, heat):
-    """
-    Rerun simulation using existing MC simulation instance
-
-    :param y0: beam y-position, absolute
-    :param x0: beam x-position, absolute
-    :param deposit: array representing solid structure
-    :param surface: array representing surface shape
-    :param sim: MC simulation instance
-    :param heat: True will enable calculation of the beam heating
-    :return:
-    """
-
-    if heat:
-        N = 20000
-        norm_factor = sim.get_norm_factor(N)
-    else:
-        N = sim.N
-        norm_factor = sim.norm_factor
-    sim.map_wrapper_cy(y0, x0, N)
-    m3d = sim.m3d
-    m3d.map_follow(sim.passes, heat)
-    # plot(m3d, sim, True, True, True, True, True, True, True)
-    if m3d.flux.max() > 10000*m3d.amplifying_factor:
-        print(f' Encountered infinity in the beam matrix: {np.nonzero(m3d.flux>10000*m3d.amplifying_factor)}')
-        m3d.flux[m3d.flux>10000*m3d.amplifying_factor] = 0
-    if m3d.flux.min() < 0:
-        print(f'Encountered negative in beam matrix: {np.nonzero(m3d.flux<0)}')
-        m3d.flux[m3d.flux<0] = 0
-    const = norm_factor/m3d.amplifying_factor/sim.cell_dim**2/sim.m3d.segment_min_length
-    if heat:
-        m3d.heat *= norm_factor/sim.cell_dim**3
-    m3d.flux = np.int32(m3d.flux*const)
-    return m3d.flux
 
 
 if __name__ == '__main__':

@@ -1,9 +1,6 @@
 import copy
 import inspect
-import logging
-import multiprocessing
 import random as rnd
-import sys
 import timeit
 
 import numexpr_mod as ne
@@ -11,32 +8,64 @@ import numpy as np
 from numpy.random import default_rng
 
 from febid.libraries.ray_traversal import traversal
+from febid.monte_carlo.mc_base import MC_Sim_Base
 
 
-class ETrajMap3d(object):
+def process_trajectories(points, energies, mask):
+    """
+    Convert raw trajectories into a collection of segments
+
+    :param points: consequent scattering points
+    :param energies: remaining energy at each point
+    :param mask: marks segments that lie outside of solid
+
+    :return: an array of start- and end-points of segments, energy loss at segment
+    """
+    # Trajectories are divided into segments represented by a pair of points
+    # Then mask is applied, selecting only segments that traverse solid
+    # This reduces the unnecessary analysis of trajectory segments that lie in void(geometry features or backscattered electrons)
+    try:
+        mask = mask.astype(bool)
+        pnp = points
+        dE = energies
+    except AttributeError:
+        mask = np.asarray(mask, dtype=bool)
+        pnp = np.array(points[0:len(points)]) # to get easy access to x, y, z coordinates of points
+        dE = np.asarray(energies)
+    pairs = np.empty((pnp.shape[0]-1, 2, 3))
+    pairs[:,0,:] = pnp[:-1]
+    pairs[:,1,:] = pnp[1:]
+    pairs = pairs[mask]
+    # Workaround against duplicate points
+    p0 = pairs[:,0,:]
+    pn = pairs[:,1,:]
+    pn[pn==p0] += rnd.choice((0.000001, -0.000001)) # protection against duplicate coordinates
+    # p0, pn = pnp[:-1], pnp[1:]
+    # pairs = np.stack((p0,pn))
+    # TODO: Thrown 'axis don't match array' exception :
+    # pairs = np.transpose(pairs, axes=(1,0,2))[mask.nonzero()]
+    # np.delete(pairs, (mask==0), axis=0)
+    # result = pairs[mask.nonzero()]
+    dE[:-1] -= dE[1:]
+    dE = dE[:-1] # last element is discarded
+    dE = dE[mask]*1000
+    return pairs, dE
+
+
+class ETrajMap3d(MC_Sim_Base):
     """
     Implements energy deposition and surface secondary electron flux calculation.
     """
-    def __init__(self, deposit, surface, surface_neighbors, sim, segment_min_length=0.3):
-        #TODO: ETrajMap3d class should probably be merged with Etrajectory
-        # These classes
-        self.grid = deposit
-        self.surface = surface
-        self.s_neighb = surface_neighbors # 3D array representing surface n-nearest neigbors
-        self.cell_dim = sim.cell_dim # absolute dimension of a cell, nm
-        self.DE = np.zeros_like(deposit) # array for storing of deposited energies
-        self.flux = np.zeros_like(deposit) # array for storing SE fluxes
-        self.shape = deposit.shape
-        self.shape_abs = tuple([x*self.cell_dim for x in self.grid.shape])
+    def __init__(self):
+        """
+        Create an empty ETrajMap3d instance
+        """
+        self.DE = None # array for storing of deposited energies
+        self.flux = None # array for storing SE fluxes
 
-        self.amplifying_factor = 10000 # artificially increases SE yield to preserve accuracy
-        self.emission_fraction = 0.6 # fraction of total lost energy spent on secondary electron emission
-        self.se_E = 19 # eV, average SE energy
+        self.amplifying_factor = 1 # artificially increases SE yield to preserve accuracy
         # self.e = e # fitting parameter related to energy required to initiate a SE cascade, material specific, eV
-        self.deponat = sim.deponat
-        self.substrate = sim.substrate
         # self.lambda_escape = lambda_escape # mean free escape path, material specific, nm
-        # self.dn = floor(self.lambda_escape * 2 / self.cell_dim) # number of cells an SE can intersect
         self.trajectories = [] # holds all trajectories mapped to 3d structure
         self.se_traj = [] # holds all trajectories mapped to 3d structure
         self.se_coords_all = None # array coordinates of all the SE sources
@@ -44,25 +73,28 @@ class ETrajMap3d(object):
         self.wasted_se = None # SEs that did not escape the surface, used for Joule heating
         self.heat_pe = None # Energy deposiuted by the PEs that is converted to heat
         self.heat = None # total heating from the inelastic energy
-        self.segment_min_length = segment_min_length
+        self.segment_min_length = 1
 
-    def setParametrs(self, structure, segment_min_length=0.3, **mc_params):
+    def setParametrs(self, structure, params, segment_min_length=0.3):
+        """
+        Initialise the instance and set all the necessary parameters
+
+        :param structure: solid structure representation
+        :param params: contains all input parameters for the simulation
+        :param segment_min_length: segment subdivision length
+        """
         self.grid = structure.deposit
         self.surface = structure.surface_bool
-        self.s_neighb = structure.surface_neighbors  # 3D array representing surface n-nearest neigbors
+        self.s_neighb = structure.surface_neighbors_bool  # 3D array representing surface n-nearest neigbors
         self.cell_dim = structure.cell_dimension  # absolute dimension of a cell, nm
         self.DE = np.zeros_like(self.grid)  # array for storing of deposited energies
         self.flux = np.zeros_like(self.grid)  # array for storing SE fluxes
-        self.shape = structure.shape
-        self.shape_abs = structure.shape_abs
 
         self.amplifying_factor = 10000  # artificially increases SE yield to preserve accuracy
-        self.emission_fraction = mc_params['emission_fraction']  # fraction of total lost energy spent on secondary electron emission
-        # self.e = e # fitting parameter related to energy required to initiate a SE cascade, material specific, eV
-        self.deponat = mc_params['deponat']
-        self.substrate = mc_params['substrate']
-        # self.lambda_escape = lambda_escape # mean free escape path, material specific, nm
-        # self.dn = floor(self.lambda_escape * 2 / self.cell_dim) # number of cells an SE can intersect
+        self.se_E = 19  # eV, average SE energy
+        self.emission_fraction = params['emission_fraction']  # fraction of total lost energy spent on secondary electron emission
+        self.deponat = params['deponat'] # deposit material properties
+        self.substrate = params['substrate'] # substrate material properties
         self.se_traj = []  # holds all trajectories mapped to 3d structure
         self.segment_min_length = segment_min_length
 
@@ -298,61 +330,12 @@ class ETrajMap3d(object):
         self.wasted_se[self.grid >= 0] = 0
 
     def joule_heating(self):
+        """
+        Get collective heat effect from primary and secondary electrons
+        """
         self.extract_se_heat()
         self.heat_pe = self.DE * (1 - self.emission_fraction)
         self.heat = self.heat_pe + self.wasted_se
-
-
-    def __setup_trajectory(self, points, energies, mask):
-        """
-        Setup trajectory from MC simulation data for further computation.
-        points: list of (x, y, z) points of trajectory from MC simulation
-        energies: list of residual energies of electron at points of trajectory in keV
-        Returns arrays of points and energy losses (in eV)
-        """
-        # Trajectories are divided into segments represented by a pair of points
-        # Then mask is applied, selecting only segments that traverse solid
-        # This reduces the unnecessary analysis of trajectory segments that lie in void(geometry features or backscattered electrons)
-        try:
-            mask = mask.astype(bool)
-            pnp = points
-            dE = energies
-        except AttributeError:
-            mask = np.asarray(mask, dtype=bool)
-            pnp = np.array(points[0:len(points)]) # to get easy access to x, y, z coordinates of points
-            dE = np.asarray(energies)
-        pairs = np.empty((pnp.shape[0]-1, 2, 3))
-        pairs[:,0,:] = pnp[:-1]
-        pairs[:,1,:] = pnp[1:]
-        pairs = pairs[mask]
-        # Workaround against duplicate points
-        p0 = pairs[:,0,:]
-        pn = pairs[:,1,:]
-        pn[pn==p0] += rnd.choice((0.000001, -0.000001)) # protection against duplicate coordinates
-        # p0, pn = pnp[:-1], pnp[1:]
-        # pairs = np.stack((p0,pn))
-        # TODO: Thrown 'axis don't match array' exception :
-        # pairs = np.transpose(pairs, axes=(1,0,2))[mask.nonzero()]
-        # np.delete(pairs, (mask==0), axis=0)
-        # result = pairs[mask.nonzero()]
-        dE[:-1] -= dE[1:]
-        dE = dE[:-1] # last element is discarded
-        dE = dE[mask]*1000
-        return pairs, dE
-
-    def map_follow_multiprocessing(self, passes, n=8):
-        """
-        Wrapper, that enables multicore processing. Check called function for the description.
-        """
-        pas = list(np.array_split(np.asarray(passes), n))
-        with multiprocessing.Pool(n) as pool:
-            results = pool.map(self.map_follow, pas)
-        for p in results:
-            self.flux += p[0]
-            self.DE += p[1]
-            self.se_traj += p[2]
-        return self.flux, self.DE
-
 
     def map_follow(self, passes, heating=False):
         """
@@ -381,7 +364,7 @@ class ETrajMap3d(object):
         for one_pass in passes:
             if len(one_pass[1][:]) < 3:
                 continue
-            pairs, energies = self.__setup_trajectory(one_pass[0][1:], one_pass[1][1:], one_pass[2][1:])
+            pairs, energies = process_trajectories(one_pass[0][1:], one_pass[1][1:], one_pass[2][1:])
             if pairs.shape[0]:
                 points.append(pairs)
                 dEs.append(energies)

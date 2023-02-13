@@ -28,8 +28,7 @@ from febid.Statistics import Statistics
 from febid.Structure import Structure
 from febid.Process import Process
 from febid.libraries.vtk_rendering import VTK_Rendering as vr
-from febid.monte_carlo import etraj3d
-import febid.simple_patterns as sp
+from febid.monte_carlo.etraj3d import MC_Simulation
 
 # It is assumed, that surface cell is a cell with a fully deposited cell(or substrate) under it and thus able produce deposit under irradiation.
 
@@ -39,13 +38,6 @@ import febid.simple_patterns as sp
 flag = False
 x_pos, y_pos = 0., 0.
 warnings.simplefilter('always')
-
-class ThreadWithResult(Thread):
-    def __init__(self, group=None, target=None, name=None, args=(), kwargs={}, *, daemon=None):
-        self.result = None
-        def function():
-            self.result = target(*args, **kwargs)
-        super().__init__(group=group, target=function, name=name, daemon=daemon)
 
 
 def initialize_framework(from_file=False, precursor=None, settings=None, sim_params=None, vtk_file=None,
@@ -178,7 +170,7 @@ def buffer_constants(precursor: dict, settings: dict, cell_dimension: int):
                  'Z': precursor["average_element_number"],
                  'A': precursor["average_element_mol_mass"], 'rho': precursor["average_density"],
                  'I0': settings["beam_current"], 'sigma': settings["gauss_dev"], 'n': settings['n'],
-                 'N': Ie, 'sub': settings["substrate_element"],
+                 'N': Ie, 'substrate_element': settings["substrate_element"],
                  'cell_dim': cell_dimension,
                  'e': precursor["SE_emission_activation_energy"], 'l': precursor["SE_mean_free_path"],
                   'emission_fraction': settings['emission_fraction']}
@@ -242,7 +234,7 @@ def run_febid(structure, precursor_params, settings, sim_params, path, temperatu
         stats.get_params(sim_params, 'Simulation volume parameters')
     process_obj = Process(structure, equation_values, timings, temp_tracking=temperature_tracking)
     process_obj.stats_freq = min(monitor_kwargs['stats_rate'], monitor_kwargs['dump_rate'], monitor_kwargs['refresh_rate'])
-    sim = etraj3d.cache_params(mc_config, structure.deposit, structure.surface_bool, structure.surface_neighbors_bool)
+    sim = MC_Simulation(structure, mc_config)
     process_obj.max_neib = math.ceil(np.max([sim.deponat.lambda_escape, sim.substrate.lambda_escape])/process_obj.cell_dimension)
     process_obj.structure.define_surface_neighbors(process_obj.max_neib)
     total_iters = int(np.sum(path[:, 2]) / process_obj.dt)
@@ -250,7 +242,7 @@ def run_febid(structure, precursor_params, settings, sim_params, path, temperatu
     # via Pyvista works only from the main Thread
     printing = Thread(target=print_all, args=[path, process_obj, sim])
     printing.start()
-    monitoring(process_obj, total_iters, stats, **monitor_kwargs)
+    monitoring(process_obj, stats, **monitor_kwargs)
     printing.join()
     print('Finished path.')
     return process_obj, sim
@@ -262,7 +254,7 @@ def print_all(path, process_obj, sim):
 
     :param path: patterning path from a stream file
     :param process_obj: Process class instance
-    :param sim: Monte Carlo simulation class instance
+    :param sim: Monte Carlo simulation object
     :return:
     """
     global flag, x_pos, y_pos
@@ -274,7 +266,7 @@ def print_all(path, process_obj, sim):
              bar_format=bar_format) # the displayed execution speed is shown in µs of simulation time per s of real time
     for x, y, step in path[start:]:
         x_pos, y_pos = x, y
-        beam_matrix = etraj3d.rerun_simulation(y, x, sim, process_obj.request_temp_recalc)
+        beam_matrix = sim.run_simulation(y, x, process_obj.request_temp_recalc)
         process_obj.beam_matrix[:, :, :] = beam_matrix
         if process_obj.beam_matrix.max() <= 1:
             warnings.warn('No surface flux!', RuntimeWarning)
@@ -283,7 +275,7 @@ def print_all(path, process_obj, sim):
         process_obj.update_helper_arrays()
         process_obj.get_dt()
         if process_obj.temperature_tracking:
-            process_obj.heat_transfer(sim.m3d.heat)
+            process_obj.heat_transfer(sim.beam_heating)
             process_obj.request_temp_recalc = False
         print_step(y, x, step, process_obj, sim, t)
     flag = True
@@ -293,11 +285,13 @@ def print_step(y, x, dwell_time, pr: Process, sim, t):
     """
     Sub-loop, that iterates through the dwell time by a time step
 
-    :param x: spot x-coordinate
     :param y: spot y-coordinate
+    :param x: spot x-coordinate
     :param dwell_time: time of the exposure
     :param pr: Process object
     :param sim: MC simulation object
+    :param t: tqdm progress bar
+
     :return:
     """
     loops = int(dwell_time / pr.dt)
@@ -320,11 +314,9 @@ def print_step(y, x, dwell_time, pr: Process, sim, t):
         if pr.check_cells_filled():
             flag_resize = pr.update_surface()  # updating surface on a selected area
             if flag_resize: # update references if the allocated simulation volume was increased
-                sim.grid = sim.m3d.grid = pr.deposit
-                sim.surface = sim.m3d.surface = pr.surface
-                sim.s_neighb = sim.m3d.s_neighb = pr.surface_n_neighbors
+                sim.update_structure(pr.structure)
             start = timeit.default_timer()
-            beam_matrix= etraj3d.rerun_simulation(y, x, sim, pr.request_temp_recalc) # run MC sim. and retrieve SE surface flux
+            beam_matrix= sim.run_simulation(y, x, pr.request_temp_recalc) # run MC sim. and retrieve SE surface flux
             pr.beam_matrix[...] = beam_matrix
             print(f'Finished MC in {timeit.default_timer()-start} s')
             if pr.beam_matrix.max() <= 1:
@@ -333,7 +325,7 @@ def print_step(y, x, dwell_time, pr: Process, sim, t):
                 continue
             pr.update_helper_arrays() # auxiliary method that maintains an efficiency increasing infrastructure
             if pr.temperature_tracking:
-                pr.heat_transfer(sim.m3d.heat)
+                pr.heat_transfer(sim.beam_heating)
                 pr.request_temp_recalc = False
             if dwell_time >= pr.dt:
                 pr.get_dt()
@@ -349,13 +341,12 @@ def print_step(y, x, dwell_time, pr: Process, sim, t):
 
 
 
-def monitoring(pr: Process, l, stats: Statistics = None, location=None, stats_rate=60, dump_rate=60, render=False,
+def monitoring(pr: Process, stats: Statistics = None, location=None, stats_rate=60, dump_rate=60, render=False,
                frame_rate=1, refresh_rate=0.5, displayed_data='precursor'):
     """
     A daemon process function to manage statistics gathering and graphics update.
 
     :param pr: object of the core deposition process
-    :param l: approximate number of iterations
     :param stats: object for gathering monitoring data
     :param location: file saving directory
     :param stats_rate: statistics recording interval in seconds, None disables statistics recording
@@ -409,14 +400,14 @@ def monitoring(pr: Process, l, stats: Statistics = None, location=None, stats_ra
                 dump_structure(pr.structure, pr.t, now - start_time, (x_pos, y_pos), f'{location}')
             time.sleep(refresh_rate)
         else:
-            if stats_time != np.inf:
+            if stats_time != sys.maxsize:
                 stats.append(pr.t, pr.min_precursor_covearge, pr.dep_vol, pr.max_T,)
                 stats.get_growth_rate()
                 # stats.add_plots([('Sim.time', 'Min.precursor coverage'),('Sim.time', 'Growth rate')], position=['J1','J23'])
                 stats.save_to_file()
-            if dump_time != np.inf:
+            if dump_time != sys.maxsize:
                 dump_structure(pr.structure, pr.t, now - start_time, (x_pos, y_pos), f'{location}')
-            if frame != np.inf:
+            if frame != sys.maxsize:
                 rn.p.close()
                 rn = vr.Render(pr.structure.cell_dimension)
                 pr.redraw = True

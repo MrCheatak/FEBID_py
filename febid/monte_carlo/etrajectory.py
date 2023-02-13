@@ -21,21 +21,215 @@ import traceback as tb
 # Local packages
 from febid.libraries.ray_traversal import traversal
 from febid.monte_carlo.compiled import etrajectory_c
-from febid.monte_carlo import etrajmap3d as map3d
+from febid.monte_carlo.mc_base import MC_Sim_Base
 
 
-class ETrajectory(object):
+class Electron():
+    """
+    A class representing a single electron with its properties and methods to define its scattering vector.
+    """
+
+    def __init__(self, x, y, parent):
+        # Python uses dictionaries to represent class attributes, which causes significant memory usage
+        # __slots__ attribute forces Python to use a small array for attribute storage, which reduces amount
+        # of memory required for every copy of the class.
+        # As a result, it reduces multiprocessing overhead as every process obtains a full copy of all objects it works with.
+        # However, if __slots__ attribute is declared, declaration of new attributes is only possible by adding a new entry
+        # to the __slots__.
+        __slots__ = ["E", "x", "y", "z", "point", "point_prev", "x_prev", "y_prev", "z_prev",
+                     "cx", "cy", "cz", "direction_c", "ctheta", "stheta", "psi",
+                     "cell_dim", "zdim", "ydim", "zdim_abs", "ydim_abs", "xdim_abs"]
+        self.E = parent.E
+        self.x = x
+        self.y = y
+        self.z = parent.zdim_abs - 1.0
+        self.point = np.zeros(3)
+        self.point_prev = np.zeros(3)
+        self.x_prev = 0
+        self.y_prev = 0
+        self.z_prev = 0
+        self.cx = 0
+        self.cy = 0
+        self.cz = 1
+        self.direction_c = np.asarray([1.0, 0, 0])
+        self.ctheta = 0
+        self.stheta = 0
+        self.psi = 0
+        self.cell_dim = parent.cell_dim
+        self.zdim, self.ydim, self.xdim = parent.zdim, parent.ydim, parent.xdim
+        self.zdim_abs, self.ydim_abs, self.xdim_abs = parent.zdim_abs, parent.ydim_abs, parent.xdim_abs
+
+    @property
+    def coordinates(self):
+        """
+        Current coordinates (z, y, x)
+
+        :return: tuple
+        """
+        return (self.z, self.y, self.x)
+
+    @coordinates.setter
+    def coordinates(self, value):
+        self.x_prev = self.point_prev[2] = self.x
+        self.y_prev = self.point_prev[1] = self.y
+        self.z_prev = self.point_prev[0] = self.z
+        self.z = self.point[0] = value[0]
+        self.y = self.point[1] = value[1]
+        self.x = self.point[2] = value[2]
+
+    @property
+    def coordinates_prev(self):
+        """
+        Previous coordinates (z, y, x)
+
+        :return: tuple
+        """
+        return (self.z_prev, self.y_prev, self.x_prev)
+
+    @property
+    def direction(self):
+        return self.point - self.point_prev
+
+    @property
+    def indices(self, z=0, y=0, x=0):
+        """
+        Gets indices of a cell in an array according to its position in the space
+
+        :return: i(z), j(y), k(x)
+        """
+        if z == 0: z = self.z
+        if y == 0: y = self.y
+        if x == 0: x = self.x
+        return int(z / self.cell_dim), int(y / self.cell_dim), int(x / self.cell_dim)
+
+    def index_corr(self):
+        """
+        Corrects indices according to the direction if coordinates are on the cell wall
+
+        :return:
+        """
+        sign = np.sign(self.point)
+        sign[sign == 1] = 0
+        delta = self.point % self.cell_dim
+        return np.int64((delta == 0) * sign)
+
+    def check_boundaries(self, z=0, y=0, x=0):
+        """
+        Check if the given (z,y,x) position is inside the simulation chamber.
+        If bounds are crossed, return corrected position
+
+        :param z:
+        :param y:
+        :param x:
+        :return:
+        """
+        if x == 0: x = self.x
+        if y == 0: y = self.y
+        if z == 0: z = self.z
+        flag = True
+        if 0 <= x < self.xdim_abs:
+            pass
+        else:
+            flag = False
+            if x < 0:
+                x = 0.000001
+            else:
+                x = self.xdim_abs - 0.0000001
+
+        if 0 <= y < self.ydim_abs:
+            pass
+        else:
+            flag = False
+            if y < 0:
+                y = 0.000001
+            else:
+                y = self.ydim_abs - 0.000001
+
+        if 0 <= z < self.zdim_abs:
+            pass
+        else:
+            flag = False
+            if z < 0:
+                z = 0.000001
+            else:
+                z = self.zdim_abs - 0.000001
+        if flag:
+            return flag
+        else:
+            return (z, y, x)
+
+    def __generate_angles(self, a):
+        """
+        Generates cos and sin of lateral angle and the azimuthal angle
+
+        :param a: alpha at the current step
+        :return:
+        """
+        rnd2 = rnd.random()
+        self.ctheta = 1.0 - 2.0 * a * rnd2 / (
+                    1.0 + a - rnd2)  # scattering angle cosines , 0 <= angle <= 180˚, it produces an angular distribution that is obtained experimentally (more chance for low angles)
+        self.stheta = sqrt(1.0 - self.ctheta * self.ctheta)  # scattering angle sinus
+        self.psi = 2.0 * pi * rnd.random()  # azimuthal scattering angle
+
+    def __get_direction(self, ctheta=None, stheta=None, psi=None):
+        """
+        Calculate cosines of the new direction according
+        Special procedure from D.Joy 1995 on Monte Carlo modelling
+        :param ctheta:
+        :param stheta:
+        :param psi:
+        :return:
+        """
+        if ctheta != None:
+            self.ctheta, self.stheta, self.psi = ctheta, stheta, psi
+        if self.cz == 0.0: self.cz = 0.00001
+        self.cz, self.cy, self.cx = traversal.get_direction(self.ctheta, self.stheta, self.psi, self.cz, self.cy,
+                                                            self.cx)
+        self.direction_c[:] = self.cz, self.cy, self.cx
+
+    def __get_next_point(self, step):
+        """
+        Calculate coordinates of the next point from previous point and direction cosines.
+        Does boundary check.
+        :param step: current electron free path
+        :return:
+        """
+        self.x_prev = self.point_prev[2] = self.x
+        self.y_prev = self.point_prev[1] = self.y
+        self.z_prev = self.point_prev[0] = self.z
+        self.x += step * self.cx
+        self.y += step * self.cy
+        self.z -= step * self.cz
+        check = self.check_boundaries()
+        if check is True:
+            pass
+        else:
+            self.z, self.y, self.x = check
+        self.point[0] = self.z
+        self.point[1] = self.y
+        self.point[2] = self.x
+        if check is True:
+            return True
+        else:
+            return False
+
+    def get_next_point(self, a, step):
+        self.__generate_angles(a)
+        self.__get_direction()
+        return self.__get_next_point(step)
+
+    def get_direction(self, ctheta=None, stheta=None, psi=None):
+        return self.__get_direction(ctheta, stheta, psi)
+
+
+class ETrajectory(MC_Sim_Base):
     """
     A class responsible for the generation and scattering of electron trajectories
     """
-    def __init__(self, name='noname'):
-        self.name = name
+    def __init__(self):
         self.passes = [] # keeps the last result of the electron trajectory simulation
-        self.NA = 6.022141E23 # Avogadro number
-        self.elementary_charge = 1.60217662e-19 # Coulon
-        rnd.seed()
 
-        self.m3d = None
+        rnd.seed()
 
         # Beam properties
         self.E0 = 0 # energy of the beam, keV
@@ -45,12 +239,6 @@ class ETrajectory(object):
         self.N = 0 # number of electron trajectories to simulate
 
         # Solid structure properties
-        self.grid = None # 3D array representing a solid structure 
-        self.surface = None # 3D array representing a surface of the solid structure
-        self.s_neghib = None # 3D array representing surface n-nearest neigbors
-        self.cell_dim = 1 # dimension of a single cell
-        self.deponat = Element() # deponat material properties
-        self.substrate = substrates['Au'] # substrate material properties
         self.material = None # material in the current point
 
         self.z0, self.y0, self.x0 = 0, 0, 0
@@ -60,238 +248,31 @@ class ETrajectory(object):
 
         self.norm_factor = 0 # a ratio of the actual number of electrons emitted to the number of electrons simulated
 
-    class Electron():
+    def setParameters(self, structure, params, stat=1000):
         """
-        A class representing a single electron with its properties and methods to define its scattering vector.
+        Initialise the instance and set all the necessary parameters
+
+        :param structure: solid structure representation
+        :param params: contains all input parameters for the simulation
+        :param stat: number of simulated trajectories
         """
-        def __init__(self, x, y, parent):
-            # Python uses dictionaries to represent class attributes, which causes significant memory usage
-            # __slots__ attribute forces Python to use a small array for attribute storage, which reduces amount
-            # of memory required for every copy of the class.
-            # As a result, it reduces multiprocessing overhead as every process obtains a full copy of all objects it works with.
-            # However, if __slots__ attribute is declared, declaration of new attributes is only possible by adding a new entry
-            # to the __slots__.
-            __slots__ = ["E", "x", "y", "z", "point", "point_prev", "x_prev", "y_prev", "z_prev",
-                         "cx", "cy", "cz", "direction_c", "ctheta", "stheta", "psi",
-                         "cell_dim", "zdim", "ydim", "zdim_abs", "ydim_abs", "xdim_abs"]
-            self.E = parent.E
-            self.x = x
-            self.y = y
-            self.z = parent.zdim_abs-1.0
-            self.point = np.zeros(3)
-            self.point_prev = np.zeros(3)
-            self.x_prev = 0
-            self.y_prev = 0
-            self.z_prev = 0
-            self.cx = 0
-            self.cy = 0
-            self.cz = 1
-            self.direction_c = np.asarray([1.0,0,0])
-            self.ctheta = 0
-            self.stheta = 0
-            self.psi = 0
-            self.cell_dim = parent.cell_dim
-            self.zdim, self.ydim, self.xdim = parent.zdim, parent.ydim, parent.xdim
-            self.zdim_abs, self.ydim_abs, self.xdim_abs = parent.zdim_abs, parent.ydim_abs, parent.xdim_abs
-
-        @property
-        def coordinates(self):
-            """
-            Current coordinates (z, y, x)
-
-            :return: tuple
-            """
-            return (self.z, self.y, self.x)
-
-        @coordinates.setter
-        def coordinates(self, value):
-            self.x_prev = self.point_prev[2] = self.x
-            self.y_prev = self.point_prev[1] = self.y
-            self.z_prev = self.point_prev[0] = self.z
-            self.z = self.point[0] = value[0]
-            self.y = self.point[1] = value[1]
-            self.x = self.point[2] = value[2]
-
-        @property
-        def coordinates_prev(self):
-            """
-            Previous coordinates (z, y, x)
-
-            :return: tuple
-            """
-            return (self.z_prev, self.y_prev, self.x_prev)
-
-        @property
-        def direction(self):
-            return self.point - self.point_prev
-
-        @property
-        def indices(self, z=0, y=0, x=0):
-            """
-            Gets indices of a cell in an array according to its position in the space
-
-            :return: i(z), j(y), k(x)
-            """
-            if z == 0: z = self.z
-            if y == 0: y = self.y
-            if x == 0: x = self.x
-            return int(z / self.cell_dim), int(y / self.cell_dim), int(x / self.cell_dim)
-
-        def index_corr(self):
-            """
-            Corrects indices according to the direction if coordinates are on the cell wall
-
-            :return:
-            """
-            sign = np.sign(self.point)
-            sign[sign==1] = 0
-            delta = self.point%self.cell_dim
-            return np.int64((delta==0)*sign)
-
-        def check_boundaries(self, z=0, y=0, x=0):
-            """
-            Check if the given (z,y,x) position is inside the simulation chamber.
-            If bounds are crossed, return corrected position
-
-            :param z:
-            :param y:
-            :param x:
-            :return:
-            """
-            if x == 0: x = self.x
-            if y == 0: y = self.y
-            if z == 0: z = self.z
-            flag = True
-            if 0 <= x < self.xdim_abs:
-                pass
-            else:
-                flag = False
-                if x < 0:
-                    x = 0.000001
-                else:
-                    x = self.xdim_abs - 0.0000001
-
-            if 0 <= y < self.ydim_abs:
-                pass
-            else:
-                flag = False
-                if y < 0:
-                    y = 0.000001
-                else:
-                    y = self.ydim_abs - 0.000001
-
-            if 0 <= z < self.zdim_abs:
-                pass
-            else:
-                flag = False
-                if z < 0:
-                    z = 0.000001
-                else:
-                    z = self.zdim_abs - 0.000001
-            if flag:
-                return flag
-            else:
-                return (z,y,x)
-
-        def __generate_angles(self, a):
-            """
-            Generates cos and sin of lateral angle and the azimuthal angle
-
-            :param a: alpha at the current step
-            :return:
-            """
-            rnd2 = rnd.random()
-            self.ctheta = 1.0 - 2.0 * a * rnd2 / (1.0 + a - rnd2)  # scattering angle cosines , 0 <= angle <= 180˚, it produces an angular distribution that is obtained experimentally (more chance for low angles)
-            self.stheta = sqrt(1.0 - self.ctheta * self.ctheta)  # scattering angle sinus
-            self.psi = 2.0 * pi * rnd.random()  # azimuthal scattering angle
-
-        def __get_direction(self, ctheta = None, stheta = None, psi = None):
-            """
-            Calculate cosines of the new direction according
-            Special procedure from D.Joy 1995 on Monte Carlo modelling
-            :param ctheta:
-            :param stheta:
-            :param psi:
-            :return:
-            """
-            if ctheta != None:
-                self.ctheta, self.stheta, self.psi = ctheta, stheta, psi
-            if self.cz == 0.0: self.cz = 0.00001
-            self.cz, self.cy, self.cx = traversal.get_direction(self.ctheta, self.stheta, self.psi, self.cz, self.cy, self.cx)
-            self.direction_c[:] = self.cz, self.cy, self.cx
-
-        def __get_next_point(self, step):
-            """
-            Calculate coordinates of the next point from previous point and direction cosines.
-            Does boundary check.
-            :param step: current electron free path
-            :return:
-            """
-            self.x_prev = self.point_prev[2] = self.x
-            self.y_prev = self.point_prev[1] = self.y
-            self.z_prev = self.point_prev[0] = self.z
-            self.x += step * self.cx
-            self.y += step * self.cy
-            self.z -= step * self.cz
-            check = self.check_boundaries()
-            if check is True:
-                pass
-            else:
-                self.z, self.y, self.x = check
-            self.point[0] = self.z
-            self.point[1] = self.y
-            self.point[2] = self.x
-            if check is True:
-                return True
-            else:
-                return False
-
-        def get_next_point(self, a, step):
-            self.__generate_angles(a)
-            self.__get_direction()
-            return self.__get_next_point(step)
-
-        def get_direction(self, ctheta=None, stheta=None, psi=None):
-            return self.__get_direction(ctheta, stheta, psi)
-
-    def setParameters(self, params, deposit, surface, surface_neighbors,  stat=1000):
         #TODO: material tracking can be more universal
         # instead of using deponat and substrate variables, there can be a dictionary, where substrate is always last
         self.E0 = params['E0']
         self.Emin = params['Emin']
         self.I0 = params['I0']
-        self.grid = deposit
-        self.surface = surface
-        self.s_neghib = surface_neighbors
+        self.grid = structure.deposit
+        self.surface = structure.surface_bool
+        self.s_neghib = structure.surface_neighbors_bool
         self.cell_dim = params['cell_dim']
         self.sigma = params['sigma']
         self.n = params.get('n', 1)
         self.N = stat
         self.norm_factor = (self.I0 / self.elementary_charge) / self.N
 
-        self.deponat = Element(params['name'], params['Z'], params['A'], params['rho'], params['e'], params['l'], -1)
-        self.substrate = substrates[params['sub']]
+        self.deponat = params['deponat']
+        self.substrate = params['substrate']
         self.substrate.mark = -2
-        self.material = None
-
-        self.__calculate_attributes()
-
-        self.m3d = map3d.ETrajMap3d(self.grid, self.surface, surface_neighbors, self)
-        self.m3d.emission_fraction = params.get('emission_fraction', 1)
-
-    def setParams_MC_test(self, structure, params):
-        self.E0 = params['E0']
-        self.N = params['N']
-        self.deponat = substrates[params['material']]
-        self.deponat.mark = -1
-        self.substrate = substrates[params['material']]
-        self.substrate.mark = -1
-        self.Emin = params['Emin']  # cut-off energy for PE, keV
-        self.sigma = params['sigma']
-
-        self.grid = structure.deposit
-        self.surface = np.logical_or(structure.surface_bool, structure.semi_surface_bool)
-        self.cell_dim = structure.cell_dimension
 
         self.__calculate_attributes()
 
@@ -303,6 +284,12 @@ class ETrajectory(object):
         self.ztop = np.nonzero(self.surface)[0].max() + 1  # highest point of the structure
 
     def get_norm_factor(self, N=None):
+        """
+        Calculate norming factor with the given number of generated trajectories
+
+        :param N: number of trajectories
+        :return:
+        """
         if N is None:
             N = self.N
         return self.I0 / N / self.elementary_charge
@@ -1179,37 +1166,6 @@ class ETrajectory(object):
 
         print('Plotting...')
         plt.show()
-
-class Element:
-    """
-    Represents a material
-    """
-    def __init__(self, name='noname', Z=1, A=1.0, rho=1.0, e=50, lambda_escape=1.0, mark=1):
-        self.name = name # name of the material
-        self.rho = rho # density, g/cm^3
-        self.Z = Z # atomic number (or average if compound)
-        self.A = A # molar mass, g/mol
-        self.J = ETrajectory._getJ(self) # ionisation potential
-        self.e = e # effective energy required to produce an SE, eV [lin]
-        self.lambda_escape = lambda_escape # effective SE escape path, nm [lin]
-        self.mark = mark
-
-        # [lin] Lin Y., Joy D.C., Surf. Interface Anal. 2005; 37: 895–900
-
-    def __add__(self, other):
-        if other == 0:
-            return self
-
-    def __radd__(self, other):
-        if other == 0:
-            return self
-        else:
-            return self.__add__(other)
-
-substrates = {}
-substrates['Au'] = Element(name='Au', Z=79, A=196.967, rho=19.32, e=35, lambda_escape=0.5)
-substrates['Si'] = Element(name='Si', Z=14, A=29.09, rho=2.33, e=90, lambda_escape=2.7)
-
 
 
 if __name__ == "__main__":
