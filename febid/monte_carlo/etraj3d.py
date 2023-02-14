@@ -47,7 +47,7 @@ class MC_Simulation(MC_Sim_Base):
         self.se_surface_flux = np.zeros(structure.shape, dtype=np.int32)
         self.beam_heating = np.zeros(structure.shape)
 
-    def run_simulation(self, y0, x0, heat):
+    def run_simulation(self, y0, x0, heat, N=None):
         """
         Run MC simulation with the beam coordinates
 
@@ -56,14 +56,13 @@ class MC_Simulation(MC_Sim_Base):
         :param heat: if True, calculate beam heating
         :return: SE surface flux
         """
-        if heat:
-            N = 20000
-            norm_factor = self.pe_sim.get_norm_factor(N)
-        else:
-            N = self.pe_sim.N
-            norm_factor = self.pe_sim.norm_factor
-        start = timeit.default_timer()
-        self.pe_sim.map_wrapper_cy(y0, x0)
+        if not N:
+            if heat:
+                N = 20000
+            else:
+                N = self.pe_sim.N
+        norm_factor = self.pe_sim.get_norm_factor(N)
+        self.pe_sim.map_wrapper_cy(y0, x0, N)
         self.se_sim.map_follow(self.pe_sim.passes, heat)
         const = norm_factor / self.se_sim.amplifying_factor / self.pe_sim.cell_dim ** 2 / self.se_sim.segment_min_length
         if heat:
@@ -71,8 +70,8 @@ class MC_Simulation(MC_Sim_Base):
         self.se_surface_flux = np.int32(self.se_sim.flux * const)
         return self.se_surface_flux
 
-    def plot(self, primary_e=True, deposited_E=True, secondary_flux=True,secondary_e=False, heat_total=False,
-             heat_pe=False, heat_se=False):  # plot energy loss and all trajectories
+    def plot(self, primary_e=True, secondary_flux=True, secondary_e=False, heat_total=False,
+             heat_pe=False, heat_se=False, timings=(None,None,None), cam_pos=None):  # plot energy loss and all trajectories
         """
         Show the structure with surface electron flux and electron trajectories
 
@@ -81,10 +80,8 @@ class MC_Simulation(MC_Sim_Base):
         render = vr.Render(self.pe_sim.cell_dim)
         kwargs = {}
         if primary_e:
-            pe_trajectories = np.asarray(self.pe_sim.passes)
+            pe_trajectories = np.asarray(self.pe_sim.passes, dtype='object')
             kwargs['pe_traj'] = pe_trajectories
-        if deposited_E:
-            kwargs['deposited_E'] = self.se_sim.DE
         if secondary_flux:
             kwargs['surface_flux'] = self.se_sim.flux
         if secondary_e:
@@ -95,7 +92,14 @@ class MC_Simulation(MC_Sim_Base):
             kwargs['heat_pe'] = self.se_sim.heat_pe
         if heat_se:
             kwargs['heat_se'] = self.se_sim.wasted_se
-        render.show_mc_result(self.pe_sim.grid, **kwargs, interactive=False)
+        if cam_pos:
+            kwargs['cam_pos'] = cam_pos
+        if timings:
+            kwargs['t'] = timings[0]
+            kwargs['sim_time'] = timings[1]
+            kwargs['beam'] = timings[2]
+        cam_pos = render.show_mc_result(self.pe_sim.grid, **kwargs, interactive=False)
+        return cam_pos
 
     def plot_flux_2d(self):
         import matplotlib.pyplot as plt
@@ -110,42 +114,53 @@ class MC_Simulation(MC_Sim_Base):
         plt.show()
 
 
-def run_mc_simulation(vtk_obj, E0=20, sigma=5, N=100, pos='center', material='Au', Emin=0.1):
+def run_mc_simulation(structure, E0=20, sigma=5, n=1, N=100, pos='center', precursor='Au', Emin=0.1, emission_fraction=0.6, heating=False, params={}, cam_pos=None):
     """
     Create necessary objects and run the MC simulation
 
-    :param vtk_obj:
+    :param structure:
     :param E0:
     :param sigma:
     :param N:
     :param pos:
-    :param material:
+    :param precursor:
     :param Emin:
     :return:
     """
-    structure = Structure()
-    structure.load_from_vtk(vtk_obj)
-    params={'E0': E0, 'sigma':sigma, 'N':N, 'material':material, 'Emin':Emin}
-    sim = et.ETrajectory()
-    sim.setParams_MC_test(structure, params)
+
+    mc_config = {'E0': E0,
+                 'Emin': Emin,
+                 'I0': 1e-10, 'sigma': sigma, 'n': n,
+                 'N': N, 'substrate_element': 'Au',
+                 'cell_dim': structure.cell_dimension,
+                 'emission_fraction': emission_fraction}
+    if type(precursor) is not str:
+        precursor_config = {'name': precursor["deposit"],
+                     'Z': precursor["average_element_number"],
+                     'A': precursor["average_element_mol_mass"], 'rho': precursor["average_density"],
+                     'e': precursor["SE_emission_activation_energy"], 'l': precursor["SE_mean_free_path"],}
+    elif precursor in substrates.keys():
+        precursor_config = substrates[precursor]
+
+    mc_config = {**mc_config, **precursor_config}
+    sim = MC_Simulation(structure, mc_config)
     x, y = 0, 0
     if pos == 'center':
-        x = structure.shape[2]/2
-        y = structure.shape[1]/2
+        x = structure.shape[2]/2 * structure.cell_dimension
+        y = structure.shape[1]/2 * structure.cell_dimension
     else:
         x, y = pos
-    cam_pos = None
-    while True:
-        print(f'{N} PE trajectories took:   \t Energy deposition took:   \t SE preparation took:   \t Flux counting took:')
-        start = timeit.default_timer()
-        sim.map_wrapper(x,y)
-        print(f'{timeit.default_timer() - start}', end='\t\t')
-        m3d = map3d.ETrajMap3d()
-        m3d.setParametrs(structure, params)
-        m3d.map_follow(sim.passes, False)
-        pe_trajectories = np.asarray(sim.passes)
-        render = vr.Render(structure.cell_dimension)
-        cam_pos = render.show_mc_result(sim.grid, pe_trajectories, m3d.DE, m3d.flux, cam_pos=cam_pos)
+    print(f'{N} PE trajectories took:   \t Energy deposition took:   \t SE preparation took:   \t Flux counting took:')
+    start = timeit.default_timer()
+    sim.run_simulation(y, x, heating, N)
+    print(f'{timeit.default_timer() - start}', end='\t\t')
+    args = [True, True, True, True, True, True, params, cam_pos]
+    if not heating:
+        args[3] = False
+        args[4] = False
+        args[5] = False
+    cam_pos = sim.plot(*args)
+    return cam_pos
 
 
 def mc_simulation():

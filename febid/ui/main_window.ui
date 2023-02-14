@@ -20,7 +20,7 @@
       <property name="currentIndex">
        <number>0</number>
       </property>
-      <widget class="QWidget" name="tab">
+      <widget class="QWidget" name="tab_febid">
        <attribute name="title">
         <string>FEBID</string>
        </attribute>
@@ -1037,14 +1037,14 @@
          </rect>
         </property>
         <property name="text">
-         <string>Load_last session</string>
+         <string>Load last session</string>
         </property>
         <property name="checked">
          <bool>false</bool>
         </property>
        </widget>
       </widget>
-      <widget class="QWidget" name="tab_2">
+      <widget class="QWidget" name="tab_mc">
        <attribute name="title">
         <string>Monte Carlo</string>
        </attribute>
@@ -1266,7 +1266,7 @@
           <string/>
          </property>
          <property name="text">
-          <string/>
+          <string>20</string>
          </property>
          <property name="maxLength">
           <number>4</number>
@@ -1359,10 +1359,10 @@
           <string/>
          </property>
          <property name="text">
-          <string/>
+          <string>0.10</string>
          </property>
          <property name="maxLength">
-          <number>3</number>
+          <number>4</number>
          </property>
          <property name="placeholderText">
           <string>0.1</string>
@@ -1385,7 +1385,7 @@
          <property name="geometry">
           <rect>
            <x>58</x>
-           <y>66</y>
+           <y>65</y>
            <width>45</width>
            <height>21</height>
           </rect>
@@ -1394,7 +1394,7 @@
           <string/>
          </property>
          <property name="text">
-          <string/>
+          <string>20.0</string>
          </property>
          <property name="maxLength">
           <number>4</number>
@@ -1416,7 +1416,7 @@
           <string>Emin:</string>
          </property>
         </widget>
-        <widget class="QLineEdit" name="beam_parameters_filename_display_mc">
+        <widget class="QLineEdit" name="settings_filename_display_mc">
          <property name="geometry">
           <rect>
            <x>142</x>
@@ -1449,7 +1449,7 @@
          <property name="geometry">
           <rect>
            <x>58</x>
-           <y>114</y>
+           <y>115</y>
            <width>45</width>
            <height>21</height>
           </rect>
@@ -1458,7 +1458,7 @@
           <string/>
          </property>
          <property name="text">
-          <string/>
+          <string>100</string>
          </property>
          <property name="maxLength">
           <number>4</number>
@@ -1483,8 +1483,8 @@
         <widget class="QLineEdit" name="gauss_dev">
          <property name="geometry">
           <rect>
-           <x>292</x>
-           <y>64</y>
+           <x>290</x>
+           <y>65</y>
            <width>45</width>
            <height>21</height>
           </rect>
@@ -1493,7 +1493,7 @@
           <string/>
          </property>
          <property name="text">
-          <string/>
+          <string>5</string>
          </property>
          <property name="maxLength">
           <number>4</number>
@@ -1518,9 +1518,9 @@
         <widget class="QLineEdit" name="x_pos">
          <property name="geometry">
           <rect>
-           <x>292</x>
-           <y>88</y>
-           <width>45</width>
+           <x>430</x>
+           <y>65</y>
+           <width>56</width>
            <height>21</height>
           </rect>
          </property>
@@ -1528,7 +1528,7 @@
           <string/>
          </property>
          <property name="text">
-          <string/>
+          <string>100</string>
          </property>
          <property name="maxLength">
           <number>4</number>
@@ -1540,8 +1540,8 @@
         <widget class="QLabel" name="label_23">
          <property name="geometry">
           <rect>
-           <x>268</x>
-           <y>92</y>
+           <x>406</x>
+           <y>67</y>
            <width>21</width>
            <height>16</height>
           </rect>
@@ -1553,9 +1553,9 @@
         <widget class="QLineEdit" name="y_pos">
          <property name="geometry">
           <rect>
-           <x>292</x>
-           <y>112</y>
-           <width>45</width>
+           <x>430</x>
+           <y>90</y>
+           <width>56</width>
            <height>21</height>
           </rect>
          </property>
@@ -1563,7 +1563,7 @@
           <string/>
          </property>
          <property name="text">
-          <string/>
+          <string>100</string>
          </property>
          <property name="maxLength">
           <number>4</number>
@@ -1575,8 +1575,8 @@
         <widget class="QLabel" name="label_25">
          <property name="geometry">
           <rect>
-           <x>268</x>
-           <y>116</y>
+           <x>406</x>
+           <y>89</y>
            <width>21</width>
            <height>16</height>
           </rect>
@@ -1614,8 +1614,8 @@
         <widget class="QLabel" name="label_28">
          <property name="geometry">
           <rect>
-           <x>342</x>
-           <y>90</y>
+           <x>490</x>
+           <y>65</y>
            <width>25</width>
            <height>16</height>
           </rect>
@@ -1627,14 +1627,65 @@
         <widget class="QLabel" name="label_29">
          <property name="geometry">
           <rect>
-           <x>342</x>
-           <y>114</y>
+           <x>490</x>
+           <y>90</y>
            <width>25</width>
            <height>16</height>
           </rect>
          </property>
          <property name="text">
           <string>nm</string>
+         </property>
+        </widget>
+        <widget class="QLineEdit" name="gauss_order">
+         <property name="geometry">
+          <rect>
+           <x>290</x>
+           <y>90</y>
+           <width>45</width>
+           <height>21</height>
+          </rect>
+         </property>
+         <property name="inputMask">
+          <string/>
+         </property>
+         <property name="text">
+          <string>1</string>
+         </property>
+         <property name="maxLength">
+          <number>4</number>
+         </property>
+         <property name="placeholderText">
+          <string>5</string>
+         </property>
+        </widget>
+        <widget class="QLabel" name="label_30">
+         <property name="geometry">
+          <rect>
+           <x>188</x>
+           <y>90</y>
+           <width>101</width>
+           <height>16</height>
+          </rect>
+         </property>
+         <property name="text">
+          <string>Gaussian order:</string>
+         </property>
+        </widget>
+        <widget class="QCheckBox" name="checkbox_beam_heating">
+         <property name="geometry">
+          <rect>
+           <x>405</x>
+           <y>120</y>
+           <width>111</width>
+           <height>20</height>
+          </rect>
+         </property>
+         <property name="toolTip">
+          <string>Calculate 3D distribution of volumetric heat sources 1) from primary electrons, 2) from seondary electrons, 3) total </string>
+         </property>
+         <property name="text">
+          <string>Beam heating</string>
          </property>
         </widget>
        </widget>
@@ -1762,8 +1813,8 @@
    <slot>vtk_chosen()</slot>
    <hints>
     <hint type="sourcelabel">
-     <x>58</x>
-     <y>123</y>
+     <x>73</x>
+     <y>116</y>
     </hint>
     <hint type="destinationlabel">
      <x>7</x>
@@ -1778,8 +1829,8 @@
    <slot>geom_parameters_chosen()</slot>
    <hints>
     <hint type="sourcelabel">
-     <x>61</x>
-     <y>155</y>
+     <x>76</x>
+     <y>148</y>
     </hint>
     <hint type="destinationlabel">
      <x>7</x>
@@ -1794,8 +1845,8 @@
    <slot>auto_chosen()</slot>
    <hints>
     <hint type="sourcelabel">
-     <x>64</x>
-     <y>189</y>
+     <x>79</x>
+     <y>182</y>
     </hint>
     <hint type="destinationlabel">
      <x>6</x>
@@ -1810,8 +1861,8 @@
    <slot>simple_pattern_chosen()</slot>
    <hints>
     <hint type="sourcelabel">
-     <x>49</x>
-     <y>257</y>
+     <x>64</x>
+     <y>250</y>
     </hint>
     <hint type="destinationlabel">
      <x>4</x>
@@ -1826,8 +1877,8 @@
    <slot>stream_file_chosen()</slot>
    <hints>
     <hint type="sourcelabel">
-     <x>77</x>
-     <y>323</y>
+     <x>92</x>
+     <y>316</y>
     </hint>
     <hint type="destinationlabel">
      <x>5</x>
@@ -1842,8 +1893,8 @@
    <slot>open_vtk_file()</slot>
    <hints>
     <hint type="sourcelabel">
-     <x>211</x>
-     <y>127</y>
+     <x>226</x>
+     <y>120</y>
     </hint>
     <hint type="destinationlabel">
      <x>221</x>
@@ -1858,8 +1909,8 @@
    <slot>open_geom_parameters_file()</slot>
    <hints>
     <hint type="sourcelabel">
-     <x>183</x>
-     <y>161</y>
+     <x>198</x>
+     <y>154</y>
     </hint>
     <hint type="destinationlabel">
      <x>183</x>
@@ -1890,8 +1941,8 @@
    <slot>open_precursor_parameters_file()</slot>
    <hints>
     <hint type="sourcelabel">
-     <x>278</x>
-     <y>431</y>
+     <x>291</x>
+     <y>424</y>
     </hint>
     <hint type="destinationlabel">
      <x>605</x>
@@ -1922,8 +1973,8 @@
    <slot>vtk_chosen()</slot>
    <hints>
     <hint type="sourcelabel">
-     <x>37</x>
-     <y>94</y>
+     <x>52</x>
+     <y>116</y>
     </hint>
     <hint type="destinationlabel">
      <x>8</x>
@@ -1938,8 +1989,8 @@
    <slot>geom_parameters_chosen()</slot>
    <hints>
     <hint type="sourcelabel">
-     <x>48</x>
-     <y>127</y>
+     <x>63</x>
+     <y>148</y>
     </hint>
     <hint type="destinationlabel">
      <x>9</x>
@@ -2002,8 +2053,8 @@
    <slot>pattern_selection_changed()</slot>
    <hints>
     <hint type="sourcelabel">
-     <x>250</x>
-     <y>259</y>
+     <x>265</x>
+     <y>252</y>
     </hint>
     <hint type="destinationlabel">
      <x>608</x>
@@ -2034,8 +2085,8 @@
    <slot>start_febid()</slot>
    <hints>
     <hint type="sourcelabel">
-     <x>319</x>
-     <y>640</y>
+     <x>334</x>
+     <y>633</y>
     </hint>
     <hint type="destinationlabel">
      <x>8</x>
@@ -2050,8 +2101,8 @@
    <slot>check_input()</slot>
    <hints>
     <hint type="sourcelabel">
-     <x>353</x>
-     <y>152</y>
+     <x>363</x>
+     <y>145</y>
     </hint>
     <hint type="destinationlabel">
      <x>424</x>
@@ -2066,8 +2117,8 @@
    <slot>check_input()</slot>
    <hints>
     <hint type="sourcelabel">
-     <x>553</x>
-     <y>152</y>
+     <x>557</x>
+     <y>145</y>
     </hint>
     <hint type="destinationlabel">
      <x>527</x>
@@ -2082,8 +2133,8 @@
    <slot>check_input()</slot>
    <hints>
     <hint type="sourcelabel">
-     <x>457</x>
-     <y>152</y>
+     <x>461</x>
+     <y>145</y>
     </hint>
     <hint type="destinationlabel">
      <x>609</x>
@@ -2098,8 +2149,8 @@
    <slot>check_input()</slot>
    <hints>
     <hint type="sourcelabel">
-     <x>332</x>
-     <y>188</y>
+     <x>347</x>
+     <y>181</y>
     </hint>
     <hint type="destinationlabel">
      <x>611</x>
@@ -2114,8 +2165,8 @@
    <slot>check_input()</slot>
    <hints>
     <hint type="sourcelabel">
-     <x>532</x>
-     <y>188</y>
+     <x>547</x>
+     <y>181</y>
     </hint>
     <hint type="destinationlabel">
      <x>607</x>
@@ -2130,8 +2181,8 @@
    <slot>check_input()</slot>
    <hints>
     <hint type="sourcelabel">
-     <x>501</x>
-     <y>256</y>
+     <x>505</x>
+     <y>249</y>
     </hint>
     <hint type="destinationlabel">
      <x>608</x>
@@ -2146,8 +2197,8 @@
    <slot>check_input()</slot>
    <hints>
     <hint type="sourcelabel">
-     <x>370</x>
-     <y>256</y>
+     <x>383</x>
+     <y>249</y>
     </hint>
     <hint type="destinationlabel">
      <x>606</x>
@@ -2162,8 +2213,8 @@
    <slot>check_input()</slot>
    <hints>
     <hint type="sourcelabel">
-     <x>345</x>
-     <y>119</y>
+     <x>360</x>
+     <y>145</y>
     </hint>
     <hint type="destinationlabel">
      <x>611</x>
@@ -2178,8 +2229,8 @@
    <slot>check_input()</slot>
    <hints>
     <hint type="sourcelabel">
-     <x>430</x>
-     <y>116</y>
+     <x>445</x>
+     <y>145</y>
     </hint>
     <hint type="destinationlabel">
      <x>605</x>
@@ -2194,8 +2245,8 @@
    <slot>check_input()</slot>
    <hints>
     <hint type="sourcelabel">
-     <x>529</x>
-     <y>121</y>
+     <x>544</x>
+     <y>145</y>
     </hint>
     <hint type="destinationlabel">
      <x>609</x>
@@ -2210,8 +2261,8 @@
    <slot>check_input()</slot>
    <hints>
     <hint type="sourcelabel">
-     <x>115</x>
-     <y>153</y>
+     <x>130</x>
+     <y>181</y>
     </hint>
     <hint type="destinationlabel">
      <x>7</x>
@@ -2226,8 +2277,8 @@
    <slot>check_input()</slot>
    <hints>
     <hint type="sourcelabel">
-     <x>318</x>
-     <y>150</y>
+     <x>333</x>
+     <y>181</y>
     </hint>
     <hint type="destinationlabel">
      <x>604</x>
@@ -2258,8 +2309,8 @@
    <slot>check_input()</slot>
    <hints>
     <hint type="sourcelabel">
-     <x>89</x>
-     <y>288</y>
+     <x>104</x>
+     <y>312</y>
     </hint>
     <hint type="destinationlabel">
      <x>11</x>
@@ -2274,8 +2325,8 @@
    <slot>check_input()</slot>
    <hints>
     <hint type="sourcelabel">
-     <x>91</x>
-     <y>315</y>
+     <x>106</x>
+     <y>336</y>
     </hint>
     <hint type="destinationlabel">
      <x>8</x>
@@ -2290,8 +2341,8 @@
    <slot>check_input()</slot>
    <hints>
     <hint type="sourcelabel">
-     <x>333</x>
-     <y>261</y>
+     <x>346</x>
+     <y>286</y>
     </hint>
     <hint type="destinationlabel">
      <x>606</x>
@@ -2306,8 +2357,8 @@
    <slot>check_input()</slot>
    <hints>
     <hint type="sourcelabel">
-     <x>339</x>
-     <y>287</y>
+     <x>492</x>
+     <y>285</y>
     </hint>
     <hint type="destinationlabel">
      <x>608</x>
@@ -2322,8 +2373,8 @@
    <slot>check_input()</slot>
    <hints>
     <hint type="sourcelabel">
-     <x>348</x>
-     <y>315</y>
+     <x>495</x>
+     <y>309</y>
     </hint>
     <hint type="destinationlabel">
      <x>609</x>
@@ -2338,8 +2389,8 @@
    <slot>check_input()</slot>
    <hints>
     <hint type="sourcelabel">
-     <x>147</x>
-     <y>288</y>
+     <x>157</x>
+     <y>281</y>
     </hint>
     <hint type="destinationlabel">
      <x>0</x>
@@ -2354,8 +2405,8 @@
    <slot>check_input()</slot>
    <hints>
     <hint type="sourcelabel">
-     <x>275</x>
-     <y>288</y>
+     <x>279</x>
+     <y>281</y>
     </hint>
     <hint type="destinationlabel">
      <x>3</x>
@@ -2370,8 +2421,8 @@
    <slot>check_input()</slot>
    <hints>
     <hint type="sourcelabel">
-     <x>423</x>
-     <y>288</y>
+     <x>438</x>
+     <y>281</y>
     </hint>
     <hint type="destinationlabel">
      <x>608</x>
@@ -2386,8 +2437,8 @@
    <slot>change_state_save_sim_data(int)</slot>
    <hints>
     <hint type="sourcelabel">
-     <x>56</x>
-     <y>520</y>
+     <x>71</x>
+     <y>513</y>
     </hint>
     <hint type="destinationlabel">
      <x>7</x>
@@ -2402,8 +2453,8 @@
    <slot>change_state_save_snapshots(int)</slot>
    <hints>
     <hint type="sourcelabel">
-     <x>66</x>
-     <y>548</y>
+     <x>81</x>
+     <y>541</y>
     </hint>
     <hint type="destinationlabel">
      <x>7</x>
@@ -2418,8 +2469,8 @@
    <slot>check_input()</slot>
    <hints>
     <hint type="sourcelabel">
-     <x>284</x>
-     <y>519</y>
+     <x>299</x>
+     <y>512</y>
     </hint>
     <hint type="destinationlabel">
      <x>30</x>
@@ -2434,8 +2485,8 @@
    <slot>check_input()</slot>
    <hints>
     <hint type="sourcelabel">
-     <x>291</x>
-     <y>547</y>
+     <x>303</x>
+     <y>540</y>
     </hint>
     <hint type="destinationlabel">
      <x>108</x>
@@ -2466,8 +2517,8 @@
    <slot>open_save_directory()</slot>
    <hints>
     <hint type="sourcelabel">
-     <x>94</x>
-     <y>584</y>
+     <x>109</x>
+     <y>577</y>
     </hint>
     <hint type="destinationlabel">
      <x>6</x>
@@ -2482,8 +2533,8 @@
    <slot>change_state_show_process(int)</slot>
    <hints>
     <hint type="sourcelabel">
-     <x>448</x>
-     <y>625</y>
+     <x>463</x>
+     <y>623</y>
     </hint>
     <hint type="destinationlabel">
      <x>608</x>
@@ -2498,8 +2549,8 @@
    <slot>change_state_load_last_session(int)</slot>
    <hints>
     <hint type="sourcelabel">
-     <x>489</x>
-     <y>81</y>
+     <x>504</x>
+     <y>74</y>
     </hint>
     <hint type="destinationlabel">
      <x>607</x>
@@ -2514,8 +2565,8 @@
    <slot>unique_name_changed()</slot>
    <hints>
     <hint type="sourcelabel">
-     <x>493</x>
-     <y>533</y>
+     <x>508</x>
+     <y>526</y>
     </hint>
     <hint type="destinationlabel">
      <x>609</x>
@@ -2530,8 +2581,8 @@
    <slot>open_settings_file()</slot>
    <hints>
     <hint type="sourcelabel">
-     <x>206</x>
-     <y>397</y>
+     <x>221</x>
+     <y>390</y>
     </hint>
     <hint type="destinationlabel">
      <x>7</x>
@@ -2546,8 +2597,8 @@
    <slot>change_state_temperature_tracking(int)</slot>
    <hints>
     <hint type="sourcelabel">
-     <x>482</x>
-     <y>456</y>
+     <x>497</x>
+     <y>449</y>
     </hint>
     <hint type="destinationlabel">
      <x>610</x>
@@ -2556,18 +2607,34 @@
    </hints>
   </connection>
   <connection>
-   <sender>checkbox_load_last_session_mc</sender>
-   <signal>stateChanged(int)</signal>
+   <sender>gauss_order</sender>
+   <signal>editingFinished()</signal>
    <receiver>MainWindow</receiver>
-   <slot>change_state_load_last_session(int)</slot>
+   <slot>check_input()</slot>
    <hints>
     <hint type="sourcelabel">
-     <x>518</x>
-     <y>76</y>
+     <x>338</x>
+     <y>306</y>
     </hint>
     <hint type="destinationlabel">
-     <x>600</x>
-     <y>27</y>
+     <x>597</x>
+     <y>412</y>
+    </hint>
+   </hints>
+  </connection>
+  <connection>
+   <sender>checkbox_beam_heating</sender>
+   <signal>stateChanged(int)</signal>
+   <receiver>MainWindow</receiver>
+   <slot>change_state_temperature_tracking(int)</slot>
+   <hints>
+    <hint type="sourcelabel">
+     <x>438</x>
+     <y>333</y>
+    </hint>
+    <hint type="destinationlabel">
+     <x>599</x>
+     <y>459</y>
     </hint>
    </hints>
   </connection>

@@ -99,7 +99,7 @@ class Render:
             start = np.array([0, 0, 100]).reshape(1, 3)  # position of the center of the arrow
             end = np.array([0, 0, -100]).reshape(1, 3)  # direction and resulting size
             self.arrow = self.p.add_arrows(start, end, color='tomato')
-            self.arrow.SetPosition(x_pos, y_pos, (max_z) * self.cell_dim + 30)  # relative to the initial position
+            self.arrow.SetPosition(x_pos, y_pos, max_z * self.cell_dim + 30)  # relative to the initial position
 
         if cam_pos is None:
             cam_pos = [(463.14450307610286, 271.1171723376318, 156.56895424388603),
@@ -107,16 +107,14 @@ class Render:
                        (-0.27787912231751677, -0.1411181984824172, 0.950194110399093)]
         return self.show(cam_pos=cam_pos)
 
-    def show_mc_result(self, grid, pe_traj=None, deposited_E=None, surface_flux=None, se_traj=None, heat_t=None,
-                       heat_pe=None, heat_se=None, cam_pos=None, interactive=True):
+    def show_mc_result(self, grid=None, pe_traj=None, surface_flux=None, se_traj=None, heat_t=None,
+                       heat_pe=None, heat_se=None, t=None, sim_time=None, beam=None, cam_pos=None, interactive=True):
         pe_traj = copy.deepcopy(pe_traj)
         se_traj = copy.deepcopy(se_traj)
         if grid is not None:
             self._add_3Darray(grid, -2, -0.01, opacity=0.9, show_edges=True, scalar_name='Structure', button_name='Structure', color='white')
         if pe_traj is not None:
             self._add_trajectory(pe_traj[:,0], pe_traj[:,1], 0.2, step=1, scalar_name='PE Energy, keV', button_name='PEs', cmap='viridis')
-        if deposited_E is not None:
-            self._add_3Darray(deposited_E, 1, opacity=0.7, show_edges=False, scalar_name='Deposited energy, eV', button_name="Deposited energy", cmap='coolwarm', log_scale=True)
         if surface_flux is not None:
             self._add_3Darray(surface_flux, 1, opacity=1, show_edges=False, scalar_name='SE Flux, 1/(nm^2*s)', button_name="SE surface flux", cmap='plasma', log_scale=True)
         if se_traj is not None:
@@ -126,16 +124,25 @@ class Render:
         if heat_t is not None:
             self._add_3Darray(heat_t, 1, opacity=0.7, scalar_name='Total energy transfered to heat, eV', button_name='Total heat', cmap='coolwarm', log_scale=True)
         if heat_pe is not None:
-            self._add_3Darray(heat_pe, 1, opacity=0.7, scalar_name='Total PE energy transfered to heat, eV',
+            self._add_3Darray(heat_pe, 1, opacity=0.7, scalar_name='Total PE energy transferred to heat, eV',
                               button_name='PE heat', cmap='coolwarm', log_scale=True)
         if heat_se is not None:
-            self._add_3Darray(heat_se, 1, opacity=0.7, scalar_name='Total SE energy transfered to heat, eV',
+            self._add_3Darray(heat_se, 1, opacity=0.7, scalar_name='Total SE energy transferred to heat, eV',
                               button_name='SE heat', cmap='coolwarm', log_scale=True)
+        text = ''
+        if t:
+            text += f'Time: {t} \n'
+        if sim_time:
+            text += f'Simulation time: {sim_time:.7f} s \n'
+        if beam is not None:
+            text += f'Beam position: {beam[0], beam[1]}'
+        self.p.add_text(text, position='upper_left', font_size=self.font)
         if cam_pos is None:
             cam_pos = [(463.14450307610286, 271.1171723376318, 156.56895424388603),
                    (225.90027381807235, 164.9577775224395, 71.42188811921902),
                    (-0.27787912231751677, -0.1411181984824172, 0.950194110399093)]
-        return self.show(cam_pos=cam_pos, interactive_update=interactive)
+        cam_pos = self.show(cam_pos=cam_pos, interactive_update=interactive)
+        return cam_pos
 
 
     def _add_trajectory(self, traj, energies=None, radius=0.7, step=1, scalar_name='scalars_t', button_name='1', color='', cmap='plasma'):
@@ -156,7 +163,6 @@ class Render:
             energies = []
         obj = self._render_trajectories(traj=traj, energies=energies, radius=radius, step=step, name=scalar_name)
         self.__prepare_obj(obj, button_name, cmap, color)
-
 
     def _add_3Darray(self, arr, lower_t=None, upper_t=None, exclude_zeros=False, opacity=0.5, clim=None, below_color=None, above_color=None, show_edges=None, nan_opacity=None, scalar_name='scalars_s', button_name='NoName', color=None, show_scalar_bar=True, cmap=None, n_colors=256, log_scale=False, invert=False, texture=None):
         """
@@ -370,6 +376,7 @@ def numpy_to_vtk(arr, cell_dim, data_name='scalar', grid=None, unstructured=Fals
             grid = grid.cast_to_unstructured_grid()
         return grid
 
+
 def save_deposited_structure(structure, sim_t=None, t=None, beam_position=None, filename=None):
     """
     Saves current deposition result to a vtk file
@@ -394,20 +401,6 @@ def save_deposited_structure(structure, sim_t=None, t=None, beam_position=None, 
         filename = "Structure"
     vtk_obj.save(f'{filename}_{time.strftime("%H:%M:%S", time.localtime())}.vtk')
 
-def open_deposited_structure(filename=None, return_structure=False):
-    vtk_obj = pv.read(filename)
-    structure = Structure()
-    cell_dimension = vtk_obj.spacing[0]
-    deposit = np.asarray(vtk_obj.cell_data['deposit'].reshape((vtk_obj.dimensions[2] - 1, vtk_obj.dimensions[1] - 1, vtk_obj.dimensions[0] - 1)))
-    substrate = np.asarray(vtk_obj.cell_data['precursor_density'].reshape((vtk_obj.dimensions[2] - 1, vtk_obj.dimensions[1] - 1, vtk_obj.dimensions[0] - 1)))
-    surface_bool = np.asarray(vtk_obj.cell_data['surface_bool'].reshape((vtk_obj.dimensions[2] - 1, vtk_obj.dimensions[1] - 1, vtk_obj.dimensions[0] - 1)))
-    semi_surface_bool = np.asarray(vtk_obj.cell_data['semi_surface_bool'].reshape((vtk_obj.dimensions[2] - 1, vtk_obj.dimensions[1] - 1, vtk_obj.dimensions[0] - 1)))
-    ghosts_bool = np.asarray(vtk_obj.cell_data['ghosts_bool'].reshape((vtk_obj.dimensions[2] - 1, vtk_obj.dimensions[1] - 1, vtk_obj.dimensions[0] - 1)))
-
-    if return_structure:
-        return structure
-    else:
-        return (cell_dimension, deposit, substrate, surface_bool, semi_surface_bool, ghosts_bool)
 
 def export_obj(structure, filename=None):
     """

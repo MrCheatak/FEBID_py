@@ -17,13 +17,17 @@ from ruamel.yaml import YAML
 
 from febid import febid_core, simple_patterns as sp
 from febid.Structure import Structure
+from febid.monte_carlo import etraj3d as e3d
+from febid.libraries.vtk_rendering.VTK_Rendering import read_field_data
 
 
 class MainPannel(QMainWindow, UI_MainPanel):
     def __init__(self, config_filename=None, test_kwargs=None, parent=None):
         super().__init__(parent)
+        self.initialized = False
         self.setupUi(self)
         self.show()
+        self.tab_switched(self.tabWidget.currentIndex())
         # TODO: variables and corresponding interface elements can be grouped into objects with a getter and a setter
         # Parameters
         if config_filename is not None:
@@ -43,6 +47,7 @@ class MainPannel(QMainWindow, UI_MainPanel):
         self.temperature_tracking = False
         self.save_directory = ''
         self.show_process = True
+        self.cam_pos = None
         # Groups of controls on the panel for easier Enabling/Disabling
         self.vtk_choice_to_gray = [self.l_width, self.l_width_mc, self.l_height,self.l_height_mc,
                                    self.l_length,self.l_length_mc, self.l_cell_size, self.l_cell_size_mc,
@@ -72,7 +77,7 @@ class MainPannel(QMainWindow, UI_MainPanel):
             obj.setDisabled(True)
 
         self.open_last_session()
-
+        self.initialized = True
         if test_kwargs:
             self.inject_parameters(test_kwargs)
 
@@ -100,26 +105,36 @@ class MainPannel(QMainWindow, UI_MainPanel):
                     raise RuntimeError('YAML error: was unable to read the .yml configuration file.')
                 if params['load_last_session'] is True:
                     with suppress(KeyError):
+                        # Setting internal parameters
+                        # Some parameters are stored in the interface
                         self.save_flag = True
-                        self.checkbox_load_last_session.setChecked(True)
                         self.structure_source = params['structure_source']
+                        self.vtk_filename = params['vtk_filename']
+                        self.geom_parameters_filename = params['geom_parameters_filename']
+                        self.pattern_source = params['pattern_source']
+                        self.pattern = params['pattern']
+                        self.stream_file_filename = params['stream_file_filename']
+                        self.settings_filename = params['settings_filename']
+                        self.precursor_parameters_filename = params['precursor_filename']
+                        self.temperature_tracking = params['temperature_tracking']
+                        self.save_directory = params['save_directory']
+
+                        # Setting FEBID tab interface
+                        self.checkbox_load_last_session.setChecked(True)
                         if self.structure_source == 'vtk':
                             self.vtk_chosen()
+                            if self.vtk_filename:
+                                self.open_vtk_file(self.vtk_filename)
                         elif self.structure_source == 'geom':
                             self.geom_parameters_chosen()
                         elif self.structure_source == 'auto':
                             self.auto_chosen()
-                        self.vtk_filename = params['vtk_filename']
                         self.vtk_filename_display.setText(self.vtk_filename)
-                        self.geom_parameters_filename = params['geom_parameters_filename']
                         self.input_width.setText(str(params['width']))
                         self.input_length.setText(str(params['length']))
                         self.input_height.setText(str(params['height']))
                         self.input_cell_size.setText(str(params['cell_size']))
                         self.input_substrate_height.setText(str(params['substrate_height']))
-
-                        self.pattern_source = params['pattern_source']
-                        self.pattern = params['pattern']
                         self.pattern_selection.setCurrentText(str.title(self.pattern))
                         self.pattern_selection_changed(str.title(self.pattern))
                         if self.pattern_source == 'simple':
@@ -131,25 +146,37 @@ class MainPannel(QMainWindow, UI_MainPanel):
                         self.input_dwell_time.setText(str(params['dwell_time']))
                         self.input_pitch.setText(str(params['pitch']))
                         self.input_repeats.setText(str(params['repeats']))
-                        self.stream_file_filename = params['stream_file_filename']
                         self.stream_file_filename_display.setText(self.stream_file_filename)
-
-                        self.settings_filename = params['settings_filename']
                         self.settings_filename_display.setText(self.settings_filename)
-                        self.precursor_parameters_filename = params['precursor_filename']
                         self.precursor_parameters_filename_display.setText(self.precursor_parameters_filename)
-                        self.temperature_tracking = params['temperature_tracking']
                         self.checkbox_temperature_tracking.setChecked(self.temperature_tracking)
-
                         self.change_state_save_sim_data(params['save_simulation_data'])
                         self.change_state_save_snapshots(params['save_structure_snapshot'])
                         self.input_simulation_data_interval.setText(str(params['simulation_data_interval']))
                         self.input_structure_snapshot_interval.setText(str(params['structure_snapshot_interval']))
                         self.input_unique_name.setText(params['unique_name'])
-                        self.save_directory = params['save_directory']
                         self.save_folder_display.setText(self.save_directory)
-
                         self.change_state_show_process(params['show_process'])
+
+                        # Setting MC interface
+                        if self.structure_source == 'vtk':
+                            self.vtk_chosen()
+                        elif self.structure_source == 'geom':
+                            self.geom_parameters_chosen()
+                        elif self.structure_source == 'auto':
+                            self.auto_chosen()
+                        self.vtk_filename_display_mc.setText(self.vtk_filename)
+                        self.input_width_mc.setText(str(params['width']))
+                        self.input_length_mc.setText(str(params['length']))
+                        self.input_height_mc.setText(str(params['height']))
+                        self.input_cell_size_mc.setText(str(params['cell_size']))
+                        self.input_substrate_height_mc.setText(str(params['substrate_height']))
+                        self.open_settings_file(self.settings_filename)
+                        self.settings_filename_display_mc.setText(self.settings_filename)
+                        self.precursor_parameters_filename_display_mc.setText(self.precursor_parameters_filename)
+                        self.checkbox_beam_heating.setChecked(self.temperature_tracking)
+
+
                 print('done!')
         except FileNotFoundError:
                 yml = YAML()
@@ -195,7 +222,7 @@ class MainPannel(QMainWindow, UI_MainPanel):
         switch = True if param else False
         self.checkbox_load_last_session.setChecked(switch)
         self.save_flag = switch
-        if switch:
+        if switch and self.initialized:
             self.open_last_session()
 
     def vtk_chosen(self):
@@ -305,8 +332,8 @@ class MainPannel(QMainWindow, UI_MainPanel):
         #  Insert parameters into fields
         if not file:
             file,_ = QtWidgets.QFileDialog.getOpenFileName()
-        if not file:
-            return
+            if not file:
+                return
         try:
             deposit = Structure()
             vtk_obj = pv.read(file)
@@ -332,6 +359,10 @@ class MainPannel(QMainWindow, UI_MainPanel):
             self.input_substrate_height_mc.setText(substrate_height)
             self.vtk_filename_display.setText(file)
             self.vtk_filename_display_mc.setText(file)
+            params = read_field_data(vtk_obj)
+            if params[2] is not None:
+                self.x_pos.setText(str(params[2][0]))
+                self.y_pos.setText(str(params[2][1]))
             self.save_parameter('vtk_filename', file)
         except Exception as e:
             self.view_message('File read error', 'Specified file is not a valid VTK file. Please choose a valid .vtk file.')
@@ -367,16 +398,18 @@ class MainPannel(QMainWindow, UI_MainPanel):
             print(e.args)
         ### Read and insert parameters
     def open_stream_file(self, file=''):
-        file,_ = QtWidgets.QFileDialog.getOpenFileName()
         if not file:
-            return
+            file,_ = QtWidgets.QFileDialog.getOpenFileName()
+            if not file:
+                return
         self.stream_file_filename = file
         self.stream_file_filename_display.setText(file)
         self.save_parameter('stream_file_filename', file)
     def open_settings_file(self, file=''):
-        file,_ = QtWidgets.QFileDialog.getOpenFileName()
         if not file:
-            return
+            file,_ = QtWidgets.QFileDialog.getOpenFileName()
+            if not file:
+                return
         ### Read and insert parameters in Monte Carlo tab
         try:
             with open(file, mode='rb') as f:
@@ -385,16 +418,17 @@ class MainPannel(QMainWindow, UI_MainPanel):
             self.energy_cutoff.setText(str(params['minimum_energy']))
             self.gauss_dev.setText(str(params['gauss_dev']))
             self.settings_filename_display.setText(file)
-            self.beam_parameters_filename_display_mc.setText(file)
+            self.settings_filename_display_mc.setText(file)
             self.settings_filename = file
             self.save_parameter('settings_filename', file)
         except Exception as e:
             print("Was unable to open .yaml beam parameters file. Following error occurred:")
             print(e.args)
     def open_precursor_parameters_file(self, file=''):
-        file,_ = QtWidgets.QFileDialog.getOpenFileName()
         if not file:
-            return
+            file,_ = QtWidgets.QFileDialog.getOpenFileName()
+            if not file:
+                return
         try:
             with open(file, mode='rb') as f:
                 params = yaml.load(f, Loader=yaml.FullLoader)
@@ -458,8 +492,11 @@ class MainPannel(QMainWindow, UI_MainPanel):
     def unique_name_changed(self):
         self.save_parameter('unique_name', self.input_unique_name.text())
 
-    def open_save_directory(self): #implement
-        directory = QtWidgets.QFileDialog.getExistingDirectory()
+    def open_save_directory(self, directory=''):
+        if not directory:
+            directory = QtWidgets.QFileDialog.getExistingDirectory()
+            if not directory:
+                return
         if directory:
             self.save_folder_display.setText(directory)
         self.save_directory = directory
@@ -615,8 +652,60 @@ class MainPannel(QMainWindow, UI_MainPanel):
         return
 
     def start_mc(self):
-        self.view_message('Not implemented yet...', icon='Information')
-        pass
+        # Creating a simulation volume
+        structure = Structure()
+        params = None
+        if self.structure_source == 'vtk':  # opening from a .vtk file
+            try:
+                vtk_obj = pv.read(self.vtk_filename)
+                structure.load_from_vtk(vtk_obj)
+                params = read_field_data(vtk_obj)
+            except Exception as e:
+                if not self.vtk_filename:
+                    self.view_message('File not specified',
+                                      'VTK file not specified. Please choose the file and try again.')
+                else:
+                    self.view_message(additional_message='VTK file not found')
+                return
+            cell_dimension = structure.cell_dimension
+            substrate_height = structure.substrate_height
+
+        if self.structure_source == 'geom':  # creating from geometry parameters
+            try:
+                cell_dimension = int(self.input_cell_size_mc.text())
+                xdim = int(float(self.input_width_mc.text())) // cell_dimension  # array length
+                ydim = int(float(self.input_length_mc.text())) // cell_dimension  # array length
+                zdim = int(float(self.input_height_mc.text())) // cell_dimension  # array length
+                substrate_height = math.ceil(int(float(self.input_substrate_height_mc.text())) / cell_dimension)
+                structure.create_from_parameters(cell_dimension, xdim, ydim, zdim, substrate_height)
+            except Exception as e:
+                self.view_message('Input error',
+                                  'An error occurred while fetching geometry parameters for the simulation volume. \n '
+                                  'Check values and try again.')
+                print(e.args)
+                return
+
+        # Opening precursor file
+        try:
+            with open(self.precursor_parameters_filename, mode='rb') as f:
+                precursor_params = yaml.load(f, Loader=yaml.FullLoader)
+        except:
+            if not self.precursor_parameters_filename:
+                self.view_message('File not specified',
+                                  'Precursor parameters file not specified. Please choose the file and try again.')
+            else:
+                self.view_message(additional_message='Precursor parameters file not found')
+            return
+        E0 = float(self.beam_energy.text())
+        Emin = float(self.energy_cutoff.text())
+        gauss_dev = float(self.gauss_dev.text())
+        x0 = float(self.x_pos.text())
+        y0 = float(self.y_pos.text())
+        N = int(self.number_of_e.text())
+        n = int(self.gauss_order.text())
+        heating = self.checkbox_beam_heating.isChecked()
+        self.cam_pos = e3d.run_mc_simulation(structure, E0, gauss_dev, n, N, (x0, y0), precursor_params, Emin, 0.6, heating, params, self.cam_pos)
+        return 1
 
     # Utilities
     def set_params_ui(self, param, name=None, enable=True):
