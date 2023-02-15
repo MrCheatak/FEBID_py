@@ -362,7 +362,7 @@ class Ui_MainWindow(object):
         self.number_of_e = QtWidgets.QLineEdit(self.groupBox_5)
         self.number_of_e.setGeometry(QtCore.QRect(58, 115, 45, 21))
         self.number_of_e.setInputMask("")
-        self.number_of_e.setMaxLength(4)
+        self.number_of_e.setMaxLength(5)
         self.number_of_e.setObjectName("number_of_e")
         self.label_21 = QtWidgets.QLabel(self.groupBox_5)
         self.label_21.setGeometry(QtCore.QRect(40, 118, 15, 16))

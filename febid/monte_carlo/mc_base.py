@@ -1,10 +1,15 @@
+"""
+Monte Carlo simulator utility module
+"""
+
 from abc import ABC
 
 import numpy as np
 
 class Element:
     """
-    Represents a material
+    Represents a solid material.
+    Contains properties necessary for electron beam-matter interaction.
     """
     def __init__(self, name='noname', Z=1, A=1.0, rho=1.0, e=50, lambda_escape=1.0, mark=1):
         self.name = name # name of the material
@@ -50,6 +55,6 @@ class MC_Sim_Base(ABC):
         return tuple([dim * self.cell_dim for dim in self.grid.shape])
 
 
-substrates = {}
+substrates = {} # available substrates
 substrates['Au'] = Element(name='Au', Z=79, A=196.967, rho=19.32, e=35, lambda_escape=0.5)
 substrates['Si'] = Element(name='Si', Z=14, A=29.09, rho=2.33, e=90, lambda_escape=2.7)

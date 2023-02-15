@@ -1,3 +1,7 @@
+"""
+Primary electron trajectory simulator
+"""
+
 # distutils: language = c++
 #cython: language_level=3
 #cython: cdivision=True

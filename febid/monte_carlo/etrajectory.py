@@ -1,8 +1,6 @@
-#######################################################
-#                                                     #
-#       Primary electron trajectory simulator         #
-#                                                     #
-#######################################################
+"""
+Primary electron trajectory simulator
+"""
 # Default packages
 import os, sys
 import random as rnd
@@ -302,7 +300,7 @@ class ETrajectory(MC_Sim_Base):
         :param x0: mean along X-axis
         :param y0: mean along Y-axis
         :param N: number of points to generate
-        :return:
+        :return: two arrays of N-length with x and y positions
         """
 
         # The function uses rejection method to generate a custom distribution (Super Gauss)
@@ -361,11 +359,13 @@ class ETrajectory(MC_Sim_Base):
 
     def rnd_gauss_xy(self, x0, y0, N):
         """
-        Gauss-distributed (x, y) positions.
+        Generate a specified number of points according to a Gaussian distribution.
+        Standard deviation and order of the super gaussian are class properties.
 
-        :param y0: y-position of the beam, nm
-        :param x0: x-position of the beam, nm
-        :param N: number of positions to create
+        :param x0: mean along X-axis
+        :param y0: mean along Y-axis
+        :param N: number of points to generate
+        :return: two arrays of N-length with x and y positions
         """
         if N==0: N=self.N
         i=0
@@ -396,51 +396,6 @@ class ETrajectory(MC_Sim_Base):
             if i > 10000:
                 raise OverflowError("Stuck in an endless loop in Gauss distribution creation. \n Terminating.")
 
-    def run(self, i0, j0, N=0):
-        """
-        Run Monte-Carlo electron scattering simulation for the given structure with multiprocessing
-
-        :param i0: y-position, array
-        :param j0: x-position, array
-        :param N: number of electrons
-        :return:
-        """
-        """
-        This is the first step of the simulation.
-        In the previous version, PE trajectories were first simulated until electron looses all its energy or exits the chamber. 
-        Then, in the next step, trajectories were shifted according to the Gaussian distribution and lowered to origin at the specimen surface.
-        After that trajectories were adjusted to correspond scattering in the real structure.
-        Two of those steps are now done in the process of initial trajectory simulation:
-        1. With the given beam position(x,y) a Gauss distribution is mapped. 
-            Beam origin is always at the top of the chamber and thus the first trajectory piece is a straight line down to the surface(solid)
-        2. Then trajectories are mapped and their energy losses per trajectory step are calculated
-            Trajectories are no longer mapped fully, but only until electron exits chamber(99% of cases) or looses all energy
-
-        """
-
-        y0, x0 = self.rnd_gauss_xy(i0, j0, N)  # generate gauss-distributed beam positions
-        self.passes[:] = [] # prepare a list for energies and trajectories
-        print("\nGenerating trajectories")
-        # for x,y in tqdm(zip(x0,y0)):
-        #     self.map_trajectory(x, y)
-        # for i in tqdm(range(passes)):
-        # Splitting collections to correspond to the number of processes:
-        x = list(np.array_split(x0, 8))
-        y = list(np.array_split(y0, 8))
-        # Launching a processes manager:
-        with multiprocessing.Pool(8) as pool:
-            results = pool.starmap(self.map_wrapper, zip(x, y))
-        # Collecting results:
-        for p in results:
-            self.passes += p
-        # print(f'Done')
-        # points = [(x, y) for (x,y) in zip(x0, y0)]
-        # with concurrent.futures.ProcessPoolExecutor() as ex:
-        #     results = [ex.submit(self.map_trajectory, point) for point in points]
-        # for f in concurrent.futures.as_completed(results):
-        #     self.passes.append(f.result())
-        # self.prep_plot_traj() # view trajectories
-
     def map_wrapper(self, y0, x0, N=0):
         """
         Create normally distributed electron positions and run trajectory mapping
@@ -450,22 +405,16 @@ class ETrajectory(MC_Sim_Base):
         :param N: number of electrons to create
         :return:
         """
-        self.__calculate_attributes()
-        passes = []
         if N == 0:
             N = self.N
         x0, y0 = self.rnd_super_gauss(x0, y0, N)  # generate gauss-distributed beam positions
-        # profiler = line_profiler.LineProfiler()
-        # profiled_func = profiler(self.map_trajectory)
-        # try:
-        #     profiled_func(x0, y0)
-        # finally:
-        #     profiler.print_stats()
-        passes = self.map_trajectory(x0, y0)
-        # for x,y in zip(x0,y0):
-        #     passes.append(self.map_trajectory(x,y))
-        # self.__inspect_passes(True, True)
-        return passes
+        print('Running \'map trajectory\'...', end='')
+        start = dt()
+        self.passes = self.map_trajectory(x0, y0)
+        print(f'finished. \t {dt() - start}')
+        if not len(self.passes) > 0:
+            raise ValueError('Zero trajectories generated!')
+        return self.passes
 
     def map_wrapper_cy(self, y0, x0, N=0):
         """
@@ -476,30 +425,19 @@ class ETrajectory(MC_Sim_Base):
         :param N: number of electrons to create
         :return:
         """
-        passes = []
         if N == 0:
             N = self.N
         x0, y0 = self.rnd_super_gauss(x0, y0, N) # generate gauss-distributed beam positions
-        # profiler = line_profiler.LineProfiler()
-        # profiled_func = profiler(self.map_trajectory)
-        # try:
-        #     profiled_func(x0, y0)
-        # finally:
-        #     profiler.print_stats()
-        flag = True
         print('Running \'map trajectory\'...', end='')
         start = dt()
         try:
-            self.passes = passes = etrajectory_c.start_sim(self.E0, self.Emin, y0, x0, self.cell_dim, self.grid, self.surface.view(dtype=np.uint8), [self.substrate, self.deponat])
+            self.passes = etrajectory_c.start_sim(self.E0, self.Emin, y0, x0, self.cell_dim, self.grid, self.surface.view(dtype=np.uint8), [self.substrate, self.deponat])
         except Exception as e:
             raise RuntimeError(f'An error occurred while generating trajectories: {e.args}')
         print(f'finished. \t {dt() - start}')
-        if not len(passes) > 0:
+        if not len(self.passes) > 0:
             raise ValueError('Zero trajectories generated!')
-        # for x,y in zip(x0,y0):
-        #     passes.append(self.map_trajectory(x,y))
-        # self.__inspect_passes(True, True)
-        return passes
+        return self.passes
 
     def map_trajectory(self, x0, y0):
         """
@@ -523,7 +461,7 @@ class ETrajectory(MC_Sim_Base):
             mask = []
             # Due to memory race problem, all the variables that are changing(coordinates, energy) have been moved to a separate class,
             # that gets instanced for every trajectory and thus for every process
-            coords = self.Electron(x, y, self)
+            coords = Electron(x, y, self)
             # Getting initial point. It is set to the top of the chamber
             trajectories.append(coords.coordinates)  # every time starting from the beam origin (a bit above the highest point of the structure)
             energies.append(self.E0)  # and with the beam energy
@@ -546,23 +484,19 @@ class ETrajectory(MC_Sim_Base):
             # Generating trajectory
             try:
                 while coords.E > self.Emin:  # going on with every electron until energy is depleted or escaping chamber
-                    # a = self._getAlpha(coords)
-                    # step = -self._getLambda_el(coords, a) * log( rnd.uniform(0.00001, 1))  # actual distance an electron travels
                     # Getting Alpha value and electron path length
-                    a, step = self._get_alpha_and_step(coords)
+                    a, step = self._get_alpha_and_step(coords) # actual distance an electron travels
                     # Next coordinates:
-                    check = coords.get_next_point(a, step)
                     # First thing to do: boundary check
-                    # check = coords.check_boundaries()
+                    check = coords.get_next_point(a, step)
                     # Trimming new segment and heading for finishing the trajectory
                     if check is False:
                         flag = True
                         step = traversal.det_1d(coords.direction) # recalculating step length
                     # What cell are we in now?
-                    i,j,k = coords.indices # + coords.index_corr()
+                    i,j,k = coords.indices #
                     # If its a solid cell, get energy loss and continue
                     if self.grid[i,j,k] < 0:
-                        # coords.E += self._getELoss(coords) * step
                         coords.E += traversal.get_Eloss(coords.E, self.material.Z, self.material.rho, self.material.A, self.material.J, step)
                         trajectories.append(coords.coordinates)  # saving current point
                         energies.append(coords.E)
@@ -577,9 +511,7 @@ class ETrajectory(MC_Sim_Base):
                     # first find the intersection with the surface
                     # then either with walls or next solid cell
                     else:
-                        # print('N.', end='')
                         flag, crossing, crossing1 = self.get_next_crossing(coords)
-                        # print('f', end='|')
                         coords.coordinates = crossing
                         coords.E += self._getELoss(coords) * traversal.det_1d(coords.point-coords.point_prev)
                         trajectories.append(coords.coordinates)  # saving current point
@@ -592,11 +524,6 @@ class ETrajectory(MC_Sim_Base):
                             trajectories.append(coords.coordinates)  # saving current point
                             energies.append(coords.E)  # saving electron energy at this point
                             mask.append(0)
-                            # if flag == 1: # if electron escapes after crossing surface and traversing void
-                            #     mask.append(0)
-                            # else: # if electron meets a solid cell
-                            #     mask.append(1)
-
                     # <editor-fold desc="Accurate tracking of material">
                     ############ Enable this snippet instead of the code after getting index,
                     ############ if interfaces between solid materials have to be tracked precisely.
@@ -643,6 +570,14 @@ class ETrajectory(MC_Sim_Base):
         return self.passes
 
     def map_trajectory_verbose(self, x0, y0):
+        """
+        Simulate trajectory of the electrons with a specified starting position.
+        Version with step-by-step output to console.
+
+        :param x0: x-positions of the electrons
+        :param y0: y-positions of the electrons
+        :return:
+        """
         print('Starting PE simulation...')
         self.passes = []
         self.ztop = np.nonzero(self.surface)[0].max()
@@ -657,7 +592,7 @@ class ETrajectory(MC_Sim_Base):
             mask = []
             # Due to memory race problem, all the variables that are changing(coordinates, energy) have been moved to a separate class,
             # that gets instanced for every trajectory and thus for every process
-            coords = self.Electron(x, y, self)
+            coords = Electron(x, y, self)
             # Getting initial point. It is set to the top of the chamber
             print(f'Recording first coordinates: {coords.coordinates}')
             trajectories.append(coords.coordinates)  # every time starting from the beam origin (a bit above the highest point of the structure)
@@ -902,20 +837,21 @@ class ETrajectory(MC_Sim_Base):
         """
         i = 0
         print('Dumping trajectories as a text file ...', end='')
+        cwd = os.getcwd()
+        fname = os.path.join(cwd, fname+'.txt')
         with open(fname, mode='w') as f:
-            f.write('# ' + self.name + '\n')
+            f.write('# List of generated electron trajectories' + '\n')
             for p in self.passes:
                 f.write(f'# Trajectory {i} \n')
                 points = np.asarray(p[0])
                 energies = np.asarray(p[1])
                 mask = np.asarray(p[2])
                 mask = np.insert(mask ,0, nan)
-                # f = open(fname + '_{:05d}'.format(i), 'w')
+
                 f.write('# x/nm\t\t y/nm\t\t z/nm\t\t E/keV\t\t mask\n')
                 for pt, e, m in zip(points, energies, mask):
                     f.write('{:f}\t'.format(pt[0]) + '{:f}\t'.format(pt[1]) +
                       '{:f}\t'.format(pt[2]) + '{:f}\t'.format(e) + str(m) + '\n')
-                # f.close()
                 i += 1
         print('done!')
 
@@ -926,9 +862,10 @@ class ETrajectory(MC_Sim_Base):
         :param fname: name of the file
         :return:
         """
-        file = open(f'{sys.path[0]}{os.sep}Electron_trajectories_{len(self.passes)}_{self.E0}keV.txt', 'wb')
-        pickle.dump(self.passes, file)
-        file.close()
+        cwd = os.getcwd()
+        fname = os.path.join(cwd, fname)
+        with open(fname, mode='w') as f:
+            pickle.dump(self.passes, f)
 
     def __inspect_passes(self, short=True, exclude_first = False):
         """
@@ -993,10 +930,108 @@ class ETrajectory(MC_Sim_Base):
             print_results(message, long_segments, 33, p0[long_segments], pn[long_segments], L[long_segments])
             message = 'The latter unmasked:'
             print_results(message, long_unmasked, 31, p0[long_unmasked], pn[long_unmasked], L[long_unmasked])
+            message = 'Points with negative energies:'
+            print_results(message, negative_E, 31, p0[negative_E], pn[negative_E], L[negative_E])
 
             print('\033[0;30;48m ', end='')
             a=0
 
+    def plot_distribution(self, x, y, func=None):
+        """
+        Plot a scatter plot of the (x,y) points with 2D histograms depicting axial distribution
+
+        :param x: array of x-coordinates
+        :param y: array of y-coordinates
+        :param func: 2D probability density function
+        :return:
+        """
+        import matplotlib.pyplot as plt
+        from matplotlib.axes import Axes
+        # global fig, scatter, x_hist, y_hist, bins
+        print('Preparing plot:')
+        left, width = 0.1, 0.6
+        bottom, height = 0.1, 0.6
+        spacing = 0.005
+
+        print('Creating canvas and axes...')
+        rect_scatter = [left, bottom, width, height]
+        rect_histx = [left, bottom + height + spacing, width, 0.2]
+        rect_histy = [left + width + spacing, bottom, 0.2, height]
+
+        # start with a square Figure
+        fig = plt.figure(figsize=(9, 9))
+
+        ax: Axes = fig.add_axes(rect_scatter)
+        ax_histx = fig.add_axes(rect_histx, sharex=ax)
+        ax_histy = fig.add_axes(rect_histy, sharey=ax)
+
+        # the scatter plot:
+        print('Drawing scatter plot...')
+        scatter = ax.scatter(x, y, s=1, linewidths=0, alpha=0.7, label=f'{x.shape[0]} points \n'
+                                                                       f'{self.sigma} st_dev \n'
+                                                                       f'{self.n} order')
+
+        # no labels
+        ax_histx.tick_params(axis="x", labelbottom=False)
+        ax_histy.tick_params(axis="y", labelleft=False)
+
+        # now determine nice limits by hand:
+        n_bins = 200
+
+        # making histograms
+        print('Drawing histograms...')
+        binwidth_x = (x.max() - x.min()) / 100
+        xmax = np.max(np.abs(x))
+        lim_x = (int(xmax / binwidth_x) + 1) * binwidth_x
+
+        center_x = x.mean()
+        margin = lim_x - center_x
+        bins_x = np.arange(center_x - margin, center_x + margin + binwidth_x, binwidth_x)
+
+        binwidth_y = (y.max() - y.min()) / 100
+        ymax = np.max(np.abs(y))
+        lim_y = (int(ymax / binwidth_y) + 1) * binwidth_y
+
+        center_y = y.mean()
+        margin = lim_y - center_y
+        bins_y = np.arange(center_y - margin, center_y + margin + binwidth_y, binwidth_y)
+
+        nx, _ = np.histogram(x, bins_x, density=True)
+        ny, _ = np.histogram(y, bins_y, density=True)
+
+        x_p = x[np.fabs(y - center_y) < (y.max() - center_y) * 0.1]
+        y_p = y[np.fabs(x - center_x) < (x.max() - center_x) * 0.1]
+        _, _, x_hist = ax_histx.hist(x_p, bins=bins_x, density=True)
+        _, _, y_hist = ax_histy.hist(y_p, bins=bins_y, density=True, orientation='horizontal')
+        if func is not None:
+            x_p = np.arange(x.min(), x.max(), 0.01)
+            p_x = func(x_p, center_y, self.sigma, self.n)
+            ax_histx.plot(x_p, p_x, lw=3, label="Probability density distr.")
+            y_p = np.arange(y.min(), y.max(), 0.01)
+            p_y = func(center_x, y_p, self.sigma, self.n)
+            ax_histy.plot(p_y, y_p, lw=3)
+            ax.set_title(f"Super Gauss distribution, σ={self.sigma} n={self.n}", pad=170, fontdict={'fontsize': 18})
+            ax_histx.legend(loc='upper left')
+
+        print('Setting sliders...')
+        ax_histx.set_title('x distribution')
+        ax_histy.set_title('y distribution')
+        ax.legend()
+        ax.grid(True, 'both')
+
+        # axstdev = plt.axes([0.25, 0.01, 0.65, 0.03])
+        # axnorder = plt.axes([0.25, 0.05, 0.65, 0.03])
+
+        # s_stdev = Slider(axstdev, 'Standard deviation', 0.1, 30.0, valinit=3, valstep=0.1)
+        # s_order = Slider(axnorder, 'Function order', 0.1, 20.0, valinit=1, valstep=1)
+
+        # s_stdev.on_changed(update_stdev)
+        # s_order.on_changed(update_order)
+
+        print('Plotting...')
+        return plt.show()
+
+    # Equations used in trajectory calculation
     def _get_alpha_and_step(self, coords):
         """
         Calculate alpha value and electron path from the electron energy and material properties
@@ -1087,85 +1122,6 @@ class ETrajectory(MC_Sim_Base):
         if E == 0:
             E = coords.E
         return -7.85E-3*self.material.rho*self.material.Z/(self.material.A*E)*log(1.166*(E/self.material.J + 0.85))
-
-    def plot_distribution(self, x, y, func=None):
-        import matplotlib.pyplot as plt
-        from matplotlib.axes import Axes
-        # global fig, scatter, x_hist, y_hist, bins
-        print('Preparing plot:')
-        left, width = 0.1, 0.6
-        bottom, height = 0.1, 0.6
-        spacing = 0.005
-
-        print('Creating canvas and axes...')
-        rect_scatter = [left, bottom, width, height]
-        rect_histx = [left, bottom + height + spacing, width, 0.2]
-        rect_histy = [left + width + spacing, bottom, 0.2, height]
-
-        # start with a square Figure
-        fig = plt.figure(figsize=(9, 9))
-
-        ax:Axes = fig.add_axes(rect_scatter)
-        ax_histx = fig.add_axes(rect_histx, sharex=ax)
-        ax_histy = fig.add_axes(rect_histy, sharey=ax)
-
-        # the scatter plot:
-        print('Drawing scatter plot...')
-        scatter = ax.scatter(x, y, s=1, linewidths=0, alpha=0.7, label=f'{x.shape[0]} points \n'
-                                                                       f'{self.sigma} st_dev \n'
-                                                                       f'{self.n} order')
-
-        # no labels
-        ax_histx.tick_params(axis="x", labelbottom=False)
-        ax_histy.tick_params(axis="y", labelleft=False)
-
-        # now determine nice limits by hand:
-        n_bins = 200
-        binwidth = (x.max() - x.min()) / 100
-        xymax = max(np.max(np.abs(x)), np.max(np.abs(y)))
-        lim = (int(xymax / binwidth) + 1) * binwidth
-
-        # making histograms
-        print('Drawing histograms...')
-        center = x.mean()
-        margin = lim - center
-        bins = np.arange(center - margin, center + margin + binwidth, binwidth)
-
-        nx, _ = np.histogram(x, bins, density=True)
-        ny, _ = np.histogram(y, bins, density=True)
-
-        x_p = x[np.fabs(y - center) < (x.max()-center)*0.1]
-        y_p = y[np.fabs(x - center) < (y.max()-center)*0.1]
-        _, _, x_hist = ax_histx.hist(x_p, bins=bins, density=True)
-        _, _, y_hist = ax_histy.hist(y_p, bins=bins, density=True, orientation='horizontal')
-        if func is not None:
-            # div = 1.5 if self.n > 1 else 1
-            x_p = np.arange(x.min(), x.max(), 0.01)
-            p_x = func(x_p, center, self.sigma, self.n)
-            ax_histx.plot(x_p, p_x, lw=3, label="Probability density distr.")
-            y_p = np.arange(y.min(), y.max(), 0.01)
-            p_y = func(y_p, center, self.sigma, self.n)
-            ax_histy.plot(p_y, y_p, lw=3)
-            ax.set_title(f"Super Gauss distribution, σ={self.sigma} n={self.n}", pad=170, fontdict={'fontsize': 18})
-            ax_histx.legend(loc='upper left')
-
-        print('Setting sliders...')
-        ax_histx.set_title('x distribution')
-        ax_histy.set_title('y distribution')
-        ax.legend()
-        ax.grid(True, 'both')
-
-        # axstdev = plt.axes([0.25, 0.01, 0.65, 0.03])
-        # axnorder = plt.axes([0.25, 0.05, 0.65, 0.03])
-
-        # s_stdev = Slider(axstdev, 'Standard deviation', 0.1, 30.0, valinit=3, valstep=0.1)
-        # s_order = Slider(axnorder, 'Function order', 0.1, 20.0, valinit=1, valstep=1)
-
-        # s_stdev.on_changed(update_stdev)
-        # s_order.on_changed(update_order)
-
-        print('Plotting...')
-        plt.show()
 
 
 if __name__ == "__main__":

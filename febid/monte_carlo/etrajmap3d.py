@@ -1,3 +1,7 @@
+"""
+Electron-matter interaction simulator
+"""
+
 import copy
 import inspect
 import random as rnd
@@ -112,8 +116,8 @@ class ETrajMap3d(MC_Sim_Base):
 
     def traverse_cells(self, p0, pn, direction, t, step_t):
         """
-            AABB Ray-Voxel traversal algorithm.
-            Gets coordinates, where ray crosses voxel walls
+        AABB Ray-Voxel traversal algorithm.
+        Gets coordinates, where ray crosses voxel walls
 
         :param p0: ray origin
         :param pn: ray endpoint
@@ -138,11 +142,10 @@ class ETrajMap3d(MC_Sim_Base):
 
     def follow_segment(self, points, dEs):
         """
-        Calculates distances traversed by a trajectory segment inside cells
-        and gets energy losses corresponding to the distances.
+        Calculate total energy deposited by primary electrons per cell.
 
         :param points: array of (z, y, x) points representing a trajectory from MC simulation
-        :param dEs:  list of energies losses between consecutive points. dEs[0] corresponds to a loss between p[0] and p[1]
+        :param dEs: list of energies losses between consecutive points. dEs[0] corresponds to a loss between p[0] and p[1]
         :return:
         """
 
@@ -181,10 +184,11 @@ class ETrajMap3d(MC_Sim_Base):
 
     def prep_se_emission(self, points, dEs, ends):
         """
-        The idea behind this method is to divide trajectory segments into pieces
-        and emit SEs from every piece based on the energy lost on it.
+        Subdivide trajectory segments and energy losses
 
-        :param passes:
+        :param points: segment start- and end-points
+        :param dEs: energy loss
+        :param ends: trajectory end positions, check comments
         :return:
         """
 
@@ -260,24 +264,29 @@ class ETrajMap3d(MC_Sim_Base):
 
     def generate_se(self):
         """
-        Generate a random vector for every coordinate, calculate SE source power per each vector
-        and collect them when they cross surface
+        Estimate surface secondary electron flux.
 
         :return:
         """
+        # Generate a random vector for every coordinate, calculate SE source power (n) per each vector
+        # and collect them when they cross surface
+
+        # Getting cell index for each emission point
         self.se_coords_all = coords_all = np.int32(ne.evaluate('a/b', global_dict={'a': self.coords_all.T, 'b': self.cell_dim}))
+        # Selecting only cells in surface proximity
         neighbors = self.s_neighb
         self.se_coords_included = include = neighbors[coords_all[0], coords_all[1], coords_all[2]]
         in_index = include.nonzero()[0]
-
         coords = self.coords_all[in_index]
         dEs = self.dEs_all[in_index]
 
+        # Generating random direction for each emission point
         rng = np.random.default_rng()
-        L = np.empty_like(dEs)
         direction = rng.normal(0, 10, (dEs.shape[0], 3)) # creates spherically randomly distributed vectors
+        L = np.empty_like(dEs)
         traversal.det_2d(direction, L)
         direction /= L.reshape(L.shape[0],1) # normalizing
+        # Preparing from ray tracing algorithm
         sign = np.int8(np.sign(direction))
         sign[sign==-1] = 0
         sign[sign==1] = -1
@@ -304,8 +313,8 @@ class ETrajMap3d(MC_Sim_Base):
         t = ne.evaluate('abs((d + m0s + d0 * s)/dir)', global_dict={'d':delta, 'm0s':np.maximum(step,0), 'd0':delta==0, 's':step, 'dir':direction})
         max_traversed_cells = int(np.amax(length, initial=0)/self.cell_dim*2+5)
         # Here each vector is processed with the same ray traversal algorithm as in 'follow_segment' method.
-        # It checks if vectors cross surface cells and if they do, the SE number associated with the vector
-        # is collected in the cell crossed.
+        # It checks if vectors cross surface cells and if they do, the number of emitted SEs (n) associated
+        # with the vector is collected in the cell crossed.
         traversal.generate_flux(self.flux, self.surface.view(dtype=np.uint8), self.cell_dim, coords, pn, direction, sign, t, step_t, n_se, max_traversed_cells) # Cython script
 
         self.coords = np.empty((coords.shape[0], 2, 3))
@@ -313,25 +322,35 @@ class ETrajMap3d(MC_Sim_Base):
         self.coords[:,1] = pn[...]
 
     def extract_se_heat(self):
+        """
+        Calculate energy loss by scattered secondary electrons per cell.
+
+        :return:
+        """
+
         # Collecting SEs that did not escape the surface
         exclude = self.se_coords_included
         exclude_index = exclude.nonzero()[0]
         coords_ind = self.se_coords_all[:, exclude_index]
         index = (coords_ind[0], coords_ind[1], coords_ind[2])
+        # Defining material properties at the emission point
         cell_material = self.grid[coords_ind[0], coords_ind[1], coords_ind[2]]
         e = np.empty_like(cell_material)
         e[cell_material == -1] = self.deponat.e
         e[cell_material == -2] = self.substrate.e
         e[cell_material >= 0] = 1e6
+        # Number of emitted SEs per point (source power)
         n_se = self.dEs_all[exclude_index] / e
         self.wasted_se = np.zeros_like(self.DE)
+        # Deposited energy per emission point
         wasted_se_flat = self.se_E * n_se
+        # Accumulating deposited energy in cells
         np.add.at(self.wasted_se, index, wasted_se_flat)
         self.wasted_se[self.grid >= 0] = 0
 
     def joule_heating(self):
         """
-        Get collective heat effect from primary and secondary electrons
+        Get total energy loss from primary and secondary electrons peel
         """
         self.extract_se_heat()
         self.heat_pe = self.DE * (1 - self.emission_fraction)
@@ -339,7 +358,8 @@ class ETrajMap3d(MC_Sim_Base):
 
     def map_follow(self, passes, heating=False):
         """
-        Get energy losses in the structure per cell
+        Get surface secondary electron flux and volumetric heat source distribution
+         from primary electron trajectories.
 
         :param passes: a collection of trajectories
         :param heating: True will calculate collective heat effect from PEs and SEs
