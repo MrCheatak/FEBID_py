@@ -1,3 +1,6 @@
+"""
+Package main entry point
+"""
 import sys
 
 import febid

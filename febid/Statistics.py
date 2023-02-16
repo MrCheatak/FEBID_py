@@ -1,3 +1,6 @@
+"""
+Module for continuous process data recording
+"""
 import random as rnd
 import sys
 import timeit
@@ -30,7 +33,7 @@ class Statistics():
         self.parameters = []
         self.parameters_units = []
         self.writer = None
-        self.save_freq = 5 # seconds
+        self.save_freq = 10 # seconds
         self.last_row = 0 # last row recorded previously
         self.time = timeit.default_timer()
 
@@ -127,9 +130,15 @@ class Statistics():
             return
         else:
             self.time = timeit.default_timer()
-        data = self.data.iloc[self.last_row:]
+        if force:
+            last_row = 0
+            header = True
+        else:
+            last_row = self.last_row
+            header = False
+        data = self.data.iloc[last_row:]
         try:
-            data.to_excel(self.writer, startrow=self.last_row, sheet_name=self.sheet_name, header=False)
+            data.to_excel(self.writer, startrow=last_row, sheet_name=self.sheet_name, header=header)
             self.writer.save()
             self.last_row = self.writer.sheets[self.sheet_name].max_row
         except Exception as e:
@@ -152,8 +161,6 @@ class Statistics():
         gr[gr==0] = np.nan
         self.data['Growth rate'] = gr
 
-    def __get_sim_growth_rate(self):
-        self.data['Sim.growth rate'] = self.data['N of cells'] / self.data['Sim.time'].get_total_hours
 
     def add_plots(self, *args, position='J1'):
         """

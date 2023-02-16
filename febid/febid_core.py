@@ -370,7 +370,7 @@ def monitoring(pr: Process, stats: Statistics = None, location=None, stats_rate=
         rn = vr.Render(pr.structure.cell_dimension)
         pr.redraw = True
     else:
-        frame = np.inf  # current time is always less than infinity
+        frame = sys.maxsize  # current time is always less than infinity
     if not stats_rate or stats_rate == sys.maxsize:
         stats_time = sys.maxsize
         stats_rate = sys.maxsize
@@ -382,42 +382,41 @@ def monitoring(pr: Process, stats: Statistics = None, location=None, stats_rate=
     else:
         dump_rate = 1e-1 * dump_rate
     # Event loop
-    with open('monitor.log', mode='a') as f:
-        while not flag:
-            now = timeit.default_timer()
-            if now > time_spent:  # overall time and speed
-                time_spent += time_step
-                # print(f'Time passed: {time_spent}, Av.speed: {l / time_spent}')
-            if now > frame:  # graphical
-                frame += frame_rate
-                redrawed = update_graphical(rn, pr, frame_rate, now - start_time, displayed_data)
-            if pr.t > stats_time:
-                stats_time += stats_rate
-                stats.append(pr.t, pr.min_precursor_covearge, pr.dep_vol, pr.max_T,)
-                stats.save_to_file()
-            if pr.t > dump_time:
-                dump_time += dump_rate
-                dump_structure(pr.structure, pr.t, now - start_time, (x_pos, y_pos), f'{location}')
-            time.sleep(refresh_rate)
-        else:
-            if stats_time != sys.maxsize:
-                stats.append(pr.t, pr.min_precursor_covearge, pr.dep_vol, pr.max_T,)
-                stats.get_growth_rate()
-                # stats.add_plots([('Sim.time', 'Min.precursor coverage'),('Sim.time', 'Growth rate')], position=['J1','J23'])
-                stats.save_to_file()
-            if dump_time != sys.maxsize:
-                dump_structure(pr.structure, pr.t, now - start_time, (x_pos, y_pos), f'{location}')
-            if frame != sys.maxsize:
-                rn.p.close()
-                rn = vr.Render(pr.structure.cell_dimension)
-                pr.redraw = True
-                update_graphical(rn, pr, time_step, now-start_time, displayed_data, False)
-                rn.show(interactive_update=False)
+    while not flag:
+        now = timeit.default_timer()
+        if now > time_spent:  # overall time and speed
+            time_spent += time_step
+            # print(f'Time passed: {time_spent}, Av.speed: {l / time_spent}')
+        if now > frame:  # graphical
+            frame += frame_rate
+            redrawed = update_graphical(rn, pr, now - start_time, displayed_data)
+        if pr.t > stats_time:
+            stats_time += stats_rate
+            stats.append(pr.t, pr.min_precursor_covearge, pr.dep_vol, pr.max_T,)
+            stats.save_to_file()
+        if pr.t > dump_time:
+            dump_time += dump_rate
+            dump_structure(pr.structure, pr.t, now - start_time, (x_pos, y_pos), f'{location}')
+        time.sleep(refresh_rate)
+    else:
+        if stats_time != sys.maxsize:
+            stats.append(pr.t, pr.min_precursor_covearge, pr.dep_vol, pr.max_T,)
+            stats.get_growth_rate()
+            # stats.add_plots([('Sim.time', 'Min.precursor coverage'),('Sim.time', 'Growth rate')], position=['J1','J23'])
+            stats.save_to_file(force=True)
+        if dump_time != sys.maxsize:
+            dump_structure(pr.structure, pr.t, now - start_time, (x_pos, y_pos), f'{location}')
+        if frame != sys.maxsize:
+            rn.p.close()
+            rn = vr.Render(pr.structure.cell_dimension)
+            pr.redraw = True
+            update_graphical(rn, pr, now-start_time, displayed_data, False)
+            rn.show(interactive_update=False)
     flag = False
     print('Exiting monitoring.')
 
 
-def update_graphical(rn: vr.Render, pr: Process, time_step, time_spent, displayed_data='precursor', update=True):
+def update_graphical(rn: vr.Render, pr: Process, time_spent, displayed_data='precursor', update=True):
     """
     Update the visual representation of the current process state
 

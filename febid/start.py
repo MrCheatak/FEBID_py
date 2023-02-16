@@ -1,3 +1,6 @@
+"""
+Scripting template for running series of simulations
+"""
 import os
 import re
 

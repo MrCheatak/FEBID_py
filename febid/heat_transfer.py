@@ -1,5 +1,5 @@
 """
-Heat equation solution
+Heat transfer module
 """
 
 import warnings

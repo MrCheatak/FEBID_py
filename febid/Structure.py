@@ -388,7 +388,9 @@ class Structure:
 
     def define_surface_neighbors(self, n=0, deposit=None, surface=None, neighbors=None):
         """
-        Find solid cells that are n-closest neighbors to the surface cells
+        Find solid cells that are n-closest neighbors to the surface cells.
+        If deposit, surface amd neighbors are provided, nearest neighbors are defined for them.
+
         :param n: order of nearest neighbor, if 0, then index all the solid cells
         :return:
         """

@@ -1,3 +1,6 @@
+"""
+Core visualization module
+"""
 # Default packages
 import os, sys, time
 import timeit
@@ -11,8 +14,6 @@ from vtk import vtkDataSetAttributes
 
 # Axillary packeges
 from tqdm import tqdm
-from tkinter import filedialog as fd
-import pickle
 
 # Local packages
 from febid.Structure import Structure
@@ -351,6 +352,12 @@ class Render:
 
 
 def read_field_data(vtk_obj):
+    """
+    Read run time, simulation time and beam position from vtk-file.
+
+    :param vtk_obj: VTK-object (UniformGrid)
+    :return:
+    """
     t = vtk_obj.field_data.get('time', None)
     sim_time = vtk_obj.field_data.get('simulation_time', None)
     beam_position = vtk_obj.field_data.get('beam_position', None)
@@ -364,35 +371,52 @@ def read_field_data(vtk_obj):
 
 
 def numpy_to_vtk(arr, cell_dim, data_name='scalar', grid=None, unstructured=False):
-        if not grid:
-            grid = pv.UniformGrid()
-            grid.dimensions = np.asarray([arr.shape[2], arr.shape[1], arr.shape[0]]) + 1  # creating a grid with the size of the array
-            grid.spacing = (cell_dim, cell_dim, cell_dim)  # assigning dimensions of a cell
-            grid_given = False
-        else:
-            grid_given = True
-        grid.cell_data[data_name] = arr.ravel()  # writing values
-        if unstructured and not grid_given:
-            grid = grid.cast_to_unstructured_grid()
-        return grid
+    """
+    Convert numpy array to a VTK-datastructure (UniformGrid or UnstructuredGrid).
+    If grid is provided, add new dataset to that grid.
+
+    :param arr: numpy array
+    :param cell_dim: array cell (cubic) edge length
+    :param data_name: name of data
+    :param grid: existing UniformGrid
+    :param unstructured: if True, return an UnstructuredGrid
+    :return:
+    """
+    if not grid:
+        grid = pv.UniformGrid()
+        grid.dimensions = np.asarray([arr.shape[2], arr.shape[1], arr.shape[0]]) + 1  # creating a grid with the size of the array
+        grid.spacing = (cell_dim, cell_dim, cell_dim)  # assigning dimensions of a cell
+        grid_given = False
+    else:
+        grid_given = True
+    grid.cell_data[data_name] = arr.ravel()  # writing values
+    if unstructured and not grid_given:
+        grid = grid.cast_to_unstructured_grid()
+    return grid
 
 
 def save_deposited_structure(structure, sim_t=None, t=None, beam_position=None, filename=None):
     """
-    Saves current deposition result to a vtk file
-    if filename does not contain path, saves to the current directory
+    Save current deposition result to a vtk file.
+    If filename does not contain path, saves to the current directory.
 
     :param structure: an instance of the current state of the process
+    :param sim_t: simulation time, s
+    :param t: run time
+    :param beam_position: (x,y) current position of the beam
+    :param filename: full file name
     :return:
     """
 
     cell_dim = structure.cell_dimension
+    # Accumulating data from the array in a VTK datastructure
     vtk_obj = numpy_to_vtk(structure.deposit, cell_dim, 'deposit', unstructured=False)
     vtk_obj = numpy_to_vtk(structure.precursor, cell_dim, data_name='precursor_density', grid=vtk_obj)
     vtk_obj = numpy_to_vtk(structure.surface_bool, cell_dim, data_name='surface_bool', grid=vtk_obj)
     vtk_obj = numpy_to_vtk(structure.semi_surface_bool, cell_dim, data_name='semi_surface_bool', grid=vtk_obj)
     vtk_obj = numpy_to_vtk(structure.ghosts_bool, cell_dim, data_name='ghosts_bool', grid=vtk_obj)
     vtk_obj = numpy_to_vtk(structure.temperature, cell_dim, data_name='temperature', grid=vtk_obj)
+    # Attaching times and beam position
     vtk_obj.field_data['date'] = [datetime.datetime.now()]
     vtk_obj.field_data['time'] = [str(datetime.timedelta(seconds=int(t)))]
     vtk_obj.field_data['simulation_time'] = [sim_t]
