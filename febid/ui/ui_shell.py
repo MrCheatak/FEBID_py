@@ -268,13 +268,19 @@ class MainPannel(QMainWindow, UI_MainPanel):
 
     def auto_chosen(self):
         self.choice_auto.setChecked(True)
+        self.choice_geom_parameters_file_mc.setAutoExclusive(False)
+        self.choice_geom_parameters_file_mc.setChecked(False)
+        self.choice_geom_parameters_file_mc.setAutoExclusive(True)
+        self.choice_vtk_file_mc.setAutoExclusive(False)
+        self.choice_vtk_file_mc.setChecked(False)
+        self.choice_vtk_file_mc.setAutoExclusive(True)
         self.structure_source = 'auto'
         self.open_vtk_file_button.setDisabled(True)
         self.open_vtk_file_button_mc.setDisabled(True)
         self.vtk_filename_display.setDisabled(True)
         self.vtk_filename_display_mc.setDisabled(True)
         self.open_geom_parameters_file_button.setDisabled(True)
-        self.open_geom_parameters_file_button_mc.setDisabled(True)
+        # self.open_geom_parameters_file_button_mc.setDisabled(True)
         for obj in self.vtk_choice_to_disable:
             # obj.setReadOnly(True)
             obj.setDisabled(True)
@@ -655,6 +661,10 @@ class MainPannel(QMainWindow, UI_MainPanel):
         # Creating a simulation volume
         structure = Structure()
         params = None
+        if self.structure_source == 'auto':
+            self.view_message('Structure source not set.', 'Seems like \'Auto\' option was chosen previously '
+                                                           'in the FEBID tab...')
+            return
         if self.structure_source == 'vtk':  # opening from a .vtk file
             try:
                 vtk_obj = pv.read(self.vtk_filename)
