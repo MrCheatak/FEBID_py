@@ -222,6 +222,7 @@ class MainPannel(QMainWindow, UI_MainPanel):
         switch = True if param else False
         self.checkbox_load_last_session.setChecked(switch)
         self.save_flag = switch
+        self.save_parameter('load_last_session', False)
         if switch and self.initialized:
             self.open_last_session()
 
