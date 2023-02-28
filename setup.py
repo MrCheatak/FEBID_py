@@ -12,8 +12,8 @@ directive_defaults = get_directive_defaults()
 platform = sys.platform
 libraries = []
 if 'darwin' in platform:  # darwin == OSX
-    os.environ["CC"] = "/usr/local/opt/llvm/bin/clang"
-    os.environ["CXX"] = "/usr/local/opt/llvm/bin/clang++"
+    # os.environ["CC"] = "/usr/local/opt/llvm/bin/clang"
+    # os.environ["CXX"] = "/usr/local/opt/llvm/bin/clang++"
     openMP_arg = '-lomp'
 if 'linux' in platform:
     openMP_arg = '-fopenmp'
@@ -44,16 +44,16 @@ ext_modules = [
                Extension("febid.libraries.rolling.roll", ['febid/libraries/rolling/roll.pyx'],
                          include_dirs=["/usr/local/opt/llvm/include"],
                          library_dirs=["/usr/local/opt/llvm/lib"],
-                         extra_compile_args=["-w", '-fopenmp'],
-                         libraries=libraries,
-                         extra_link_args=[openMP_arg]
+                         # extra_compile_args=["-w", '-fopenmp'],
+                         # libraries=libraries,
+                         # extra_link_args=[openMP_arg]
                          ),
               Extension("febid.libraries.pde.tridiag", ['febid/libraries/pde/tridiag.pyx'],
                          include_dirs=["/usr/local/opt/llvm/include"],
                          library_dirs=["/usr/local/opt/llvm/lib"],
-                         extra_compile_args=["-w", "-fopenmp"],
-                         libraries=libraries,
-                         extra_link_args=[openMP_arg]
+                         # extra_compile_args=["-w", "-fopenmp"],
+                         # libraries=libraries,
+                         # extra_link_args=[openMP_arg]
                          ),
                ]
 

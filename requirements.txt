@@ -1,0 +1,12 @@
+matplotlib
+numpy
+numpy<1.23.0
+pyvista
+pandas
+ruamel.yaml
+cython
+openpyxl
+tqdm
+pyqt5
+pyaml
+numexpr_mod

@@ -423,7 +423,7 @@ def save_deposited_structure(structure, sim_t=None, t=None, beam_position=None, 
     vtk_obj.field_data['beam_position'] = [beam_position]
     if filename == None:
         filename = "Structure"
-    vtk_obj.save(f'{filename}_{time.strftime("%H:%M:%S", time.localtime())}.vtk')
+    vtk_obj.save(f'{filename}_{time.strftime("%H.%M.%S", time.localtime())}.vtk')
 
 
 def export_obj(structure, filename=None):

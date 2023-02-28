@@ -1,0 +1,3 @@
+"""
+Stencil-based utilities
+"""
