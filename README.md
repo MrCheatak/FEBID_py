@@ -9,33 +9,23 @@ Features:
 1. Enabled diffusion, FTCS approach
 2. Electron-matter interaction is implemented via a Monte Carlo simulaton submodule
 3. No gas dynamics implications
-4. Process can be observed live while simulation is running
-5. 3D models produced by the simulation can be viewed with the shipped scripts
+4. Thermal effects included
+5. Process can be observed live while simulation is running
+6. 3D models produced by the simulation can be viewed with the shipped scripts
 
 ## Installation
 
-1. Clone the repository and choose virtual environment.
-2. In the virtual environment execute `pip install .` to install the package and it's dependencies.
+Package is available via PyPi: `pip install febid`
 
-Alternatively, it can be installed as a package via pip if an access token is avalable:  
-`pip install git+https://{token}@github.com/MrCheatak/FEBID_py.git#febid`
+Alternatively, it can be installed directly from GitHub via pip, although that will require compilation of some modules:  
+`pip install git+https://github.com/MrCheatak/FEBID_py`
 
-**Note**: Cython modules utilize OpenMP for parallel computations. You may need to install it in order to run the simulation.
-
-On Mac OSX it can be installed together with *LLVM/clang* using *brew*:
-	
-In Terminal: `brew install llvm`
-
-On Linux/Ubuntu it is available through *apt-get* and is compatible with the standard gcc compiler:
-
-In Terminal: `sudo apt-get install libomp-dev`
-
-On Windows it should be shipped with standard gcc compiler, so no actions are required from the user.
 
 ## Usage:
 
-If using an IDE like PyCharm the entry point is the source/start.py file.  
+If using an IDE like PyCharm the entry point is the febid/__main__.py file.  
 Alternatively, it can be run from the console with `python -m febid` once installed.
+Files from the Examples folder will be needed to run a simulation.
 
 1. The simulation setup is done via the control pannel.
 2. Define simulation volume by specifying a prepared .vtk file or create an empty volume from parameters
