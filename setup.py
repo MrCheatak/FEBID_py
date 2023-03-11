@@ -28,29 +28,29 @@ print(f'Platform: {platform, openMP_arg}')
 # Add include/link dirs, and modify the stdlib to libc++
 ext_modules = [
              Extension("febid.monte_carlo.compiled.etrajectory_c", ['febid/monte_carlo/compiled/etrajectory_c.pyx'],
-                         include_dirs=["/usr/local/opt/llvm/include"],
-                         library_dirs=["/usr/local/opt/llvm/lib"],
+                         # include_dirs=["/usr/local/opt/llvm/include"],
+                         # library_dirs=["/usr/local/opt/llvm/lib"],
                          # extra_compile_args=["-w", '-fopenmp'],
                          # libraries=libraries,
                          # extra_link_args=[openMP_arg]
                          ),
                Extension("febid.libraries.ray_traversal.traversal", ['febid/libraries/ray_traversal/traversal.pyx'],
-                         include_dirs=["/usr/local/opt/llvm/include"],
-                         library_dirs=["/usr/local/opt/llvm/lib"],
+                         # include_dirs=["/usr/local/opt/llvm/include"],
+                         # library_dirs=["/usr/local/opt/llvm/lib"],
                          # extra_compile_args=["-w", '-fopenmp'],
                          # libraries=libraries,
                          # extra_link_args=[openMP_arg]
                          ),
                Extension("febid.libraries.rolling.roll", ['febid/libraries/rolling/roll.pyx'],
-                         include_dirs=["/usr/local/opt/llvm/include"],
-                         library_dirs=["/usr/local/opt/llvm/lib"],
+                         # include_dirs=["/usr/local/opt/llvm/include"],
+                         # library_dirs=["/usr/local/opt/llvm/lib"],
                          # extra_compile_args=["-w", '-fopenmp'],
                          # libraries=libraries,
                          # extra_link_args=[openMP_arg]
                          ),
               Extension("febid.libraries.pde.tridiag", ['febid/libraries/pde/tridiag.pyx'],
-                         include_dirs=["/usr/local/opt/llvm/include"],
-                         library_dirs=["/usr/local/opt/llvm/lib"],
+                         # include_dirs=["/usr/local/opt/llvm/include"],
+                         # library_dirs=["/usr/local/opt/llvm/lib"],
                          # extra_compile_args=["-w", "-fopenmp"],
                          # libraries=libraries,
                          # extra_link_args=[openMP_arg]
@@ -59,7 +59,7 @@ ext_modules = [
 
 setuptools.setup(
     name='febid',
-    version='0.8.0',
+    version='0.8.2',
     author='Alexander Kuprava, Michael Huth',
     author_email='sandro1742@gmail.com',
     description='FEBID process simulator',
@@ -76,5 +76,5 @@ setuptools.setup(
                       'numexpr_mod'],
     ext_modules=cythonize(ext_modules),
     include_dirs=[np.get_include()],
-    pyhton_requires='>=3.7',
+    # pyhton_requires='>=3.7',
 )

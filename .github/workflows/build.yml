@@ -52,7 +52,14 @@ jobs:
         path: dist/*
     - name: Publish wheels to PyPI
       env:
-        TWINE_USERNAME: ${{ secrets.TEST_PYPI_USER }}
+        TWINE_USERNAME: __token__
         TWINE_PASSWORD: ${{ secrets.TEST_PYPI_PASSWORD }}
       run: |
-        twine upload dist/*
+        twine upload dist/*.whl
+    - name: Publish sdist to PyPi
+      if: ${{ matrix.os == 'windows-latest' }} && {{ matrix.python-version == '3.11' }}
+      env:
+        TWINE_USERNAME: __token__
+        TWINE_PASSWORD: ${{ secrets.TEST_PYPI_PASSWORD }}
+      run: |
+        twine upload --repository testpypi dist/*.tar.gz

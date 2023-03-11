@@ -1,7 +1,0 @@
-Tests3D module
-==============
-
-.. automodule:: Tests3D
-   :members:
-   :undoc-members:
-   :show-inheritance:

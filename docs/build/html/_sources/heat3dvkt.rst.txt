@@ -1,7 +1,0 @@
-heat3dvkt module
-================
-
-.. automodule:: heat3dvkt
-   :members:
-   :undoc-members:
-   :show-inheritance:
