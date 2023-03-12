@@ -5,15 +5,28 @@ import math
 import numpy as np
 
 
-def open_stream_file(file=None, offset=200, collapse=False, unit_pitch=0.13):
+MAX_UNIT = 65535 # 16-bit stream-fle resolution
+
+def pixel_pitch(hfw):
+    """
+    Get pixel pitch for a target HFW
+
+    :param hfw: half field width
+    :return:
+    """
+    return hfw*1000/MAX_UNIT
+
+
+def open_stream_file(file, hfw, offset=200, collapse=False):
     """
     Open stream file, convert to nm and define enclosing volume dimensions.
         A valid stream-file should consist of 3 columns and start with 's16' line.
 
     :param file: path to the stream-file
+    :param hfw: target half field width
     :param offset: determines a margin around the printing path
     :param collapse: if True, summ dwell time of consecutive instructions with identical coordinates
-    :return: normalized directives in nm and s, dimensions of the enclosing volume in nm
+    :return: normalized directives in nm and s, dimensions of the enclosing volume [z, y, x] in nm
     """
     if not file:
         raise FileNotFoundError
@@ -40,6 +53,7 @@ def open_stream_file(file=None, offset=200, collapse=False, unit_pitch=0.13):
         print('Done!')
 
     # Converting to simulation units
+    unit_pitch = pixel_pitch(hfw) # nm/pixel
     data[:, 0] /= 1E7  # converting [0.1 µs] to [s]
     data[:, 1] *= unit_pitch  # converting stream-file units to [nm]
     data[:, 2] *= unit_pitch
@@ -90,11 +104,12 @@ def open_stream_file(file=None, offset=200, collapse=False, unit_pitch=0.13):
     return data, np.array([z_dim, y_dim, x_dim], dtype=int)
 
 
-def analyze_pattern(file, unit_pitch):
+def analyze_pattern(file, hfw):
     """
     Parse stream-file and split it into stages
     """
-    data, shape = open_stream_file(file, collapse=True, unit_pitch=unit_pitch)
+    unit_pitch = pixel_pitch(hfw)
+    data, shape = open_stream_file(file, hfw=hfw, collapse=True)
     stages = []
     total_time = data[:, 2].sum()
     delta = data[1:] - data[:-1]

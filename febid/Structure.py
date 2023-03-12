@@ -258,9 +258,9 @@ class Structure:
         Changing dimensions along y and x axes should be done mindful, because if these require extension
         in the negative direction, that data has to be centered after the resizing.
 
-        :param delta_z: increment from the z-axis, nm
+        :param delta_z: increment for the z-axis, nm
         :param delta_y: increment for the y-axis, nm
-        :param delta_x: increment fro the x-axis, nm
+        :param delta_x: increment for the x-axis, nm
         :return:
         """
         d_i, d_j, d_k = np.asarray([delta_z, delta_y, delta_x], dtype=int)//self.cell_dimension
@@ -343,7 +343,7 @@ class Structure:
         # 3. Surface cells now have changed values and have to be separated from surface on the solid side
         #   it achieved by the intersection of 'positive' and convoluted arrays, as surface is ultimately not a solid
 
-        print(f'generating surface index...', end='')
+        # print(f'generating surface index...', end='')
         positive = np.full(self.deposit.shape, False, dtype=bool)
         positive[self.deposit >= 0] = True  # gas cells
         grid = np.copy(self.deposit)
@@ -365,7 +365,7 @@ class Structure:
         grid += positive
         grid += combined
         self.surface_bool[grid == 2] = True
-        print(f'done!', end=' ')
+        # print(f'done!', end=' ')
 
     def define_semi_surface(self):
         """
@@ -377,19 +377,19 @@ class Structure:
         If semi-surface cell turns into a regular surface cell, the precursor density in it is preserved.
        :return:
        """
-        print(f'generating semi-surface index...')
+        # print(f'generating semi-surface index...')
         grid = np.zeros_like(self.deposit)
         self.__stencil_3d(grid, self.surface_bool)
         grid[self.deposit != 0] = 0
         grid[self.surface_bool] = 0
         grid[grid < 2] = 0
         self.semi_surface_bool[grid != 0] = True
-        print(f'done!', end=' ')
+        # print(f'done!', end=' ')
 
     def define_surface_neighbors(self, n=0, deposit=None, surface=None, neighbors=None):
         """
         Find solid cells that are n-closest neighbors to the surface cells.
-        If deposit, surface amd neighbors are provided, nearest neighbors are defined for them.
+        If deposit, surface and neighbors are provided, nearest neighbors are defined for them.
 
         :param n: order of nearest neighbor, if 0, then index all the solid cells
         :return:
@@ -450,12 +450,12 @@ class Structure:
         """
         # Rolling in all directions marks all the neighboring cells
         # Subtracting surface from that selection results in a "shell" around the surface
-        print(f'generating ghost cells index...', end='')
+        # print(f'generating ghost cells index...', end='')
         roller = np.logical_or(self.surface_bool, self.semi_surface_bool)
         self.ghosts_bool = np.copy(roller)
         self.__stencil_3d(self.ghosts_bool, roller)
         self.ghosts_bool[roller] = False
-        print('done!', end=' ')
+        # print('done!', end=' ')
 
     def max_z(self):
         """

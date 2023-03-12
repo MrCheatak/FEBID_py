@@ -14,7 +14,7 @@ from PyQt5 import QtCore, QtGui, QtWidgets
 class Ui_MainWindow(object):
     def setupUi(self, MainWindow):
         MainWindow.setObjectName("MainWindow")
-        MainWindow.resize(605, 684)
+        MainWindow.resize(605, 698)
         self.centralwidget = QtWidgets.QWidget(MainWindow)
         self.centralwidget.setObjectName("centralwidget")
         self.verticalLayout = QtWidgets.QVBoxLayout(self.centralwidget)
@@ -84,7 +84,7 @@ class Ui_MainWindow(object):
         self.input_cell_size.setGeometry(QtCore.QRect(298, 92, 45, 21))
         self.input_cell_size.setInputMask("")
         self.input_cell_size.setMaxLength(4)
-        self.input_cell_size.setReadOnly(True)
+        self.input_cell_size.setReadOnly(False)
         self.input_cell_size.setObjectName("input_cell_size")
         self.l_cell_size_units = QtWidgets.QLabel(self.groupBox)
         self.l_cell_size_units.setGeometry(QtCore.QRect(346, 96, 19, 16))
@@ -101,7 +101,7 @@ class Ui_MainWindow(object):
         self.l_substrate_height.setGeometry(QtCore.QRect(382, 96, 105, 16))
         self.l_substrate_height.setObjectName("l_substrate_height")
         self.groupBox_2 = QtWidgets.QGroupBox(self.tab_febid)
-        self.groupBox_2.setGeometry(QtCore.QRect(6, 149, 580, 127))
+        self.groupBox_2.setGeometry(QtCore.QRect(6, 149, 580, 161))
         self.groupBox_2.setObjectName("groupBox_2")
         self.choice_stream_file = QtWidgets.QRadioButton(self.groupBox_2)
         self.choice_stream_file.setGeometry(QtCore.QRect(12, 94, 119, 20))
@@ -177,8 +177,20 @@ class Ui_MainWindow(object):
         self.l_pitc_units = QtWidgets.QLabel(self.groupBox_2)
         self.l_pitc_units.setGeometry(QtCore.QRect(262, 62, 19, 16))
         self.l_pitc_units.setObjectName("l_pitc_units")
+        self.l_hfw = QtWidgets.QLabel(self.groupBox_2)
+        self.l_hfw.setGeometry(QtCore.QRect(393, 130, 41, 16))
+        self.l_hfw.setObjectName("l_hfw")
+        self.input_hfw = QtWidgets.QLineEdit(self.groupBox_2)
+        self.input_hfw.setEnabled(False)
+        self.input_hfw.setGeometry(QtCore.QRect(445, 126, 61, 21))
+        self.input_hfw.setInputMask("")
+        self.input_hfw.setMaxLength(32767)
+        self.input_hfw.setObjectName("input_hfw")
+        self.l_hfw_units = QtWidgets.QLabel(self.groupBox_2)
+        self.l_hfw_units.setGeometry(QtCore.QRect(513, 130, 41, 16))
+        self.l_hfw_units.setObjectName("l_hfw_units")
         self.groupBox_4 = QtWidgets.QGroupBox(self.tab_febid)
-        self.groupBox_4.setGeometry(QtCore.QRect(6, 285, 580, 121))
+        self.groupBox_4.setGeometry(QtCore.QRect(6, 315, 580, 121))
         self.groupBox_4.setObjectName("groupBox_4")
         self.open_settings_file_button = QtWidgets.QPushButton(self.groupBox_4)
         self.open_settings_file_button.setGeometry(QtCore.QRect(158, 20, 113, 32))
@@ -204,10 +216,10 @@ class Ui_MainWindow(object):
         self.checkbox_temperature_tracking.setGeometry(QtCore.QRect(400, 90, 161, 21))
         self.checkbox_temperature_tracking.setObjectName("checkbox_temperature_tracking")
         self.start_febid_button = QtWidgets.QPushButton(self.tab_febid)
-        self.start_febid_button.setGeometry(QtCore.QRect(245, 535, 113, 45))
+        self.start_febid_button.setGeometry(QtCore.QRect(245, 565, 113, 45))
         self.start_febid_button.setObjectName("start_febid_button")
         self.groupBox_7 = QtWidgets.QGroupBox(self.tab_febid)
-        self.groupBox_7.setGeometry(QtCore.QRect(6, 410, 580, 117))
+        self.groupBox_7.setGeometry(QtCore.QRect(6, 440, 580, 117))
         self.groupBox_7.setObjectName("groupBox_7")
         self.checkbox_save_simulation_data = QtWidgets.QCheckBox(self.groupBox_7)
         self.checkbox_save_simulation_data.setGeometry(QtCore.QRect(14, 30, 157, 20))
@@ -223,14 +235,14 @@ class Ui_MainWindow(object):
         self.l_sim_data_interval_units = QtWidgets.QLabel(self.groupBox_7)
         self.l_sim_data_interval_units.setGeometry(QtCore.QRect(286, 32, 43, 16))
         self.l_sim_data_interval_units.setObjectName("l_sim_data_interval_units")
-        self.input_simulation_data_interval = QtWidgets.QLineEdit(self.groupBox_7)
-        self.input_simulation_data_interval.setGeometry(QtCore.QRect(240, 28, 43, 21))
-        self.input_simulation_data_interval.setMaxLength(4)
-        self.input_simulation_data_interval.setObjectName("input_simulation_data_interval")
-        self.input_structure_snapshot_interval = QtWidgets.QLineEdit(self.groupBox_7)
-        self.input_structure_snapshot_interval.setGeometry(QtCore.QRect(240, 56, 43, 21))
-        self.input_structure_snapshot_interval.setMaxLength(4)
-        self.input_structure_snapshot_interval.setObjectName("input_structure_snapshot_interval")
+        self.input_sim_data_interval = QtWidgets.QLineEdit(self.groupBox_7)
+        self.input_sim_data_interval.setGeometry(QtCore.QRect(240, 28, 43, 21))
+        self.input_sim_data_interval.setMaxLength(4)
+        self.input_sim_data_interval.setObjectName("input_sim_data_interval")
+        self.input_snapshot_interval = QtWidgets.QLineEdit(self.groupBox_7)
+        self.input_snapshot_interval.setGeometry(QtCore.QRect(240, 56, 43, 21))
+        self.input_snapshot_interval.setMaxLength(4)
+        self.input_snapshot_interval.setObjectName("input_snapshot_interval")
         self.l_snapshot_interval = QtWidgets.QLabel(self.groupBox_7)
         self.l_snapshot_interval.setGeometry(QtCore.QRect(202, 60, 39, 16))
         self.l_snapshot_interval.setObjectName("l_snapshot_interval")
@@ -254,7 +266,7 @@ class Ui_MainWindow(object):
         self.save_folder_display.setReadOnly(True)
         self.save_folder_display.setObjectName("save_folder_display")
         self.checkbox_show = QtWidgets.QCheckBox(self.tab_febid)
-        self.checkbox_show.setGeometry(QtCore.QRect(405, 550, 133, 20))
+        self.checkbox_show.setGeometry(QtCore.QRect(405, 575, 133, 20))
         self.checkbox_show.setChecked(False)
         self.checkbox_show.setObjectName("checkbox_show")
         self.checkbox_load_last_session = QtWidgets.QCheckBox(self.tab_febid)
@@ -500,8 +512,8 @@ class Ui_MainWindow(object):
         self.input_repeats.editingFinished.connect(MainWindow.check_input) # type: ignore
         self.checkbox_save_simulation_data.stateChanged['int'].connect(MainWindow.change_state_save_sim_data) # type: ignore
         self.checkbox_save_snapshots.stateChanged['int'].connect(MainWindow.change_state_save_snapshots) # type: ignore
-        self.input_simulation_data_interval.editingFinished.connect(MainWindow.check_input) # type: ignore
-        self.input_structure_snapshot_interval.editingFinished.connect(MainWindow.check_input) # type: ignore
+        self.input_sim_data_interval.editingFinished.connect(MainWindow.check_input) # type: ignore
+        self.input_snapshot_interval.editingFinished.connect(MainWindow.check_input) # type: ignore
         self.tabWidget.currentChanged['int'].connect(MainWindow.tab_switched) # type: ignore
         self.open_save_folder_button.clicked.connect(MainWindow.open_save_directory) # type: ignore
         self.checkbox_show.stateChanged['int'].connect(MainWindow.change_state_show_process) # type: ignore
@@ -511,6 +523,7 @@ class Ui_MainWindow(object):
         self.checkbox_temperature_tracking.stateChanged['int'].connect(MainWindow.change_state_temperature_tracking) # type: ignore
         self.gauss_order.editingFinished.connect(MainWindow.check_input) # type: ignore
         self.checkbox_beam_heating.stateChanged['int'].connect(MainWindow.change_state_temperature_tracking) # type: ignore
+        self.input_hfw.editingFinished.connect(MainWindow.check_input) # type: ignore
         QtCore.QMetaObject.connectSlotsByName(MainWindow)
 
     def retranslateUi(self, MainWindow):
@@ -570,6 +583,10 @@ class Ui_MainWindow(object):
         self.l_param2_units.setText(_translate("MainWindow", "nm"))
         self.l_dwell_time_units.setText(_translate("MainWindow", "µs"))
         self.l_pitc_units.setText(_translate("MainWindow", "nm"))
+        self.l_hfw.setText(_translate("MainWindow", "HFW:"))
+        self.input_hfw.setText(_translate("MainWindow", "8.5"))
+        self.input_hfw.setPlaceholderText(_translate("MainWindow", "Input..."))
+        self.l_hfw_units.setText(_translate("MainWindow", "µm"))
         self.groupBox_4.setTitle(_translate("MainWindow", "Beam and precursor"))
         self.open_settings_file_button.setText(_translate("MainWindow", "Open file"))
         self.open_precursor_parameters_file_button.setText(_translate("MainWindow", "Open file"))
@@ -585,10 +602,10 @@ class Ui_MainWindow(object):
         self.checkbox_save_snapshots.setText(_translate("MainWindow", "Save structure snapshots"))
         self.l_sim_data_interval.setText(_translate("MainWindow", "every"))
         self.l_sim_data_interval_units.setText(_translate("MainWindow", "x 0.1 s"))
-        self.input_simulation_data_interval.setText(_translate("MainWindow", "1"))
-        self.input_simulation_data_interval.setPlaceholderText(_translate("MainWindow", "1"))
-        self.input_structure_snapshot_interval.setText(_translate("MainWindow", "1"))
-        self.input_structure_snapshot_interval.setPlaceholderText(_translate("MainWindow", "10"))
+        self.input_sim_data_interval.setText(_translate("MainWindow", "1"))
+        self.input_sim_data_interval.setPlaceholderText(_translate("MainWindow", "1"))
+        self.input_snapshot_interval.setText(_translate("MainWindow", "1"))
+        self.input_snapshot_interval.setPlaceholderText(_translate("MainWindow", "10"))
         self.l_snapshot_interval.setText(_translate("MainWindow", "every"))
         self.l_snapshot_interval_units.setText(_translate("MainWindow", "x 0.1 s"))
         self.input_unique_name.setPlaceholderText(_translate("MainWindow", "experiment_1"))

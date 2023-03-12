@@ -79,7 +79,8 @@ def start_no_ui(config_f=None):
             return
     if params['pattern_source'] == 'stream_file':  # importing printing path from stream_file
         try:
-            printing_path, shape = sp.open_stream_file(params['stream_file_filename'])
+            hfw = params['hfw']
+            printing_path, shape = sp.open_stream_file(params['stream_file_filename'], hfw)
         except Exception as e:
             print(f'Failed to open stream-file: {e.args}')
             return
