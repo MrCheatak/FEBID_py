@@ -6,15 +6,15 @@ FEBID Simulation package
 :Maintainer: Alexander Kuprava
 :Contact: alexkuparava@gmail.com
 :URL: https://github.com/mrcheatak/febid_py
-:Documentation: http://febid.readthedocs.io
+:Documentation: http://febid-py.readthedocs.io
 :PyPi: |version|
 :ReadTheDocs: |docs|
 :Code quality: |codiga|
 
 .. |version| image:: https://badge.fury.io/py/febid.svg
     :target: https://badge.fury.io/py/febid
-.. |docs| image:: https://readthedocs.org/projects/febid-docs2/badge/?version=latest
-    :target: https://febid.readthedocs.io/en/latest/?badge=latest
+.. |docs| image:: https://readthedocs.org/projects/febid-py/badge/?version=latest
+    :target: https://febid-py.readthedocs.io/en/latest/?badge=latest
     :alt: Documentation Status
 .. |codiga| image:: https://api.codiga.io/project/35990/status/svg
     :target: https://app.codiga.io/hub/project/35990/FEBID_py
@@ -87,7 +87,7 @@ time and hit **Start**.
 Documentation
 --------------
 Full documentation with interface guide and manual, algorithm explanations and API can be found on
-`readthedocs <http://febid.readthedocs.io>`_
+`readthedocs <http://febid-py.readthedocs.io>`_
 
 Usage
 -------
