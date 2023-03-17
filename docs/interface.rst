@@ -6,9 +6,11 @@ Control panel:
 Here is the list of all settings available on the control panel.
 
 **Load last session** – initially unchecked. Checking it will create a session file at the location, from where the
-Python command was executed. Lunching from the same location again will load settings used previously.
+Python command was executed. Lunching from the same location again will load the saved settings.
 This file can be as well be manually edited to change the settings preset,
 i.e for a `series of simulation runs <series.html>`_.
+
+In `File` menu, `Open session` option allows loading a session file from a different directory.
 
 **Simulation volume:**
 

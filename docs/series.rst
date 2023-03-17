@@ -1,9 +1,36 @@
-===================================
-Setting up a series of simulations
-===================================
+=======================
+Running the simulation
+=======================
 
+Launching options
+""""""""""""""""""
+
+The most straightforward way to launch the simulator is to call the package:
+
+:code:`python -m febid`
+
+Checking `Load last session` will create a session file that can be loaded to restore the setup.
+
+Another method to call the UI is by specifying the session file:
+
+:code:`python -m febid ui <session_file>`
+
+Alternatively, simulator can be started without the Control Panel UI:
+
+:code:`python -m febid no_ui <session_file>`
+
+.. important:: Starting without the UI will launch the simulation run right away. While UI will show warning messages,
+                if something is wrong, starting right away with faulty session will most probably crash the program.
+
+Using any of these options prints launching info in the console.
+
+The simulation can as well be launched from another Python script, given a valid session, setting and precursor
+parameters files. `start.py` has the utilities to do that.
+
+Setting up a series of simulations
+"""""""""""""""""""""""""""""""""""
 Optimisation of pattern files, simulation input parameters or simulation of several structures may require
-running a significant number of simulations. The package offers some simple automation features for such tasks.
+running a number of simulations. The package offers some simple automation features for such tasks.
 Setting up a simulation series requires composing a Python script.
 
 The first feature allows executing a sequence of simulations arising from consequently changing a single parameter.
@@ -59,6 +86,6 @@ desired pattern files are collected in a single folder, that has to be provided 
 
 .. note::
     Scanning only modifies the selected parameter(s). Thus, all other parameters as well as saving options and output
-    directory have to be preset.
+    directory have to be pre-set.
 
 

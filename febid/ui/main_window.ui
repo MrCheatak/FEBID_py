@@ -48,6 +48,9 @@
          <property name="text">
           <string>Parameters</string>
          </property>
+         <property name="checked">
+          <bool>true</bool>
+         </property>
         </widget>
         <widget class="QRadioButton" name="choice_vtk_file">
          <property name="geometry">
@@ -62,7 +65,7 @@
           <string>VTK file</string>
          </property>
          <property name="checked">
-          <bool>true</bool>
+          <bool>false</bool>
          </property>
         </widget>
         <widget class="QRadioButton" name="choice_auto">
@@ -110,7 +113,7 @@
           <number>5</number>
          </property>
          <property name="readOnly">
-          <bool>true</bool>
+          <bool>false</bool>
          </property>
          <property name="placeholderText">
           <string>200</string>
@@ -129,16 +132,16 @@
           <string/>
          </property>
          <property name="text">
-          <string>400</string>
+          <string>200</string>
          </property>
          <property name="maxLength">
           <number>5</number>
          </property>
          <property name="readOnly">
-          <bool>true</bool>
+          <bool>false</bool>
          </property>
          <property name="placeholderText">
-          <string>400</string>
+          <string>200</string>
          </property>
         </widget>
         <widget class="QLineEdit" name="input_height">
@@ -160,7 +163,7 @@
           <number>5</number>
          </property>
          <property name="readOnly">
-          <bool>true</bool>
+          <bool>false</bool>
          </property>
          <property name="placeholderText">
           <string>200</string>
@@ -276,7 +279,7 @@
           <string/>
          </property>
          <property name="text">
-          <string>2</string>
+          <string>10</string>
          </property>
          <property name="maxLength">
           <number>4</number>
@@ -285,7 +288,7 @@
           <bool>false</bool>
          </property>
          <property name="placeholderText">
-          <string>2</string>
+          <string>10</string>
          </property>
         </widget>
         <widget class="QLabel" name="l_cell_size_units">
@@ -327,13 +330,13 @@
           <string/>
          </property>
          <property name="text">
-          <string>8</string>
+          <string>20</string>
          </property>
          <property name="maxLength">
           <number>4</number>
          </property>
          <property name="placeholderText">
-          <string>4</string>
+          <string>20</string>
          </property>
         </widget>
         <widget class="QLabel" name="l_substrate_height">
@@ -943,10 +946,10 @@
           </rect>
          </property>
          <property name="text">
-          <string>1</string>
+          <string>0.1</string>
          </property>
          <property name="maxLength">
-          <number>4</number>
+          <number>5</number>
          </property>
          <property name="placeholderText">
           <string>1</string>
@@ -965,7 +968,7 @@
           <string>1</string>
          </property>
          <property name="maxLength">
-          <number>4</number>
+          <number>5</number>
          </property>
          <property name="placeholderText">
           <string>10</string>
@@ -1188,7 +1191,7 @@
           <number>5</number>
          </property>
          <property name="placeholderText">
-          <string>400</string>
+          <string>200</string>
          </property>
         </widget>
         <widget class="QLineEdit" name="input_length_mc">
@@ -1317,13 +1320,13 @@
           <string/>
          </property>
          <property name="text">
-          <string>20</string>
+          <string>10</string>
          </property>
          <property name="maxLength">
           <number>4</number>
          </property>
          <property name="placeholderText">
-          <string>2</string>
+          <string>10</string>
          </property>
         </widget>
         <widget class="QLabel" name="l_cell_size_units_mc">
@@ -1368,7 +1371,7 @@
           <number>4</number>
          </property>
          <property name="placeholderText">
-          <string>4</string>
+          <string>20</string>
          </property>
         </widget>
         <widget class="QLabel" name="l_substrate_height_units_mc">
@@ -2705,6 +2708,22 @@
     </hint>
    </hints>
   </connection>
+  <connection>
+   <sender>actionOpen_session</sender>
+   <signal>triggered(bool)</signal>
+   <receiver>MainWindow</receiver>
+   <slot>open_new_session(bool)</slot>
+   <hints>
+    <hint type="sourcelabel">
+     <x>-1</x>
+     <y>-1</y>
+    </hint>
+    <hint type="destinationlabel">
+     <x>302</x>
+     <y>348</y>
+    </hint>
+   </hints>
+  </connection>
  </connections>
  <designerdata>
   <property name="gridDeltaX">
@@ -2751,5 +2770,6 @@
   <slot>change_state_load_last_session(int)</slot>
   <slot>unique_name_changed()</slot>
   <slot>change_state_temperature_tracking(int)</slot>
+  <slot>open_new_session(bool)</slot>
  </slots>
 </ui>

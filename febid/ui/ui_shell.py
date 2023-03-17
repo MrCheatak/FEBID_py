@@ -4,6 +4,7 @@ import random
 from typing import Union
 from contextlib import suppress
 import faulthandler
+
 faulthandler.enable(file=sys.stderr)
 
 from PyQt5.QtWidgets import QApplication, QMainWindow, QMessageBox
@@ -22,6 +23,9 @@ from febid.libraries.vtk_rendering.VTK_Rendering import read_field_data
 
 
 class UI_Group(set):
+    """
+    A collection of UI elements.
+    """
     def __init__(self, *args):
         super().__init__()
         if type(args[0]) is set:
@@ -29,11 +33,21 @@ class UI_Group(set):
         else:
             for arg in args:
                 self.add(arg)
+
     def disable(self):
+        """
+        Disable UI element.
+
+        :return:
+        """
         for element in self:
             element.setEnabled(False)
 
     def enable(self):
+        """
+        Enable UI element.
+        :return:
+        """
         for element in self:
             element.setEnabled(True)
 
@@ -53,8 +67,8 @@ class MainPannel(QMainWindow, UI_MainPanel):
             self.last_session_filename = 'last_session.yml'
         self.session = None
         self.save_flag = False
-        self.structure_source = 'vtk' # vtk, geom or auto
-        self.pattern_source = 'simple' # simple or stream_file
+        self.structure_source = 'vtk'  # vtk, geom or auto
+        self.pattern_source = 'simple'  # simple or stream_file
         self.pattern = 'Point'
         self.vtk_filename = ''
         self.geom_parameters_filename = ''
@@ -78,145 +92,54 @@ class MainPannel(QMainWindow, UI_MainPanel):
         :param filename: name of the file
         :return:
         """
-        if filename:
-            pass
-        else:
+        if not filename:
             filename = self.last_session_filename
+        print('Trying to load last session...', end='')
+        if os.path.exists(filename):
+            self.open_new_session(True, filename)
+        else:
+            yml = YAML()
+            input_stub = ''.join(self.last_session_stub)
+            self.session = yml.load(input_stub)
+            self.__gather_session_config()
+        print('done!')
+
+    def open_new_session(self, triggered, file=''):
+        """
+        Load a session from a config file.
+
+        :param triggered:
+        :return:
+        """
+        if not file:
+            file, _ = QtWidgets.QFileDialog.getOpenFileName()
+        if not file:
+            return
         try:
-            print('Trying to load last session...', end='')
-            if not os.path.exists(filename):
-                raise FileNotFoundError
-            with open(filename, 'r+b') as f:
+            with open(file, 'r+b') as f:
                 yml = YAML()
                 self.session = params = yml.load(f)
-                if params is None:
-                    raise RuntimeError('YAML error: was unable to read the .yml configuration file.')
-                if params['load_last_session'] is True:
-                    with suppress(KeyError):
-                        # Setting internal parameters
-                        # Some parameters are stored in the interface
-                        self.save_flag = True
-                        self.structure_source = params['structure_source']
-                        self.vtk_filename = params['vtk_filename']
-                        self.geom_parameters_filename = params['geom_parameters_filename']
-                        self.pattern_source = params['pattern_source']
-                        self.pattern = params['pattern']
-                        self.stream_file_filename = params['stream_file_filename']
-                        self.settings_filename = params['settings_filename']
-                        self.precursor_parameters_filename = params['precursor_filename']
-                        self.temperature_tracking = params['temperature_tracking']
-                        self.save_directory = params['save_directory']
-
-                        # Setting FEBID tab interface
-                        self.checkbox_load_last_session.setChecked(True)
-                        if self.structure_source == 'vtk':
-                            self.vtk_chosen()
-                            if self.vtk_filename:
-                                self.open_vtk_file(self.vtk_filename)
-                        elif self.structure_source == 'geom':
-                            self.geom_parameters_chosen()
-                        elif self.structure_source == 'auto':
-                            self.auto_chosen()
-                        self.vtk_filename_display.setText(self.vtk_filename)
-                        self.input_width.setText(str(params['width']))
-                        self.input_length.setText(str(params['length']))
-                        self.input_height.setText(str(params['height']))
-                        self.input_cell_size.setText(str(params['cell_size']))
-                        self.input_substrate_height.setText(str(params['substrate_height']))
-                        self.pattern_selection.setCurrentText(str.title(self.pattern))
-                        self.pattern_selection_changed(str.title(self.pattern))
-                        if self.pattern_source == 'simple':
-                            self.simple_pattern_chosen()
-                        elif self.pattern_source == 'stream_file':
-                            self.stream_file_chosen()
-                        self.input_param1.setText(str(params['param1']))
-                        self.input_param2.setText(str(params['param2']))
-                        self.input_dwell_time.setText(str(params['dwell_time']))
-                        self.input_pitch.setText(str(params['pitch']))
-                        self.input_repeats.setText(str(params['repeats']))
-                        self.stream_file_filename_display.setText(self.stream_file_filename)
-                        self.input_hfw.setText(str(params['hfw']))
-                        self.settings_filename_display.setText(self.settings_filename)
-                        self.precursor_parameters_filename_display.setText(self.precursor_parameters_filename)
-                        self.checkbox_temperature_tracking.setChecked(self.temperature_tracking)
-                        self.change_state_save_sim_data(params['save_simulation_data'])
-                        self.change_state_save_snapshots(params['save_structure_snapshot'])
-                        self.input_sim_data_interval.setText(str(params['simulation_data_interval']))
-                        self.input_snapshot_interval.setText(str(params['structure_snapshot_interval']))
-                        self.input_unique_name.setText(params['unique_name'])
-                        self.save_folder_display.setText(self.save_directory)
-                        self.change_state_show_process(params['show_process'])
-
-                        # Setting MC interface
-                        if self.structure_source == 'vtk':
-                            self.vtk_chosen()
-                        elif self.structure_source == 'geom':
-                            self.geom_parameters_chosen()
-                        elif self.structure_source == 'auto':
-                            self.auto_chosen()
-                        self.vtk_filename_display_mc.setText(self.vtk_filename)
-                        self.input_width_mc.setText(str(params['width']))
-                        self.input_length_mc.setText(str(params['length']))
-                        self.input_height_mc.setText(str(params['height']))
-                        self.input_cell_size_mc.setText(str(params['cell_size']))
-                        self.input_substrate_height_mc.setText(str(params['substrate_height']))
-                        if self.settings_filename:
-                            self.open_settings_file(self.settings_filename)
-                        self.settings_filename_display_mc.setText(self.settings_filename)
-                        self.precursor_parameters_filename_display_mc.setText(self.precursor_parameters_filename)
-                        self.checkbox_beam_heating.setChecked(self.temperature_tracking)
-
-
-                print('done!')
-        except FileNotFoundError:
-                yml = YAML()
                 input = ''.join(self.last_session_stub)
-                self.session = yml.load(input)
-                self.session['load_last_session'] = self.save_flag
-                self.session['structure_source'] = self.structure_source
-                self.session['vtk_filename'] = self.vtk_filename
-                self.session['geom_parameters_filename'] = self.geom_parameters_filename
-                self.session['width'] = int(self.input_width.text())
-                self.session['length'] = int(self.input_length.text())
-                self.session['height'] = int(self.input_height.text())
-                self.session['cell_size'] = int(self.input_cell_size.text())
-                self.session['substrate_height'] = int(self.input_substrate_height.text())
-
-                self.session['pattern_source'] = self.pattern_source
-                self.session['pattern'] = self.pattern_selection.currentText()
-                self.session['param1'] = float(self.input_param1.text())
-                self.session['param2'] = float(self.input_param2.text())
-                self.session['dwell_time'] = int(self.input_dwell_time.text())
-                self.session['pitch'] = int(self.input_pitch.text())
-                self.session['repeats'] = int(self.input_repeats.text())
-                self.session['stream_file_filename'] = self.stream_file_filename
-                self.session['hfw'] = float(self.input_hfw.text())
-
-                self.session['settings_filename'] = self.settings_filename
-                self.session['precursor_filename'] = self.precursor_parameters_filename
-                self.session['temperature_tracking'] = self.temperature_tracking
-
-                self.session['save_simulation_data'] = self.checkbox_save_simulation_data.isChecked()
-                self.session['save_structure_snapshot'] = self.checkbox_save_snapshots.isChecked()
-                self.session['simulation_data_interval'] = float(self.input_sim_data_interval.text())
-                self.session['structure_snapshot_interval'] = float(self.input_snapshot_interval.text())
-                self.session['unique_name'] = self.input_unique_name.text()
-                self.session['save_directory'] = self.save_directory
-
-                self.session['show_process'] = self.checkbox_show.isChecked()
-
-                if self.save_flag:
-                    print('Last session file not found, creating a new one.')
-                    with open(filename, "x") as f:
-                        self.save_parameter('show_process', self.checkbox_show.isChecked())
+                session = yml.load(input)
+                if params.keys() != session.keys():
+                    raise ImportError('Failed to open session file.')
+        except ImportError as e:
+            self.view_message('Session file', *e.args)
+            return
+        except Exception as e:
+            raise e
+        with open(file, 'r+b') as f:
+            self.__load_config(self.session)
+            self.last_session_filename = f.name
+            self.checkbox_load_last_session.setToolTip(f.name)
 
     def change_state_load_last_session(self, param=None):
         switch = True if param else False
         self.checkbox_load_last_session.setChecked(switch)
         self.save_flag = switch
-        self.save_parameter('load_last_session', switch)
         if switch and self.initialized:
             self.open_last_session()
+        self.save_parameter('load_last_session', switch)
 
     def vtk_chosen(self):
         self.structure_source = 'vtk'
@@ -284,10 +207,8 @@ class MainPannel(QMainWindow, UI_MainPanel):
         self.pattern_source = 'stream_file'
         # Changing FEBID tab interface
         self.choice_stream_file.setChecked(True)
-        for ui_element in self.ui_pattern:
-            ui_element.setEnabled(False)
-        for ui_element in self.ui_stream_file:
-            ui_element.setEnabled(True)
+        self.ui_pattern.disable()
+        self.ui_stream_file.enable()
 
         self.save_parameter('pattern_source', self.pattern_source)
 
@@ -318,7 +239,7 @@ class MainPannel(QMainWindow, UI_MainPanel):
         #  Check if the specified file is a valid .vtk file
         #  Insert parameters into fields
         if not file:
-            file,_ = QtWidgets.QFileDialog.getOpenFileName()
+            file, _ = QtWidgets.QFileDialog.getOpenFileName()
             if not file:
                 return
         try:
@@ -327,7 +248,7 @@ class MainPannel(QMainWindow, UI_MainPanel):
             deposit.load_from_vtk(vtk_obj)
             structure = deposit.deposit
             cell_dim = deposit.cell_dimension
-            zdim, ydim, xdim = [str(int(dim*cell_dim)) for dim in list(structure.shape)]
+            zdim, ydim, xdim = [str(int(dim * cell_dim)) for dim in list(structure.shape)]
             cell_dim = str(int(cell_dim))
             try:
                 substrate_height = str(deposit.substrate_height * deposit.cell_dimension)
@@ -352,12 +273,14 @@ class MainPannel(QMainWindow, UI_MainPanel):
                 self.y_pos.setText(str(params[2][1]))
             self.save_parameter('vtk_filename', file)
         except Exception as e:
-            self.view_message('File read error', 'Specified file is not a valid VTK file. Please choose a valid .vtk file.')
+            self.view_message('File read error',
+                              'Specified file is not a valid VTK file. Please choose a valid .vtk file.')
             print("Was unable to open .vtk file. Following error occurred:")
             print(e.args)
+
     def open_geom_parameters_file(self, file=''):
         if not file:
-            file,_ = QtWidgets.QFileDialog.getOpenFileName()
+            file, _ = QtWidgets.QFileDialog.getOpenFileName()
         if not file:
             return
         try:
@@ -381,20 +304,21 @@ class MainPannel(QMainWindow, UI_MainPanel):
             self.input_substrate_height_mc.setText(substrate_height)
             self.save_parameter('geom_parameters_filename', file)
         except Exception as e:
-            print("Was unable to open .yaml geometry parameters file. Following error occurred:")
+            print("Was unable to open .yml geometry parameters file. Following error occurred:")
             print(e.args)
-        ### Read and insert parameters
+
     def open_stream_file(self, file=''):
         if not file:
-            file,_ = QtWidgets.QFileDialog.getOpenFileName()
+            file, _ = QtWidgets.QFileDialog.getOpenFileName()
             if not file:
                 return
         self.stream_file_filename = file
         self.stream_file_filename_display.setText(file)
         self.save_parameter('stream_file_filename', file)
+
     def open_settings_file(self, file=''):
         if not file:
-            file,_ = QtWidgets.QFileDialog.getOpenFileName()
+            file, _ = QtWidgets.QFileDialog.getOpenFileName()
             if not file:
                 return
         ### Read and insert parameters in Monte Carlo tab
@@ -411,9 +335,10 @@ class MainPannel(QMainWindow, UI_MainPanel):
         except Exception as e:
             print("Was unable to open .yaml beam parameters file. Following error occurred:")
             print(e.args)
+
     def open_precursor_parameters_file(self, file=''):
         if not file:
-            file,_ = QtWidgets.QFileDialog.getOpenFileName()
+            file, _ = QtWidgets.QFileDialog.getOpenFileName()
             if not file:
                 return
         try:
@@ -424,15 +349,18 @@ class MainPannel(QMainWindow, UI_MainPanel):
             self.precursor_parameters_filename = file
             self.save_parameter('precursor_filename', file)
         except Exception as e:
-            self.view_message('File read error', 'Specified file is not a valid parameters file. Please choose a valid .yml file.')
+            self.view_message('File read error',
+                              'Specified file is not a valid parameters file. Please choose a valid .yml file.')
             print("Was unable to open .yml precursor parameters file. Following error occurred:")
             print(e.args)
 
     def change_state_save_sim_data(self, param=None):
         switch = True if param else False
         self.checkbox_save_simulation_data.setChecked(switch)
-        if switch: self.ui_sim_data_interval.enable()
-        else: self.ui_sim_data_interval.disable()
+        if switch:
+            self.ui_sim_data_interval.enable()
+        else:
+            self.ui_sim_data_interval.disable()
         if switch or self.checkbox_save_snapshots.isChecked():
             self.ui_unique_name.enable()
             self.ui_save_folder.enable()
@@ -444,8 +372,10 @@ class MainPannel(QMainWindow, UI_MainPanel):
     def change_state_save_snapshots(self, param=None):
         switch = True if param else False
         self.checkbox_save_snapshots.setChecked(switch)
-        if switch: self.ui_snapshot.enable()
-        else: self.ui_snapshot.disable()
+        if switch:
+            self.ui_snapshot.enable()
+        else:
+            self.ui_snapshot.disable()
         if switch or self.checkbox_save_snapshots.isChecked():
             self.ui_unique_name.enable()
             self.ui_save_folder.enable()
@@ -488,7 +418,7 @@ class MainPannel(QMainWindow, UI_MainPanel):
     def start_febid(self):
         # Creating a simulation volume
         structure = Structure()
-        if self.structure_source == 'vtk': # opening from a .vtk file
+        if self.structure_source == 'vtk':  # opening from a .vtk file
             try:
                 structure.load_from_vtk(pv.read(self.vtk_filename))
             except:
@@ -500,12 +430,12 @@ class MainPannel(QMainWindow, UI_MainPanel):
                 return
             cell_dimension = structure.cell_dimension
             substrate_height = structure.substrate_height
-        if self.structure_source == 'geom': # creating from geometry parameters
+        if self.structure_source == 'geom':  # creating from geometry parameters
             try:
                 cell_dimension = int(self.input_cell_size.text())
-                xdim = int(float(self.input_width.text()))//cell_dimension # array length
-                ydim = int(float(self.input_length.text()))//cell_dimension # array length
-                zdim = int(float(self.input_height.text()))//cell_dimension # array length
+                xdim = int(float(self.input_width.text())) // cell_dimension  # array length
+                ydim = int(float(self.input_length.text())) // cell_dimension  # array length
+                zdim = int(float(self.input_height.text())) // cell_dimension  # array length
                 substrate_height = math.ceil(int(float(self.input_substrate_height.text())) / cell_dimension)
                 structure.create_from_parameters(cell_dimension, xdim, ydim, zdim, substrate_height)
             except Exception as e:
@@ -514,14 +444,14 @@ class MainPannel(QMainWindow, UI_MainPanel):
                                   'Check values and try again.')
                 print(e.args)
                 return
-        if self.structure_source == 'auto': # defining it later based on a stream-file
+        if self.structure_source == 'auto':  # defining it later based on a stream-file
             cell_dimension = int(float(self.input_cell_size.text()))
             substrate_height = math.ceil(int(float(self.input_substrate_height.text())) / cell_dimension)
 
         # Defining printing path
-        dwell_time_units = 1E-6 # input units are in microseconds, internally seconds are used
+        dwell_time_units = 1E-6  # input units are in microseconds, internally seconds are used
         printing_path = None
-        if self.pattern_source == 'simple': # creating printing path based on the figure and parameters
+        if self.pattern_source == 'simple':  # creating printing path based on the figure and parameters
             if self.structure_source == 'auto':
                 self.view_message(f'Input warning',
                                   f'Not allowed to choose \'Auto\' and \'Simple pattern\' together! \n'
@@ -530,13 +460,13 @@ class MainPannel(QMainWindow, UI_MainPanel):
             try:
                 print(f'Creating a simple pattern...', end='')
                 pattern = self.pattern
-                p1 = float(self.input_param1.text()) # nm
-                p2 = float(self.input_param2.text()) if pattern in ['Point', 'Rectangle', 'Square'] else 0 # nm
-                dwell_time = int(self.input_dwell_time.text()) * dwell_time_units # s
-                pitch = float(self.input_pitch.text()) # nm
+                p1 = float(self.input_param1.text())  # nm
+                p2 = float(self.input_param2.text()) if pattern in ['Point', 'Rectangle', 'Square'] else 0  # nm
+                dwell_time = int(self.input_dwell_time.text()) * dwell_time_units  # s
+                pitch = float(self.input_pitch.text())  # nm
                 repeats = int(float(self.input_repeats.text()))
-                x = structure.shape[2]//2 * cell_dimension # nm
-                y = structure.shape[1]//2 * cell_dimension # nm
+                x = structure.shape[2] // 2 * cell_dimension  # nm
+                y = structure.shape[1] // 2 * cell_dimension  # nm
                 if pattern == 'Point':
                     x, y = p1, p2
                 printing_path = sp.generate_pattern(pattern, repeats, dwell_time, x, y, (p1, p2), pitch)
@@ -544,11 +474,12 @@ class MainPannel(QMainWindow, UI_MainPanel):
                 self.view_message('Error occurred while creating a printing path. \n Check values and try again.')
                 print(e.args)
                 return
-        if self.pattern_source == 'stream_file': # importing printing path from stream_file
+        if self.pattern_source == 'stream_file':  # importing printing path from stream_file
             try:
                 hfw = float(self.input_hfw.text())
             except ValueError:
-                self.view_message('Invalid HFW input', 'Half field width can not be read. \nPlease enter a valid number')
+                self.view_message('Invalid HFW input',
+                                  'Half field width can not be read. \nPlease enter a valid number')
                 return
             try:
                 printing_path, shape = sp.open_stream_file(self.stream_file_filename, hfw, 200, True)
@@ -560,20 +491,19 @@ class MainPannel(QMainWindow, UI_MainPanel):
                     self.view_message(additional_message='Stream-file not found')
                 return
             if self.structure_source != 'auto':
-                if printing_path[:,0].max() > structure.xdim_abs or printing_path[:,1].max() > structure.ydim_abs:
+                if printing_path[:, 0].max() > structure.xdim_abs or printing_path[:, 1].max() > structure.ydim_abs:
                     self.view_message('Incompatible dimensions',
                                       f'The specified simulation volume does not enclose the printing path from '
                                       f'the stream-file. Increase base size or choose \'Auto\' \n'
                                       f'Specified stream-file uses '
-                                      f'{printing_path[:,0].max():.1f} x {printing_path[:,1].max():.1f} nm area.')
+                                      f'{printing_path[:, 0].max():.1f} x {printing_path[:, 1].max():.1f} nm area.')
                     return
             else:
-                shape = shape[::-1]//cell_dimension
+                shape = shape[::-1] // cell_dimension
                 structure.create_from_parameters(cell_dimension, *shape, substrate_height)
                 print(f'Pattern base area with margin: {shape[0] * cell_dimension} x {shape[1] * cell_dimension} nm')
         t = printing_path[:, 2].sum()
         print(f'Total patterning time: {t:.3f} s')
-
 
         # Opening beam and precursor files
         try:
@@ -601,7 +531,7 @@ class MainPannel(QMainWindow, UI_MainPanel):
                 self.view_message(additional_message='Precursor parameters file not found')
             return
 
-        sim_volume_params = {} # array length
+        sim_volume_params = {}  # array length
         sim_volume_params['width'] = structure.shape[2]
         sim_volume_params['length'] = structure.shape[1]
         sim_volume_params['height'] = structure.shape[0]
@@ -634,7 +564,8 @@ class MainPannel(QMainWindow, UI_MainPanel):
 
         rendering = {'show_process': self.show_process, 'frame_rate': 0.5}
         # Starting the process
-        febid_core.run_febid_interface(structure, precursor_params, settings, sim_volume_params, printing_path, self.temperature_tracking, saving_params, rendering)
+        febid_core.run_febid_interface(structure, precursor_params, settings, sim_volume_params, printing_path,
+                                       self.temperature_tracking, saving_params, rendering)
 
         return
 
@@ -643,7 +574,7 @@ class MainPannel(QMainWindow, UI_MainPanel):
         structure = Structure()
         params = None
         if self.structure_source == 'auto':
-            self.view_message('Structure source not set.', 'Seems like \'Auto\' option was chosen previously '
+            self.view_message('Structure source not set', 'Seems like \'Auto\' option was chosen previously '
                                                            'in the FEBID tab...')
             return
         if self.structure_source == 'vtk':  # opening from a .vtk file
@@ -695,7 +626,8 @@ class MainPannel(QMainWindow, UI_MainPanel):
         N = int(self.number_of_e.text())
         n = int(self.gauss_order.text())
         heating = self.checkbox_beam_heating.isChecked()
-        self.cam_pos = e3d.run_mc_simulation(structure, E0, gauss_dev, n, N, (x0, y0), precursor_params, Emin, 0.6, heating, params, self.cam_pos)
+        self.cam_pos = e3d.run_mc_simulation(structure, E0, gauss_dev, n, N, (x0, y0), precursor_params, Emin, 0.6,
+                                             heating, params, self.cam_pos)
         return 1
 
     # Utilities
@@ -709,17 +641,17 @@ class MainPannel(QMainWindow, UI_MainPanel):
 
         # Inputs and their labels
         self.ui_dimensions = UI_Group(self.input_width, self.input_length, self.input_height,
-                              self.l_width, self.l_height, self.l_length,
-                              self.l_dimensions_units)
+                                      self.l_width, self.l_height, self.l_length,
+                                      self.l_dimensions_units)
         self.ui_dimensions_mc = UI_Group(self.input_width_mc, self.input_length_mc, self.input_height_mc,
-                                 self.l_width_mc, self.l_height_mc, self.l_length_mc,
-                                 self.l_dimensions_units_mc)
+                                         self.l_width_mc, self.l_height_mc, self.l_length_mc,
+                                         self.l_dimensions_units_mc)
         self.ui_cell_size = UI_Group(self.l_cell_size, self.input_cell_size, self.l_cell_size_units)
         self.ui_cell_size_mc = UI_Group(self.l_cell_size_mc, self.input_cell_size_mc, self.l_cell_size_units_mc)
         self.ui_substrate_height = UI_Group(self.l_substrate_height, self.input_substrate_height,
-                                    self.l_substrate_height_units)
+                                            self.l_substrate_height_units)
         self.ui_substrate_height_mc = UI_Group(self.l_substrate_height_mc, self.input_substrate_height_mc,
-                                       self.l_substrate_height_units_mc)
+                                               self.l_substrate_height_units_mc)
 
         self.ui_pattern_param1 = UI_Group(self.l_param1, self.input_param1, self.l_param1_units)
         self.ui_pattern_param2 = UI_Group(self.l_param2, self.input_param2, self.l_param2_units)
@@ -729,8 +661,10 @@ class MainPannel(QMainWindow, UI_MainPanel):
 
         self.ui_hfw = UI_Group(self.l_hfw, self.input_hfw, self.l_hfw_units)
 
-        self.ui_sim_data_interval = UI_Group(self.l_sim_data_interval, self.input_sim_data_interval, self.l_sim_data_interval_units)
-        self.ui_snapshot = UI_Group(self.l_snapshot_interval, self.input_snapshot_interval, self.l_snapshot_interval_units)
+        self.ui_sim_data_interval = UI_Group(self.l_sim_data_interval, self.input_sim_data_interval,
+                                             self.l_sim_data_interval_units)
+        self.ui_snapshot = UI_Group(self.l_snapshot_interval, self.input_snapshot_interval,
+                                    self.l_snapshot_interval_units)
         self.ui_unique_name = UI_Group(self.l_unique_name, self.input_unique_name)
         self.ui_save_folder = UI_Group(self.open_save_folder_button, self.save_folder_display)
 
@@ -738,15 +672,16 @@ class MainPannel(QMainWindow, UI_MainPanel):
         self.ui_vtk_choice = UI_Group(self.open_vtk_file_button, self.vtk_filename_display)
         self.ui_vtk_choice_mc = UI_Group(self.open_vtk_file_button_mc, self.vtk_filename_display_mc)
 
-        self.ui_geom_choice = UI_Group({self.open_geom_parameters_file_button} | self.ui_dimensions | self.ui_cell_size |\
-                              self.ui_substrate_height)
-        self.ui_geom_choice_mc = UI_Group({self.open_geom_parameters_file_button_mc} | self.ui_dimensions_mc |\
-                                 self.ui_cell_size_mc | self.ui_substrate_height_mc)
+        self.ui_geom_choice = UI_Group(
+            {self.open_geom_parameters_file_button} | self.ui_dimensions | self.ui_cell_size | \
+            self.ui_substrate_height)
+        self.ui_geom_choice_mc = UI_Group({self.open_geom_parameters_file_button_mc} | self.ui_dimensions_mc | \
+                                          self.ui_cell_size_mc | self.ui_substrate_height_mc)
 
         self.ui_auto_choice = UI_Group(self.ui_cell_size | self.ui_substrate_height)
 
-        self.ui_simple_patterns = UI_Group({self.pattern_selection} | self.ui_pattern_param1 | self.ui_pattern_param2 |\
-                                    self.ui_dwell_time | self.ui_pitch | self.ui_repeats)
+        self.ui_simple_patterns = UI_Group({self.pattern_selection} | self.ui_pattern_param1 | self.ui_pattern_param2 | \
+                                           self.ui_dwell_time | self.ui_pitch | self.ui_repeats)
 
         self.ui_stream_file = UI_Group({self.open_stream_file_button} | self.ui_hfw)
 
@@ -754,6 +689,121 @@ class MainPannel(QMainWindow, UI_MainPanel):
         self.ui_sim_volume = UI_Group(self.ui_vtk_choice | self.ui_geom_choice | self.ui_auto_choice)
         self.ui_sim_volume_mc = UI_Group(self.ui_vtk_choice_mc | self.ui_geom_choice_mc)
         self.ui_pattern = UI_Group(self.ui_simple_patterns | self.ui_stream_file)
+
+    def __gather_session_config(self):
+        """
+        Compile a session config from interface elements and class attributes
+
+        :return:
+        """
+        self.session['load_last_session'] = self.save_flag
+        self.session['structure_source'] = self.structure_source
+        self.session['vtk_filename'] = self.vtk_filename
+        self.session['geom_parameters_filename'] = self.geom_parameters_filename
+        self.session['width'] = int(self.input_width.text())
+        self.session['length'] = int(self.input_length.text())
+        self.session['height'] = int(self.input_height.text())
+        self.session['cell_size'] = int(self.input_cell_size.text())
+        self.session['substrate_height'] = int(self.input_substrate_height.text())
+        self.session['pattern_source'] = self.pattern_source
+        self.session['pattern'] = self.pattern_selection.currentText()
+        self.session['param1'] = float(self.input_param1.text())
+        self.session['param2'] = float(self.input_param2.text())
+        self.session['dwell_time'] = int(self.input_dwell_time.text())
+        self.session['pitch'] = int(self.input_pitch.text())
+        self.session['repeats'] = int(self.input_repeats.text())
+        self.session['stream_file_filename'] = self.stream_file_filename
+        self.session['hfw'] = float(self.input_hfw.text())
+        self.session['settings_filename'] = self.settings_filename
+        self.session['precursor_filename'] = self.precursor_parameters_filename
+        self.session['temperature_tracking'] = self.temperature_tracking
+        self.session['save_simulation_data'] = self.checkbox_save_simulation_data.isChecked()
+        self.session['save_structure_snapshot'] = self.checkbox_save_snapshots.isChecked()
+        self.session['simulation_data_interval'] = float(self.input_sim_data_interval.text())
+        self.session['structure_snapshot_interval'] = float(self.input_snapshot_interval.text())
+        self.session['unique_name'] = self.input_unique_name.text()
+        self.session['save_directory'] = self.save_directory
+        self.session['show_process'] = self.checkbox_show.isChecked()
+
+    def __load_config(self, params):
+        """
+        Set session parameters and update interface elements from a dict.
+
+        :param params: collection of parameters
+        :return:
+        """
+        try:
+            self.save_flag = True
+            self.structure_source = params['structure_source']
+            self.vtk_filename = params['vtk_filename']
+            self.geom_parameters_filename = params['geom_parameters_filename']
+            self.pattern_source = params['pattern_source']
+            self.pattern = params['pattern']
+            self.stream_file_filename = params['stream_file_filename']
+            self.settings_filename = params['settings_filename']
+            self.precursor_parameters_filename = params['precursor_filename']
+            self.temperature_tracking = params['temperature_tracking']
+            self.save_directory = params['save_directory']
+            # Setting FEBID tab interface
+            self.checkbox_load_last_session.setChecked(True)
+            if self.structure_source == 'vtk':
+                self.vtk_chosen()
+                if self.vtk_filename:
+                    self.open_vtk_file(self.vtk_filename)
+            elif self.structure_source == 'geom':
+                self.geom_parameters_chosen()
+            elif self.structure_source == 'auto':
+                self.auto_chosen()
+            self.vtk_filename_display.setText(self.vtk_filename)
+            self.input_width.setText(str(params['width']))
+            self.input_length.setText(str(params['length']))
+            self.input_height.setText(str(params['height']))
+            self.input_cell_size.setText(str(params['cell_size']))
+            self.input_substrate_height.setText(str(params['substrate_height']))
+            self.pattern_selection.setCurrentText(str.title(self.pattern))
+            self.pattern_selection_changed(str.title(self.pattern))
+            if self.pattern_source == 'simple':
+                self.simple_pattern_chosen()
+            elif self.pattern_source == 'stream_file':
+                self.stream_file_chosen()
+            self.input_param1.setText(str(params['param1']))
+            self.input_param2.setText(str(params['param2']))
+            self.input_dwell_time.setText(str(params['dwell_time']))
+            self.input_pitch.setText(str(params['pitch']))
+            self.input_repeats.setText(str(params['repeats']))
+            self.stream_file_filename_display.setText(self.stream_file_filename)
+            self.input_hfw.setText(str(params['hfw']))
+            self.settings_filename_display.setText(self.settings_filename)
+            self.precursor_parameters_filename_display.setText(self.precursor_parameters_filename)
+            self.checkbox_temperature_tracking.setChecked(self.temperature_tracking)
+            self.change_state_save_sim_data(params['save_simulation_data'])
+            self.change_state_save_snapshots(params['save_structure_snapshot'])
+            self.input_sim_data_interval.setText(str(params['simulation_data_interval']))
+            self.input_snapshot_interval.setText(str(params['structure_snapshot_interval']))
+            self.input_unique_name.setText(params['unique_name'])
+            self.save_folder_display.setText(self.save_directory)
+            self.change_state_show_process(params['show_process'])
+            # Setting MC interface
+            if self.structure_source == 'vtk':
+                self.vtk_chosen()
+            elif self.structure_source == 'geom':
+                self.geom_parameters_chosen()
+            elif self.structure_source == 'auto':
+                self.auto_chosen()
+            self.vtk_filename_display_mc.setText(self.vtk_filename)
+            self.input_width_mc.setText(str(params['width']))
+            self.input_length_mc.setText(str(params['length']))
+            self.input_height_mc.setText(str(params['height']))
+            self.input_cell_size_mc.setText(str(params['cell_size']))
+            self.input_substrate_height_mc.setText(str(params['substrate_height']))
+            if self.settings_filename:
+                self.open_settings_file(self.settings_filename)
+            self.settings_filename_display_mc.setText(self.settings_filename)
+            self.precursor_parameters_filename_display_mc.setText(self.precursor_parameters_filename)
+            self.checkbox_beam_heating.setChecked(self.temperature_tracking)
+        except KeyError as e:
+            print('Was not able to read a configuration file. Following error occurred.')
+            raise e
 
     def save_parameter(self, param_name, value):
         """
@@ -767,7 +817,8 @@ class MainPannel(QMainWindow, UI_MainPanel):
         if self.save_flag:
             with open(self.last_session_filename, mode='wb') as f:
                 yml.dump(self.session, f)
-    def change_color(self, labels: Union[list,QtWidgets.QLabel], color='gray'):
+
+    def change_color(self, labels: Union[list, QtWidgets.QLabel], color='gray'):
         if type(labels) is list:
             for label in labels:
                 pallet = label.palette()
@@ -777,6 +828,7 @@ class MainPannel(QMainWindow, UI_MainPanel):
             pallet = labels.palette()
             pallet.setColor(QtGui.QPalette.WindowText, QtGui.QColor(color))
             labels.setPalette(pallet)
+
     def check_input(self):
         """
         Check if the input line is numeric and not negative and save the parameter to the file
@@ -791,8 +843,8 @@ class MainPannel(QMainWindow, UI_MainPanel):
                     # Here the parameter is saved to the file
                     # A naming convention is made: lineEdit objects are named the same
                     # as the parameters in the file only with 'input_' in the beginning
-                    name = lineEdit.objectName()[6:] # stripping 'input_'
-                    if int(val) > 0 and val/int(val) == 1:
+                    name = lineEdit.objectName()[6:]  # stripping 'input_'
+                    if int(val) > 0 and val / int(val) == 1:
                         self.save_parameter(name, int(val))
                     else:
                         self.save_parameter(name, val)
@@ -804,13 +856,15 @@ class MainPannel(QMainWindow, UI_MainPanel):
             self.view_message('Input is invalid.',
                               f'The value entered is not numerical.')
             lineEdit.clear()
-        a=0
+        a = 0
+
     def is_float(self, element) -> bool:
         try:
             float(element)
             return True
         except ValueError:
             return False
+
     def view_message(self, message="An error occurred", additional_message='', icon='Warning'):
         if icon not in ['Warning', 'Question', 'Information', 'Critical']:
             icon = QMessageBox.NoIcon
@@ -823,11 +877,13 @@ class MainPannel(QMainWindow, UI_MainPanel):
         if icon == 'Critical':
             icon = QMessageBox.Critical
         msgBox = QtWidgets.QMessageBox()
-        msgBox.setText(message + ' '*len(additional_message)) # QMessageBox resizes only with the length of the main text
+        msgBox.setText(
+            message + ' ' * len(additional_message))  # QMessageBox resizes only with the length of the main text
         msgBox.setInformativeText(additional_message)
         msgBox.setStandardButtons(QMessageBox.Ok)
         msgBox.setIcon(icon)
         msgBox.exec()
+
     def read_yaml(self, file):
         """
         Read YAML file with units
@@ -864,9 +920,13 @@ class MainPannel(QMainWindow, UI_MainPanel):
                     units[key] = ''
         return values, units
 
-
     @property
     def last_session_stub(self):
+        """
+        Configuration file template
+
+        :return:
+        """
         stub = ['# Settings from the last session are saved here and loaded\n',
                 "# upon the launch if the parameter 'load_last_session' is True\n",
                 '\n',
@@ -912,8 +972,8 @@ def start(config_filename=None):
     win1 = MainPannel(config_filename)
     sys.exit(app.exec())
 
+
 if __name__ == "__main__":
     app = QApplication(sys.argv)
     win1 = MainPannel()
     sys.exit(app.exec())
-

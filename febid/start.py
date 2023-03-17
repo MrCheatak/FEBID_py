@@ -14,6 +14,7 @@ import febid.simple_patterns as sp
 from febid import febid_core
 from febid.Structure import Structure
 
+
 def start_ui(config_f=None):
     ui_shell.start(config_f)
 
@@ -50,7 +51,7 @@ def start_no_ui(config_f=None):
             structure.create_from_parameters(cell_dimension, xdim, ydim, zdim, substrate_height)
         except Exception as e:
             print('An error occurred while fetching geometry parameters for the simulation volume. \n '
-                              'Check values and try again.')
+                  'Check values and try again.')
             print(e.args)
             return
     if params['structure_source'] == 'auto':  # defining it later based on a stream-file
@@ -80,7 +81,7 @@ def start_no_ui(config_f=None):
     if params['pattern_source'] == 'stream_file':  # importing printing path from stream_file
         try:
             hfw = params['hfw']
-            printing_path, shape = sp.open_stream_file(params['stream_file_filename'], hfw)
+            printing_path, shape = sp.open_stream_file(params['stream_file_filename'], hfw, collapse=True)
         except Exception as e:
             print(f'Failed to open stream-file: {e.args}')
             return
@@ -91,8 +92,8 @@ def start_no_ui(config_f=None):
     # Opening beam and precursor files
     try:
         with open(params['settings_filename'], mode='rb') as f:
-            beam_params = yaml.load(f, Loader=yaml.FullLoader)
-        factor = beam_params.get('deposition_scaling', 1)
+            settings = yaml.load(f, Loader=yaml.FullLoader)
+        factor = settings.get('deposition_scaling', 1)
         if factor:
             printing_path[:, 2] /= factor
     except Exception as e:
@@ -107,12 +108,12 @@ def start_no_ui(config_f=None):
         print(e.args)
         return
 
-    sim_volume_params = {}  # array length
-    sim_volume_params['width'] = structure.shape[2]
-    sim_volume_params['length'] = structure.shape[1]
-    sim_volume_params['height'] = structure.shape[0]
-    sim_volume_params['cell_dimension'] = cell_dimension
-    sim_volume_params['substrate_height'] = substrate_height
+    sim_volume_params = {
+        'width': structure.shape[2],
+        'length': structure.shape[1],
+        'height': structure.shape[0],
+        'cell_dimension': cell_dimension,
+        'substrate_height': substrate_height}  # array length
 
     # Collecting parameters of file saving
     saving_params = {'monitoring': None, 'snapshot': None, 'filename': None}
@@ -131,9 +132,9 @@ def start_no_ui(config_f=None):
 
     temperature_tracking = params.get('temperature_tracking', False)
 
-    rendering = {'show_process': params['show_process'], 'frame_rate': 0.2}
+    rendering = {'show_process': params['show_process'], 'frame_rate': 0.5}
     # Starting the process
-    process_obj, sim = febid_core.run_febid_interface(structure, precursor_params, beam_params, sim_volume_params,
+    process_obj, sim = febid_core.run_febid_interface(structure, precursor_params, settings, sim_volume_params,
                                                       printing_path, temperature_tracking, saving_params, rendering)
 
     return process_obj, sim
@@ -151,7 +152,7 @@ def extr_number(text):
 
 def atoi(text):
     a = int(text) if text.isdigit() else text
-    return  a
+    return a
 
 
 def write_param(file, param_name, val):
@@ -251,15 +252,16 @@ def scan_settings(session_file, param_name, scan, base_name=''):
         start_no_ui(session_file)
     # Restoring initial state
     write_param(file, param_name, initial_val)
-    print(f'Successfully finished {vals.shape[0]} simulations, scanning \'{param_name}\' from {vals.amin()} to {vals.max()}')
+    print(
+        f'Successfully finished {vals.shape[0]} simulations, scanning \'{param_name}\' from {vals.amin()} to {vals.max()}')
 
 
 if __name__ == '__main__':
     # Here is an example of how to set up a several series of simulations, that change
     # various parameters for consequent runs for autonomous simulation execution.
-        # It is advised to refrain from setting structure snapshot saving frequency below 0.01 s.
-        # .vtk-files take up from 5 to 400 MB depending on structure size and resolution
-        # and will very quickly occupy dozens of GB of space.
+    # It is advised to refrain from setting structure snapshot saving frequency below 0.01 s.
+    # .vtk-files take up from 5 to 400 MB depending on structure size and resolution
+    # and will very quickly occupy dozens of GB of space.
 
     # Initially, a session configuration file has to be specified.
     # This file, along settings and precursor parameters files specified in it, is to be modified
@@ -288,7 +290,7 @@ if __name__ == '__main__':
     directory = '/home/kuprava/simulations/gauss_dev_scan/'
     write_param(session_file, 'save_directory', directory)
     param = 'thermal_conductivity'
-    vals = np.arange(2e-10, 11e-10, 2e-10) # [2e-10, 4e-10, 6e-10, 8e-10, 10e-10]
+    vals = np.arange(2e-10, 11e-10, 2e-10)  # [2e-10, 4e-10, 6e-10, 8e-10, 10e-10]
     scan_settings(session_file, param, vals, 'hs')
 
     directory = '/home/kuprava/simulations/ads.act.energy_scan/'
@@ -314,5 +316,3 @@ if __name__ == '__main__':
     stream_files = '/home/kuprava/simulations/steam_files_long_s'
     # Launching the series
     scan_stream_files(session_file, stream_files)
-
-

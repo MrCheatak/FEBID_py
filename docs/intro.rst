@@ -28,7 +28,7 @@ Alternatively, it can be installed directly from GitHub via pip, although that w
 :code:`pip install git+https://github.com/MrCheatak/FEBID_py`
 
 .. important:: Linux user may need to manually install Tkinter, VTK and PyQt5 into the system:
-                :code: sudo apt-get vtk9 tk python3-pyqt5
+                :code:`sudo apt-get vtk9 tk python3-pyqt5`
 
 Running the first simulation
 -----------------------------
@@ -38,7 +38,7 @@ As the installation finishes, run ``python -m febid``, which will show the main 
 
 .. image:: _images/main_pannel_febid.png
     :scale: 50 %
-    :align:
+    :align: right
 
 
 There are three main setup steps that are essential for the simulation: space, pattern and parameters of the

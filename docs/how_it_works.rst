@@ -13,3 +13,4 @@ Contents:
     monte_carlo
     diffusion
     heat_equation
+    algorithms
