@@ -248,10 +248,13 @@ def run_febid(structure, precursor_params, settings, sim_params, path, temperatu
     total_iters = int(np.sum(path[:, 2]) / process_obj.dt)
     # Actual simulation runs in a second Thread, because visualization of the process
     # via Pyvista works only from the main Thread
+    """
     printing = Thread(target=print_all, args=[path, process_obj, sim])
     printing.start()
     monitoring(process_obj, total_iters, stats, **monitor_kwargs)
     printing.join()
+    """
+    print_all(path, process_obj, sim)
     print('Finished path.')
     return process_obj, sim
 

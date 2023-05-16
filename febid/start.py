@@ -11,6 +11,7 @@ import febid.simple_patterns as sp
 from febid import febid_core
 from febid.Structure import Structure
 
+
 def start_ui(config_f=None):
     ui_shell.start(config_f)
 
@@ -47,7 +48,7 @@ def start_no_ui(config_f=None):
             structure.create_from_parameters(cell_dimension, xdim, ydim, zdim, substrate_height)
         except Exception as e:
             print('An error occurred while fetching geometry parameters for the simulation volume. \n '
-                              'Check values and try again.')
+                  'Check values and try again.')
             print(e.args)
             return
     if params['structure_source'] == 'auto':  # defining it later based on a stream-file
@@ -136,8 +137,8 @@ def start_no_ui(config_f=None):
 
 
 def start_default(config_f=None):
-    start_ui(config_f)
-    # start_no_ui(config_f)
+    # start_ui(config_f)
+    start_no_ui(config_f)
 
 
 def extr_number(text):
@@ -147,7 +148,7 @@ def extr_number(text):
 
 def atoi(text):
     a = int(text) if text.isdigit() else text
-    return  a
+    return a
 
 
 def write_param(file, param_name, val):
@@ -247,68 +248,9 @@ def scan_settings(session_file, param_name, scan, base_name=''):
         start_no_ui(session_file)
     # Restoring initial state
     write_param(file, param_name, initial_val)
-    print(f'Successfully finished {vals.shape[0]} simulations, scanning \'{param_name}\' from {vals.amin()} to {vals.max()}')
+    print(
+        f'Successfully finished {vals.shape[0]} simulations, scanning \'{param_name}\' from {vals.amin()} to {vals.max()}')
 
 
 if __name__ == '__main__':
-    # Here is an example of how to set up a several series of simulations, that change
-    # various parameters for consequent runs for autonomous simulation execution.
-        # It is advised to refrain from setting structure snapshot saving frequency below 0.01 s.
-        # .vtk-files take up from 5 to 400 MB depending on structure size and resolution
-        # and will very quickly occupy dozens of GB of space.
-
-    # Initially, a session configuration file has to be specified.
-    # This file, along settings and precursor parameters files specified in it, is to be modified
-    # and then used to run a simulation. This routine is repeated until the desired parameter
-    # has taken a given number of values.
-    # The routine only changes a single parameter. All other parameters have to be preset forehand.
-    session_file = '/home/kuprava/simulations/last_session.yml'
-
-    # The first parameter change or scan modifies the Gaussian deviation parameter of the beam.
-    # The file that will be modified in this case is the settings file.
-    # Set up a folder (it will be created automatically) for simulation save files
-    directory = '/home/kuprava/simulations/gauss_dev_scan/'
-    write_param(session_file, 'save_directory', directory)
-    # Specify parameter name
-    param = 'gauss_dev'
-    # Specify values that the parameter will take during consequent simulations
-    vals = [2, 3, 4, 5, 6, 7, 8]
-    # Launch the scan
-    scan_settings(session_file, param, vals, 'hs')
-    # Files that are saved during the simulation are named after the specified common name (here i.e. 'hs')
-    # and the parameter name.
-
-    # The second parameter scan modifies the thermal conductivity of the deposit.
-    # The routine is the same as in the example above, although the file that will be
-    # modified is the precursor parameters file.
-    directory = '/home/kuprava/simulations/gauss_dev_scan/'
-    write_param(session_file, 'save_directory', directory)
-    param = 'thermal_conductivity'
-    vals = np.arange(2e-10, 11e-10, 2e-10) # [2e-10, 4e-10, 6e-10, 8e-10, 10e-10]
-    scan_settings(session_file, param, vals, 'hs')
-
-    directory = '/home/kuprava/simulations/ads.act.energy_scan/'
-    write_param(session_file, 'save_directory', directory)
-    param = 'desorption_activation_energy'
-    vals = [0.67, 0.64, 0.61, 0.58, 0.55, 0.52, 0.49]
-    scan_settings(session_file, param, vals, 'hs')
-
-    # The third series runs simulations using several patterning files.
-    # Again, specify a desired location for simulation save files
-    directory = '/home/kuprava/simulations/longs/'
-    # Optionally, an initial structure can be specified. This will 'continue' deposition
-    # onto a structure obtained in one of the earlier simulations.
-    # It can be used i.e. when all planned structures share a same initial feature such as a pillar.
-    # Keep in mind that it can be used only for patterning files with the same patterning area.
-    # To that, the patterning area must correspond to one that is defined by the simulation for the current
-    # pattern including margins.
-    initial_structure = '/home/kuprava/simulations/hockey_stick_therm_050_5_01_15:12:31.vtk'
-    write_param(session_file, 'structure_source', 'vtk')
-    write_param(session_file, 'vtk_filename', initial_structure)
-    write_param(session_file, 'save_directory', directory)
-    # Specifying a folder with patterning files
-    stream_files = '/home/kuprava/simulations/steam_files_long_s'
-    # Launching the series
-    scan_stream_files(session_file, stream_files)
-
-
+    start_no_ui("/Users/vadimkrai/Documents/PyCharm/FEBID_py/Configs/last_session.yml")

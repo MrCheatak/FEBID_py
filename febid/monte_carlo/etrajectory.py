@@ -28,42 +28,44 @@ class ETrajectory(object):
     """
     A class responsible for the generation and scattering of electron trajectories
     """
+
     def __init__(self, name='noname'):
         self.name = name
-        self.passes = [] # keeps the last result of the electron trajectory simulation
-        self.NA = 6.022141E23 # Avogadro number
-        self.elementary_charge = 1.60217662e-19 # Coulon
+        self.passes = []  # keeps the last result of the electron trajectory simulation
+        self.NA = 6.022141E23  # Avogadro number
+        self.elementary_charge = 1.60217662e-19  # Coulon
         rnd.seed()
 
         self.m3d = None
 
         # Beam properties
-        self.E0 = 0 # energy of the beam, keV
-        self.Emin = 0 # cut-off energy for electrons, keV
-        self.sigma = 0 # standard Gaussian deviation
-        self.n = 0 # power of the super Gaussian distribution
-        self.N = 0 # number of electron trajectories to simulate
+        self.E0 = 0  # energy of the beam, keV
+        self.Emin = 0  # cut-off energy for electrons, keV
+        self.sigma = 0  # standard Gaussian deviation
+        self.n = 0  # power of the super Gaussian distribution
+        self.N = 0  # number of electron trajectories to simulate
 
         # Solid structure properties
-        self.grid = None # 3D array representing a solid structure 
-        self.surface = None # 3D array representing a surface of the solid structure
-        self.s_neghib = None # 3D array representing surface n-nearest neigbors
-        self.cell_dim = 1 # dimension of a single cell
-        self.deponat = Element() # deponat material properties
-        self.substrate = substrates['Au'] # substrate material properties
-        self.material = None # material in the current point
+        self.grid = None  # 3D array representing a solid structure
+        self.surface = None  # 3D array representing a surface of the solid structure
+        self.s_neghib = None  # 3D array representing surface n-nearest neigbors
+        self.cell_dim = 1  # dimension of a single cell
+        self.deponat = Element()  # deponat material properties
+        self.substrate = substrates['Au']  # substrate material properties
+        self.material = None  # material in the current point
 
         self.z0, self.y0, self.x0 = 0, 0, 0
         self.zdim, self.ydim, self.xdim = 0, 0, 0
         self.zdim_abs, self.ydim_abs, self.xdim_abs = 0, 0, 0
         self.ztop = 0
 
-        self.norm_factor = 0 # a ratio of the actual number of electrons emitted to the number of electrons simulated
+        self.norm_factor = 0  # a ratio of the actual number of electrons emitted to the number of electrons simulated
 
     class Electron():
         """
         A class representing a single electron with its properties and methods to define its scattering vector.
         """
+
         def __init__(self, x, y, parent):
             # Python uses dictionaries to represent class attributes, which causes significant memory usage
             # __slots__ attribute forces Python to use a small array for attribute storage, which reduces amount
@@ -77,7 +79,7 @@ class ETrajectory(object):
             self.E = parent.E
             self.x = x
             self.y = y
-            self.z = parent.zdim_abs-1.0
+            self.z = parent.zdim_abs - 1.0
             self.point = np.zeros(3)
             self.point_prev = np.zeros(3)
             self.x_prev = 0
@@ -86,7 +88,7 @@ class ETrajectory(object):
             self.cx = 0
             self.cy = 0
             self.cz = 1
-            self.direction_c = np.asarray([1.0,0,0])
+            self.direction_c = np.asarray([1.0, 0, 0])
             self.ctheta = 0
             self.stheta = 0
             self.psi = 0
@@ -144,9 +146,9 @@ class ETrajectory(object):
             :return:
             """
             sign = np.sign(self.point)
-            sign[sign==1] = 0
-            delta = self.point%self.cell_dim
-            return np.int64((delta==0)*sign)
+            sign[sign == 1] = 0
+            delta = self.point % self.cell_dim
+            return np.int64((delta == 0) * sign)
 
         def check_boundaries(self, z=0, y=0, x=0):
             """
@@ -191,7 +193,7 @@ class ETrajectory(object):
             if flag:
                 return flag
             else:
-                return (z,y,x)
+                return (z, y, x)
 
         def __generate_angles(self, a):
             """
@@ -201,11 +203,12 @@ class ETrajectory(object):
             :return:
             """
             rnd2 = rnd.random()
-            self.ctheta = 1.0 - 2.0 * a * rnd2 / (1.0 + a - rnd2)  # scattering angle cosines , 0 <= angle <= 180˚, it produces an angular distribution that is obtained experimentally (more chance for low angles)
+            self.ctheta = 1.0 - 2.0 * a * rnd2 / (
+                        1.0 + a - rnd2)  # scattering angle cosines , 0 <= angle <= 180˚, it produces an angular distribution that is obtained experimentally (more chance for low angles)
             self.stheta = sqrt(1.0 - self.ctheta * self.ctheta)  # scattering angle sinus
             self.psi = 2.0 * pi * rnd.random()  # azimuthal scattering angle
 
-        def __get_direction(self, ctheta = None, stheta = None, psi = None):
+        def __get_direction(self, ctheta=None, stheta=None, psi=None):
             """
             Calculate cosines of the new direction according
             Special procedure from D.Joy 1995 on Monte Carlo modelling
@@ -217,7 +220,8 @@ class ETrajectory(object):
             if ctheta != None:
                 self.ctheta, self.stheta, self.psi = ctheta, stheta, psi
             if self.cz == 0.0: self.cz = 0.00001
-            self.cz, self.cy, self.cx = traversal.get_direction(self.ctheta, self.stheta, self.psi, self.cz, self.cy, self.cx)
+            self.cz, self.cy, self.cx = traversal.get_direction(self.ctheta, self.stheta, self.psi, self.cz, self.cy,
+                                                                self.cx)
             self.direction_c[:] = self.cz, self.cy, self.cx
 
         def __get_next_point(self, step):
@@ -254,8 +258,8 @@ class ETrajectory(object):
         def get_direction(self, ctheta=None, stheta=None, psi=None):
             return self.__get_direction(ctheta, stheta, psi)
 
-    def setParameters(self, params, deposit, surface, surface_neighbors,  stat=1000):
-        #TODO: material tracking can be more universal
+    def setParameters(self, params, deposit, surface, surface_neighbors, stat=1000):
+        # TODO: material tracking can be more universal
         # instead of using deponat and substrate variables, there can be a dictionary, where substrate is always last
         self.E0 = params['E0']
         self.Emin = params['Emin']
@@ -296,7 +300,8 @@ class ETrajectory(object):
         self.__calculate_attributes()
 
     def __calculate_attributes(self):
-        self.x0, self.y0, self.z0 = self.grid.shape[2] * self.cell_dim / 2, self.grid.shape[1] * self.cell_dim / 2, self.grid.shape[0] * self.cell_dim - 1
+        self.x0, self.y0, self.z0 = self.grid.shape[2] * self.cell_dim / 2, self.grid.shape[1] * self.cell_dim / 2, \
+                                    self.grid.shape[0] * self.cell_dim - 1
         self.zdim, self.ydim, self.xdim = self.grid.shape
         self.zdim_abs, self.ydim_abs, self.xdim_abs = self.zdim * self.cell_dim, self.ydim * self.cell_dim, self.xdim * self.cell_dim
         self.chamber_dim = np.asarray([self.zdim_abs, self.ydim_abs, self.xdim_abs])
@@ -329,21 +334,24 @@ class ETrajectory(object):
 
         # Probability density function
         def super_gauss_2d_mod(x, y, st_dev, n):
-            return 1 / sqrt(2 * pi) / st_dev * e ** (-0.5 * (((x-x0) ** 2 + (y-y0) ** 2) / (st_dev ** 2*(1+5*(n-1))**0.5+(n-1)**1.5)) ** n)
+            return 1 / sqrt(2 * pi) / st_dev * e ** (-0.5 * (((x - x0) ** 2 + (y - y0) ** 2) / (
+                        st_dev ** 2 * (1 + 5 * (n - 1)) ** 0.5 + (n - 1) ** 1.5)) ** n)
+
         def super_gauss_2d(x, y, st_dev, n):
             return 1 / sqrt(2 * pi) / st_dev * e ** (-0.5 * (((x - x0) ** 2 + (y - y0) ** 2) / (st_dev ** 2)) ** n)
+
         if N == 0: N = self.N
         rnd = np.random.default_rng()
         # Boundaries of the distribution
         bonds = self.sigma * 5
         x_all = np.array([0])
         y_all = np.array([0])
-        N = N + 1 # because the first element [0] is discarded regardless
+        N = N + 1  # because the first element [0] is discarded regardless
         i = 0
         while x_all.shape[0] <= N:
             # Uniform meshgrid
-            x = rnd.uniform(-bonds+x0, bonds+x0, 100)
-            y = rnd.uniform(-bonds+y0, bonds+y0, 100)
+            x = rnd.uniform(-bonds + x0, bonds + x0, 100)
+            y = rnd.uniform(-bonds + y0, bonds + y0, 100)
             # Probability density grid
             p = super_gauss_2d(x, y, self.sigma, self.n)
             # p = super_gauss_2d_mod(x, y, self.sigma, self.n)
@@ -380,15 +388,15 @@ class ETrajectory(object):
         :param x0: x-position of the beam, nm
         :param N: number of positions to create
         """
-        if N==0: N=self.N
-        i=0
+        if N == 0: N = self.N
+        i = 0
         rnd = np.random.default_rng()
         while True:
             x = rnd.normal(0, self.sigma, N) + x0
             y = rnd.normal(0, self.sigma, N) + y0
             try:
-                if x.max()>self.xdim_abs or y.max()>self.ydim_abs:
-                    condition = np.logical_and(x<self.xdim_abs, y<self.ydim_abs)
+                if x.max() > self.xdim_abs or y.max() > self.ydim_abs:
+                    condition = np.logical_and(x < self.xdim_abs, y < self.ydim_abs)
                     x = x[condition]
                     y = y[condition]
                 if x.min() <= 0 or y.min() <= 0:
@@ -432,7 +440,7 @@ class ETrajectory(object):
         """
 
         y0, x0 = self.rnd_gauss_xy(i0, j0, N)  # generate gauss-distributed beam positions
-        self.passes[:] = [] # prepare a list for energies and trajectories
+        self.passes[:] = []  # prepare a list for energies and trajectories
         print("\nGenerating trajectories")
         # for x,y in tqdm(zip(x0,y0)):
         #     self.map_trajectory(x, y)
@@ -480,19 +488,19 @@ class ETrajectory(object):
         # self.__inspect_passes(True, True)
         return passes
 
-    def map_wrapper_cy(self, y0, x0, N=0):
+    def map_wrapper_cy(self, y0, x0, n=0):
         """
         Create normally distributed electron positions and run trajectory mapping in Cython
 
         :param y0: y-position of the beam, nm
         :param x0: x-position of the beam, nm
-        :param N: number of electrons to create
+        :param n: number of electrons to create
         :return:
         """
         passes = []
-        if N == 0:
-            N = self.N
-        x0, y0 = self.rnd_super_gauss(x0, y0, N) # generate gauss-distributed beam positions
+        if n == 0:
+            n = self.N
+        x0, y0 = self.rnd_super_gauss(x0, y0, n)  # generate gauss-distributed beam positions
         # profiler = line_profiler.LineProfiler()
         # profiled_func = profiler(self.map_trajectory)
         # try:
@@ -503,7 +511,9 @@ class ETrajectory(object):
         print('Running \'map trajectory\'...', end='')
         start = dt()
         try:
-            self.passes = passes = etrajectory_c.start_sim(self.E0, self.Emin, y0, x0, self.cell_dim, self.grid, self.surface.view(dtype=np.uint8), [self.substrate, self.deponat])
+            self.passes = passes = etrajectory_c.start_sim(self.E0, self.Emin, y0, x0, self.cell_dim, self.grid,
+                                                           self.surface.view(dtype=np.uint8),
+                                                           [self.substrate, self.deponat])
         except Exception as e:
             raise RuntimeError(f'An error occurred while generating trajectories: {e.args}')
         print(f'finished. \t {dt() - start}')
@@ -526,7 +536,7 @@ class ETrajectory(object):
         self.ztop = np.nonzero(self.surface)[0].max()
         count = -1
         print('\nStarting PE trajectories mapping...')
-        for x,y in zip(x0,y0):
+        for x, y in zip(x0, y0):
             count += 1
             # print(f'{count}', end=' ')
             flag = False
@@ -538,20 +548,23 @@ class ETrajectory(object):
             # that gets instanced for every trajectory and thus for every process
             coords = self.Electron(x, y, self)
             # Getting initial point. It is set to the top of the chamber
-            trajectories.append(coords.coordinates)  # every time starting from the beam origin (a bit above the highest point of the structure)
+            trajectories.append(
+                coords.coordinates)  # every time starting from the beam origin (a bit above the highest point of the structure)
             energies.append(self.E0)  # and with the beam energy
             coords.coordinates = coords.coordinates
             # To get started, we need to know what kind of cell(material) we're in
             i, j, k = coords.indices
-            if self.grid[i, j, k] > -1:  # if current cell is not deposit or substrate, electron flies straight to the surface
+            if self.grid[
+                i, j, k] > -1:  # if current cell is not deposit or substrate, electron flies straight to the surface
                 coords.point_prev[0] = coords.z_prev = coords.z
                 # Finding the highest solid cell
-                coords.point[0] = coords.z = np.amax((self.grid[:, j, k]<0).nonzero()[0], initial=0)*self.cell_dim + self.cell_dim # addition here is required to position at the top of the incident solid cell
+                coords.point[0] = coords.z = np.amax((self.grid[:, j, k] < 0).nonzero()[0],
+                                                     initial=0) * self.cell_dim + self.cell_dim  # addition here is required to position at the top of the incident solid cell
                 trajectories.append(coords.coordinates)  # saving current point
                 energies.append(coords.E)
                 mask.append(0)
                 # Finish trajectory if electron does not meet any solid cell
-                if coords.z == self.cell_dim: # if there are no solid cells along the trajectory, we same bottom point and move on to the next trajectory
+                if coords.z == self.cell_dim:  # if there are no solid cells along the trajectory, we same bottom point and move on to the next trajectory
                     self.passes.append((trajectories, energies, mask))
                     continue
                 self.material = self.substrate
@@ -570,18 +583,19 @@ class ETrajectory(object):
                     # Trimming new segment and heading for finishing the trajectory
                     if check is False:
                         flag = True
-                        step = traversal.det_1d(coords.direction) # recalculating step length
+                        step = traversal.det_1d(coords.direction)  # recalculating step length
                     # What cell are we in now?
-                    i,j,k = coords.indices # + coords.index_corr()
+                    i, j, k = coords.indices  # + coords.index_corr()
                     # If its a solid cell, get energy loss and continue
-                    if self.grid[i,j,k] < 0:
+                    if self.grid[i, j, k] < 0:
                         # coords.E += self._getELoss(coords) * step
-                        coords.E += traversal.get_Eloss(coords.E, self.material.Z, self.material.rho, self.material.A, self.material.J, step)
+                        coords.E += traversal.get_Eloss(coords.E, self.material.Z, self.material.rho, self.material.A,
+                                                        self.material.J, step)
                         trajectories.append(coords.coordinates)  # saving current point
                         energies.append(coords.E)
                         mask.append(1)
                         # Getting material in the new point
-                        if self.grid[i,j,k] != self.material.mark:
+                        if self.grid[i, j, k] != self.material.mark:
                             if self.grid[i, j, k] == -2:  # current cell is substrate
                                 self.material = self.substrate
                             if self.grid[i, j, k] == -1:  # current cell is deponat
@@ -594,12 +608,12 @@ class ETrajectory(object):
                         flag, crossing, crossing1 = self.get_next_crossing(coords)
                         # print('f', end='|')
                         coords.coordinates = crossing
-                        coords.E += self._getELoss(coords) * traversal.det_1d(coords.point-coords.point_prev)
+                        coords.E += self._getELoss(coords) * traversal.det_1d(coords.point - coords.point_prev)
                         trajectories.append(coords.coordinates)  # saving current point
                         energies.append(coords.E)  # saving electron energy at this point
-                        if flag == 2: # if electron escapes chamber without crossing surface (should not happen ideally!)
+                        if flag == 2:  # if electron escapes chamber without crossing surface (should not happen ideally!)
                             mask.append(0)
-                        if flag < 2: # if electron crossed the surface
+                        if flag < 2:  # if electron crossed the surface
                             mask.append(1)
                             coords.coordinates = crossing1
                             trajectories.append(coords.coordinates)  # saving current point
@@ -637,7 +651,7 @@ class ETrajectory(object):
                     #                     mask.append(0)
                     # </editor-fold>
 
-                    if flag > 0: # finishing trajectory mapping if electron is beyond chamber walls
+                    if flag > 0:  # finishing trajectory mapping if electron is beyond chamber walls
                         flag = False
                         break
                 self.passes.append((trajectories, energies, mask))  # collecting mapped trajectories and energies
@@ -647,7 +661,7 @@ class ETrajectory(object):
                 print(f'Current electron properties: ', end='\n\t')
                 print(*vars(coords).items(), sep='\n\t')
                 print(f'Generated trajectory:', end='\n\t')
-                print(*zip(trajectories, energies,mask), sep='\n\t')
+                print(*zip(trajectories, energies, mask), sep='\n\t')
                 try:
                     print(f'Last indices: {i, j, k}')
                 except:
@@ -661,7 +675,7 @@ class ETrajectory(object):
         self.ztop = np.nonzero(self.surface)[0].max()
         i = -1
         for x, y in zip(x0, y0):
-            i +=1
+            i += 1
             print(f'Trajectory {i}, coordinates: {x, y}')
             flag = False
             self.E = self.E0  # getting initial beam energy
@@ -673,15 +687,17 @@ class ETrajectory(object):
             coords = self.Electron(x, y, self)
             # Getting initial point. It is set to the top of the chamber
             print(f'Recording first coordinates: {coords.coordinates}')
-            trajectories.append(coords.coordinates)  # every time starting from the beam origin (a bit above the highest point of the structure)
+            trajectories.append(
+                coords.coordinates)  # every time starting from the beam origin (a bit above the highest point of the structure)
             print(f'Recording first energy: {self.E0}')
             energies.append(self.E0)  # and with the beam energy
             coords.coordinates = coords.coordinates
             # To get started, we need to know what kind of cell(material) we're in
             i, j, k = coords.indices
             print(f'Initial indices: {i, j, k}')
-            if self.grid[i, j, k] > -1:  # if current cell is not deposit or substrate, electron flies straight to the surface
-                print(f'Current cell is void: {self.grid[i,j,k]}. Flying through...')
+            if self.grid[
+                i, j, k] > -1:  # if current cell is not deposit or substrate, electron flies straight to the surface
+                print(f'Current cell is void: {self.grid[i, j, k]}. Flying through...')
                 print(f'Setting z-coordinate as previous one: {coords.z} <— {coords.z_prev}')
                 coords.point_prev[0] = coords.z_prev = coords.z
                 # Finding the highest solid cell
@@ -714,7 +730,8 @@ class ETrajectory(object):
                     print(f'Got alpha and step: {a, step}')
                     # Next coordinates:
                     check = coords.get_next_point(a, step)
-                    print(f'Got new direction and coordinates: {coords.direction, coords.coordinates} <— {coords.coordinates_prev}')
+                    print(
+                        f'Got new direction and coordinates: {coords.direction, coords.coordinates} <— {coords.coordinates_prev}')
                     # First thing to do: boundary check
                     # check = coords.check_boundaries()
                     # Trimming new segment and heading for finishing the trajectory
@@ -754,10 +771,13 @@ class ETrajectory(object):
                         if flag == 0:
                             print(f'Electron has crossed solid/surface in {crossing} and then hit solid in {crossing1}')
                         if flag == 1:
-                            print(f'Electron has crossed solid/surface in {crossing} and then exited the volume in {crossing1}')
+                            print(
+                                f'Electron has crossed solid/surface in {crossing} and then exited the volume in {crossing1}')
                         if flag == 2:
-                            print(f'Warning! Electron has NOT crossed solid/surface and exited the volume in {crossing1}.')
-                        print(f'Setting next scattering point: {crossing} <— {coords.coordinates} <— {coords.coordinates_prev}')
+                            print(
+                                f'Warning! Electron has NOT crossed solid/surface and exited the volume in {crossing1}.')
+                        print(
+                            f'Setting next scattering point: {crossing} <— {coords.coordinates} <— {coords.coordinates_prev}')
                         coords.coordinates = crossing
                         coords.E += self._getELoss(coords) * traversal.det_1d(coords.point - coords.point_prev)
                         print(f'Getting new energy with losses: {coords.E}')
@@ -770,7 +790,8 @@ class ETrajectory(object):
                         if flag < 2:  # if electron crossed the surface
                             print(f'1')
                             mask.append(1)
-                            print(f'Setting next scattering point: {crossing1} <— {coords.coordinates} <— {coords.coordinates_prev}')
+                            print(
+                                f'Setting next scattering point: {crossing1} <— {coords.coordinates} <— {coords.coordinates_prev}')
                             coords.coordinates = crossing1
                             trajectories.append(coords.coordinates)  # saving current point
                             energies.append(coords.E)  # saving electron energy at this point
@@ -839,7 +860,8 @@ class ETrajectory(object):
         t = np.abs((delta + (step == self.cell_dim) * self.cell_dim + (delta == 0) * step) / direction)
         sign[sign == 1] = 0
         crossing = np.empty(3)
-        traversal.get_surface_crossing(self.surface.view(dtype=np.uint8), self.cell_dim, p0, direction, t, step_t, sign, curr_material, crossing)
+        traversal.get_surface_crossing(self.surface.view(dtype=np.uint8), self.cell_dim, p0, direction, t, step_t, sign,
+                                       curr_material, crossing)
         if not crossing.any():
             return pn
         return crossing
@@ -855,16 +877,18 @@ class ETrajectory(object):
         # Finding where electron would exit chamber along current direction
         p0 = coords.point_prev
         direction = coords.direction_c
-        direction[0] *= -1 # main MC algorithm runs with inverse z-component, but here we need the direct one
+        direction[0] *= -1  # main MC algorithm runs with inverse z-component, but here we need the direct one
         sign = np.int8(np.sign(direction))
-        t = np.abs((-p0 + (sign == 1) * self.chamber_dim)/direction)
+        t = np.abs((-p0 + (sign == 1) * self.chamber_dim) / direction)
         pn = p0 + np.min(t) * direction
-        pn[pn>=self.chamber_dim] = self.chamber_dim[pn>=self.chamber_dim]-0.000001 # reducing coordinate if it is beyond the boundary
-        pn[pn<=0] = 0.000001
-        direction[0] *= -1 # recovering original sign
+        pn[pn >= self.chamber_dim] = self.chamber_dim[
+                                         pn >= self.chamber_dim] - 0.000001  # reducing coordinate if it is beyond the boundary
+        pn[pn <= 0] = 0.000001
+        direction[0] *= -1  # recovering original sign
 
         direction = pn - p0
-        direction[direction==0] = rnd.choice((0.000001, -0.000001)) # sometimes next point is so close to the previous, that their subtraction evaluates to 0
+        direction[direction == 0] = rnd.choice((0.000001,
+                                                -0.000001))  # sometimes next point is so close to the previous, that their subtraction evaluates to 0
         step = sign * self.cell_dim
         step_t = step / direction
         delta = -(p0 % self.cell_dim)
@@ -872,10 +896,11 @@ class ETrajectory(object):
         sign[sign == 1] = 0
         crossing = np.ones(3)
         crossing1 = np.ones(3)
-        flag = traversal.get_surface_solid_crossing(self.surface.view(dtype=np.uint8), self.grid, self.cell_dim, p0, pn, direction, t, step_t, sign, crossing, crossing1)
+        flag = traversal.get_surface_solid_crossing(self.surface.view(dtype=np.uint8), self.grid, self.cell_dim, p0, pn,
+                                                    direction, t, step_t, sign, crossing, crossing1)
         if flag != 0:
             if flag == 2:
-                crossing = pn # ideally, this line should not execute at all, because there is always a surface layer between solid and void
+                crossing = pn  # ideally, this line should not execute at all, because there is always a surface layer between solid and void
             if flag == 1:
                 crossing1 = pn
         return flag, crossing, crossing1
@@ -922,12 +947,12 @@ class ETrajectory(object):
                 points = np.asarray(p[0])
                 energies = np.asarray(p[1])
                 mask = np.asarray(p[2])
-                mask = np.insert(mask ,0, nan)
+                mask = np.insert(mask, 0, nan)
                 # f = open(fname + '_{:05d}'.format(i), 'w')
                 f.write('# x/nm\t\t y/nm\t\t z/nm\t\t E/keV\t\t mask\n')
                 for pt, e, m in zip(points, energies, mask):
                     f.write('{:f}\t'.format(pt[0]) + '{:f}\t'.format(pt[1]) +
-                      '{:f}\t'.format(pt[2]) + '{:f}\t'.format(e) + str(m) + '\n')
+                            '{:f}\t'.format(pt[2]) + '{:f}\t'.format(e) + str(m) + '\n')
                 # f.close()
                 i += 1
         print('done!')
@@ -943,7 +968,7 @@ class ETrajectory(object):
         pickle.dump(self.passes, file)
         file.close()
 
-    def __inspect_passes(self, short=True, exclude_first = False):
+    def __inspect_passes(self, short=True, exclude_first=False):
         """
         Inspect generated trajectories for duplicate points, points with identical values in at least on
         of the components, negative components, negative energies and unmarked segments that are significantly
@@ -953,20 +978,22 @@ class ETrajectory(object):
         :param exclude_first: the first point is always at the top of the simulation volume and always projected down to the surface
         :return:
         """
-        def print_results(message, index, color_code = 30, *args):
+
+        def print_results(message, index, color_code=30, *args):
             if short:
                 if index.shape[0] == 0: return
                 print(f'\033[0;{color_code};48m')
             print(f' {message}')
-            print(f'T    S  \t\t\t\t p0 \t\t\t\t\t\t\t\t\t pn') # trajectory and segment number
+            print(f'T    S  \t\t\t\t p0 \t\t\t\t\t\t\t\t\t pn')  # trajectory and segment number
             str = ''
             for j in range(len(args[0])):
                 str = f'{i}  {index[j]}\t'
                 for arg in args:
                     str += f'{arg}\t'
-                print(str+'\n')
+                print(str + '\n')
             if str == '':
                 print(f'None\n')
+
         for i, traj in enumerate(self.passes):
             points = np.asarray(traj[0])
             energies = np.asarray(traj[1])
@@ -978,21 +1005,21 @@ class ETrajectory(object):
                       f'Masks: {mask.shape[0]}')
             if exclude_first:
                 points = points[1:]
-                energies =energies[1:]
+                energies = energies[1:]
                 mask = mask[1:]
             p0 = points[:-1]
             pn = points[1:]
-            direction = pn-p0
+            direction = pn - p0
             L = np.linalg.norm(direction, axis=1)
-            zero_dir = np.nonzero(direction==0)[0] # segments with 0 in at least one component
+            zero_dir = np.nonzero(direction == 0)[0]  # segments with 0 in at least one component
             zero_dir = np.unique(zero_dir)
-            zero_length = np.nonzero(L==0)[0] # segments with zero length
-            negative_E = np.nonzero(energies<0)[0] # points with negative energies
-            negative_positions = np.nonzero(points<0)[0] # points with at least on negative component
+            zero_length = np.nonzero(L == 0)[0]  # segments with zero length
+            negative_E = np.nonzero(energies < 0)[0]  # points with negative energies
+            negative_positions = np.nonzero(points < 0)[0]  # points with at least on negative component
             _, max_step = traversal.get_alpha_and_lambda(self.E0, self.deponat.Z, self.deponat.rho, self.deponat.A)
-            max_step *= -log(0.00001) # longest step possible in the deposited material
-            long_segments = (L > max_step) # segments, that are longer than the maximum step length
-            long_unmasked = np.logical_and(long_segments, mask!=0) # the latter, but also unmasked
+            max_step *= -log(0.00001)  # longest step possible in the deposited material
+            long_segments = (L > max_step)  # segments, that are longer than the maximum step length
+            long_unmasked = np.logical_and(long_segments, mask != 0)  # the latter, but also unmasked
             long_segments = long_segments.nonzero()[0]
             long_unmasked = long_unmasked.nonzero()[0]
 
@@ -1008,7 +1035,7 @@ class ETrajectory(object):
             print_results(message, long_unmasked, 31, p0[long_unmasked], pn[long_unmasked], L[long_unmasked])
 
             print('\033[0;30;48m ', end='')
-            a=0
+            a = 0
 
     def _get_alpha_and_step(self, coords):
         """
@@ -1032,8 +1059,8 @@ class ETrajectory(object):
         Z – atomic number of the target material
         :return:
         """
-        if Z==0: Z=self.Z
-        return (9.76*Z + 58.5/Z**0.19)*1.0E-3 # +
+        if Z == 0: Z = self.Z
+        return (9.76 * Z + 58.5 / Z ** 0.19) * 1.0E-3  # +
 
     def _getAlpha(self, coords, material=nan, E=0):
         """
@@ -1045,9 +1072,9 @@ class ETrajectory(object):
         """
         if E == 0:
             E = coords.E
-        return 3.4E-3*self.material.Z**0.67/E
+        return 3.4E-3 * self.material.Z ** 0.67 / E
 
-    def _getSigma(self, coords, a, material=nan): # in nm^2/atom
+    def _getSigma(self, coords, a, material=nan):  # in nm^2/atom
         """
         Calculates Elastic cross section (by Rutherford)
         E – electron energy, keV
@@ -1056,9 +1083,10 @@ class ETrajectory(object):
         :return:
         """
         # a = self._getAlpha()
-        return 5.21E-7*self.material.Z**2/coords.E**2*4.0*pi/(a*(1.0+a))*((coords.E+511.0)/(coords.E+1022.0))**2
+        return 5.21E-7 * self.material.Z ** 2 / coords.E ** 2 * 4.0 * pi / (a * (1.0 + a)) * (
+                    (coords.E + 511.0) / (coords.E + 1022.0)) ** 2
 
-    def _getLambda_el(self, coords,  a, material=nan): # in nm
+    def _getLambda_el(self, coords, a, material=nan):  # in nm
         """
         Mean free path of an electron
         A – atomic weight, g/mole
@@ -1068,25 +1096,25 @@ class ETrajectory(object):
         :return:
         """
         # sigma = self._getSigma()
-        return self.material.A/(self.NA*self.material.rho*1.0E-21*self._getSigma(coords, a))
+        return self.material.A / (self.NA * self.material.rho * 1.0E-21 * self._getSigma(coords, a))
 
     def _getLambda_in(self, material=nan, Emin=0.1):
-        mfp1, mfp2, mfp3 = 0,0,0
-        FSE = False # enable tracking of secondary electrons
+        mfp1, mfp2, mfp3 = 0, 0, 0
+        FSE = False  # enable tracking of secondary electrons
         if self.E > Emin:
-            mfp1 = self._getLambda_el()# elastic MFP in Å
-            mfp2 = self.material.A*self.E**2*2.55/(self.material.rho*self.material.Z) # inelastic MFP in Å
-            mfp3 = (mfp1*mfp2)/(mfp1+mfp2) # total MFP
+            mfp1 = self._getLambda_el()  # elastic MFP in Å
+            mfp2 = self.material.A * self.E ** 2 * 2.55 / (self.material.rho * self.material.Z)  # inelastic MFP in Å
+            mfp3 = (mfp1 * mfp2) / (mfp1 + mfp2)  # total MFP
 
             if FSE:
-                self.PEL = mfp3/mfp1
+                self.PEL = mfp3 / mfp1
             else:
-                self.PEL = 1 # eliminating probability of SE generation
-                mfp3 = mfp1 # considering only elastic MFP
+                self.PEL = 1  # eliminating probability of SE generation
+                mfp3 = mfp1  # considering only elastic MFP
 
         return mfp3
 
-    def _getELoss(self, coords, material=nan, E=0): # in keV/nm
+    def _getELoss(self, coords, material=nan, E=0):  # in keV/nm
         """
         Energy loss rate per distance traveled due to inelastic events dE/dS (stopping power)
         Applicable down to PE energies of 100 eV
@@ -1099,7 +1127,8 @@ class ETrajectory(object):
         """
         if E == 0:
             E = coords.E
-        return -7.85E-3*self.material.rho*self.material.Z/(self.material.A*E)*log(1.166*(E/self.material.J + 0.85))
+        return -7.85E-3 * self.material.rho * self.material.Z / (self.material.A * E) * log(
+            1.166 * (E / self.material.J + 0.85))
 
     def plot_distribution(self, x, y, func=None):
         import matplotlib.pyplot as plt
@@ -1118,7 +1147,7 @@ class ETrajectory(object):
         # start with a square Figure
         fig = plt.figure(figsize=(9, 9))
 
-        ax:Axes = fig.add_axes(rect_scatter)
+        ax: Axes = fig.add_axes(rect_scatter)
         ax_histx = fig.add_axes(rect_histx, sharex=ax)
         ax_histy = fig.add_axes(rect_histy, sharey=ax)
 
@@ -1147,8 +1176,8 @@ class ETrajectory(object):
         nx, _ = np.histogram(x, bins, density=True)
         ny, _ = np.histogram(y, bins, density=True)
 
-        x_p = x[np.fabs(y - center) < (x.max()-center)*0.1]
-        y_p = y[np.fabs(x - center) < (y.max()-center)*0.1]
+        x_p = x[np.fabs(y - center) < (x.max() - center) * 0.1]
+        y_p = y[np.fabs(x - center) < (y.max() - center) * 0.1]
         _, _, x_hist = ax_histx.hist(x_p, bins=bins, density=True)
         _, _, y_hist = ax_histy.hist(y_p, bins=bins, density=True, orientation='horizontal')
         if func is not None:
@@ -1180,18 +1209,20 @@ class ETrajectory(object):
         print('Plotting...')
         plt.show()
 
+
 class Element:
     """
     Represents a material
     """
+
     def __init__(self, name='noname', Z=1, A=1.0, rho=1.0, e=50, lambda_escape=1.0, mark=1):
-        self.name = name # name of the material
-        self.rho = rho # density, g/cm^3
-        self.Z = Z # atomic number (or average if compound)
-        self.A = A # molar mass, g/mol
-        self.J = ETrajectory._getJ(self) # ionisation potential
-        self.e = e # effective energy required to produce an SE, eV [lin]
-        self.lambda_escape = lambda_escape # effective SE escape path, nm [lin]
+        self.name = name  # name of the material
+        self.rho = rho  # density, g/cm^3
+        self.Z = Z  # atomic number (or average if compound)
+        self.A = A  # molar mass, g/mol
+        self.J = ETrajectory._getJ(self)  # ionisation potential
+        self.e = e  # effective energy required to produce an SE, eV [lin]
+        self.lambda_escape = lambda_escape  # effective SE escape path, nm [lin]
         self.mark = mark
 
         # [lin] Lin Y., Joy D.C., Surf. Interface Anal. 2005; 37: 895–900
@@ -1206,13 +1237,11 @@ class Element:
         else:
             return self.__add__(other)
 
+
 substrates = {}
 substrates['Au'] = Element(name='Au', Z=79, A=196.967, rho=19.32, e=35, lambda_escape=0.5)
 substrates['Si'] = Element(name='Si', Z=14, A=29.09, rho=2.33, e=90, lambda_escape=2.7)
 
-
-
 if __name__ == "__main__":
     print("Current script does not have an entry point.....")
     input('Press Enter to exit.')
-
