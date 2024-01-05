@@ -35,7 +35,7 @@ class Element:
 
 
 class MC_Sim_Base(ABC):
-    cell_dim:int
+    cell_size:int
     grid: np.ndarray
     surface: np.ndarray
     s_neighb: np.ndarray
@@ -52,7 +52,7 @@ class MC_Sim_Base(ABC):
 
     @property
     def shape_abs(self):
-        return tuple([dim * self.cell_dim for dim in self.grid.shape])
+        return tuple([dim * self.cell_size for dim in self.grid.shape])
 
 
 substrates = {} # available substrates

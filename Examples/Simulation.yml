@@ -1,6 +1,6 @@
 # parameters of the simulation
 # time_step: 0.00000005 # s
-cell_dimension: 2 # nm
+cell_size: 2 # nm
 width: 70 # number of cells along x axis
 length: 70 # number of cells along y axis
 height: 200 # number of cells along z axis

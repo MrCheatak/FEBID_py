@@ -50,7 +50,7 @@ def show_structure(filenames, solid=True, deposit=True, precursor=True, surface=
         else:
             print('ok!')
         t, sim_time, beam_position = vr.read_field_data(vtk_obj)
-        render = vr.Render(structure.cell_dimension)
+        render = vr.Render(structure.cell_size)
         cam_pos = render.show_full_structure(structure, True, solid, deposit, precursor, surface, semi_surface, ghost, t, sim_time, beam_position, cam_pos=cam_pos)
 
 

@@ -65,7 +65,7 @@ def show_animation(directory='', show='precursor'):
     structure = Structure()
     vtk_obj = vr.pv.read(os.path.join(directory, files[0]))
     structure.load_from_vtk(vtk_obj)
-    cell_dim, deposit, precursor, surface_bool, semi_surface_bool, ghosts_bool = structure.cell_dimension, \
+    cell_size, deposit, precursor, surface_bool, semi_surface_bool, ghosts_bool = structure.cell_size, \
                                                                                  structure.deposit, \
                                                                                  structure.precursor, \
                                                                                  structure.surface_bool, \
@@ -97,23 +97,23 @@ def show_animation(directory='', show='precursor'):
         text += f'Simulation time: {sim_time:.7f} s \n'
 
     # Setting the setup scene
-    render = vr.Render(cell_dim)
-    render._add_3Darray(data)
+    render = vr.Render(cell_size)
+    render.add_3Darray(data)
     render.p.add_text('Adjust the scene for the animation \n and close the window.', position='upper_edge')
     cam_pos = render.show()
     # Setting the first frame
-    render = vr.Render(cell_dim)
+    render = vr.Render(cell_size)
     # Creating an arrow at beam position
     if beam_position is not None:
         x_pos, y_pos = beam_position
-        x, y = int(x_pos / render.cell_dim), int(y_pos / render.cell_dim)
+        x, y = int(x_pos / render.cell_size), int(y_pos / render.cell_size)
         max_z = structure.deposit[:, y, x].nonzero()[0].max()
         start = np.array([0, 0, 100]).reshape(1, 3)  # position of the center of the arrow
         end = np.array([0, 0, -100]).reshape(1, 3)  # direction and resulting size
         render.arrow = render.p.add_arrows(start, end, color='tomato', name='Beam_position')
-        render.arrow.SetPosition(x_pos, y_pos, max_z * render.cell_dim + 30)  # relative to the initial position
-    render._add_3Darray(data, opacity=1, show_edges=True,
-                        scalar_name=data_name, button_name=data_name, cmap=cmap)
+        render.arrow.SetPosition(x_pos, y_pos, max_z * render.cell_size + 30)  # relative to the initial position
+    render.add_3Darray(data, opacity=1, show_edges=True,
+                       scalar_name=data_name, button_name=data_name, cmap=cmap)
     # Hiding cells
     index = np.zeros_like(data, dtype=np.uint8)
     index[mask == False] = vtk.vtkDataSetAttributes.HIDDENCELL
@@ -144,7 +144,7 @@ def show_animation(directory='', show='precursor'):
         vtk_obj = vr.pv.read(os.path.join(directory, files[i]))
         # Loading the structure
         structure.load_from_vtk(vtk_obj)
-        cell_dim = structure.cell_dimension
+        cell_size = structure.cell_size
         surface_bool = structure.surface_bool
         deposit = structure.deposit
         data = structure.__getattribute__(show)
@@ -156,10 +156,10 @@ def show_animation(directory='', show='precursor'):
             mask = deposit<0
         # Calculating deposition process features
         total_dep_cells.append(np.count_nonzero(deposit[deposit < 0]) - init_layer)
-        volume = int((total_dep_cells[i] + deposit[surface_bool].sum())*cell_dim**3)
+        volume = int((total_dep_cells[i] + deposit[surface_bool].sum()) * cell_size ** 3)
         delta_t = (times[i] - times[i - 1]).total_seconds()
         if delta_t < 1: delta_t = 1
-        growth_rate.append(cell_dim**3 * (total_dep_cells[i] - total_dep_cells[i - 1]) / delta_t * 60 * 60)
+        growth_rate.append(cell_size ** 3 * (total_dep_cells[i] - total_dep_cells[i - 1]) / delta_t * 60 * 60)
         t, sim_time, beam_position = vr.read_field_data(vtk_obj)
         # Setting up text
         # Left corner
@@ -170,15 +170,15 @@ def show_animation(directory='', show='precursor'):
             text += f'Simulation time: {sim_time:.7f} s \n'
         # Right corner
         stats = f'Cells: {total_dep_cells[i]} \n\
-                Height: {int(np.nonzero(deposit)[0].max() * cell_dim)} nm \n\
+                Height: {int(np.nonzero(deposit)[0].max() * cell_size)} nm \n\
                 Volume: {volume} nm^3 \n\
                 Frame {i+1}/{len(files)}'
         # Updating arrow position
         if beam_position is not None:
             x_pos, y_pos = beam_position
-            x, y = int(x_pos / render.cell_dim), int(y_pos / render.cell_dim)
+            x, y = int(x_pos / render.cell_size), int(y_pos / render.cell_size)
             max_z = structure.deposit[:, y, x].nonzero()[0].max()
-            render.arrow.SetPosition(x_pos, y_pos, max_z * render.cell_dim + 30)  # relative to the initial position
+            render.arrow.SetPosition(x_pos, y_pos, max_z * render.cell_size + 30)  # relative to the initial position
         # Redrawing the 3D object if necessary
         if render.p.mesh.n_cells != data.size: # must redraw if shape changes
             data_visibility = render.p.renderer.actors[data_name].GetVisibility()
@@ -186,8 +186,8 @@ def show_animation(directory='', show='precursor'):
             render.y_pos = 5
             render.p.button_widgets.clear()
             render.p.remove_actor(data_name)
-            render._add_3Darray(data, opacity=1, show_edges=True,
-                            scalar_name=data_name, button_name=data_name, cmap=cmap)
+            render.add_3Darray(data, opacity=1, show_edges=True,
+                               scalar_name=data_name, button_name=data_name, cmap=cmap)
             render.p.renderer.actors[data_name].SetVisibility(data_visibility)
             index = np.zeros_like(data, dtype=np.uint8)
             render.p.mesh.cell_data[vtk.vtkDataSetAttributes.GhostArrayName()] = index.ravel()
@@ -217,13 +217,13 @@ def show_animation(directory='', show='precursor'):
         vtk_obj = vr.pv.read(os.path.join(directory, files[-1]))
         # Loading the structure
         structure.load_from_vtk(vtk_obj)
-        cell_dim = structure.cell_dimension
+        cell_size = structure.cell_size
         surface_bool = structure.surface_bool
         deposit = structure.deposit
         data = structure.__getattribute__(show)
         total_dep_cells.append(np.count_nonzero(deposit[deposit < 0]) - init_layer)
-        render._add_3Darray(data, opacity=1, show_edges=True,
-                            scalar_name=data_name, button_name=data_name, cmap=cmap)  # adding structure
+        render.add_3Darray(data, opacity=1, show_edges=True,
+                           scalar_name=data_name, button_name=data_name, cmap=cmap)  # adding structure
         render.p.update_scalar_bar_range([np.partition(p[p != p.min()], 4)[2], p.max()])
         render.p.mesh.cell_data[vtk.vtkDataSetAttributes.GhostArrayName()] = index.ravel()
         render.p.mesh.set_active_scalars(data_name)
@@ -235,18 +235,18 @@ def show_animation(directory='', show='precursor'):
             text += f'Simulation time: {sim_time:.7f} s \n'
         render.p.add_text(text, position='upper_left', font_size=font_size)  # showing time passed
         render.p.add_text(f'Cells: {total_dep_cells[i-1]} \n'  # showing total number of deposited cells
-                          f'Height: {int(np.nonzero(deposit)[0].max() * cell_dim)} nm \n'  # showing current height of the structure
+                          f'Height: {int(np.nonzero(deposit)[0].max() * cell_size)} nm \n'  # showing current height of the structure
                           f'Volume: {volume} nm^3 \n'
                           f'Growth rate: {int(np.asarray(growth_rate).mean())} cell/h \n'  # showing average growth rate
                           f'Frame {i+1}/{len(files)} \n', position='upper_right', font_size=font_size)
         if beam_position is not None:
             x_pos, y_pos = beam_position
-            x, y = int(x_pos / render.cell_dim), int(y_pos / render.cell_dim)
+            x, y = int(x_pos / render.cell_size), int(y_pos / render.cell_size)
             max_z = structure.deposit[:, y, x].nonzero()[0].max()
             start = np.array([0, 0, 100]).reshape(1, 3)  # position of the center of the arrow
             end = np.array([0, 0, -100]).reshape(1, 3)  # direction and resulting size
             render.arrow = render.p.add_arrows(start, end, color='tomato')
-            render.arrow.SetPosition(x_pos, y_pos, max_z * render.cell_dim + 30)  # relative to the initial position
+            render.arrow.SetPosition(x_pos, y_pos, max_z * render.cell_size + 30)  # relative to the initial position
         render.show(interactive_update=False)
 
 if __name__ == '__main__':

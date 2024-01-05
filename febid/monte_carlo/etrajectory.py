@@ -36,7 +36,7 @@ class Electron():
         # to the __slots__.
         __slots__ = ["E", "x", "y", "z", "point", "point_prev", "x_prev", "y_prev", "z_prev",
                      "cx", "cy", "cz", "direction_c", "ctheta", "stheta", "psi",
-                     "cell_dim", "zdim", "ydim", "zdim_abs", "ydim_abs", "xdim_abs"]
+                     "cell_size", "zdim", "ydim", "zdim_abs", "ydim_abs", "xdim_abs"]
         self.E = parent.E
         self.x = x
         self.y = y
@@ -53,7 +53,7 @@ class Electron():
         self.ctheta = 0
         self.stheta = 0
         self.psi = 0
-        self.cell_dim = parent.cell_dim
+        self.cell_size = parent.cell_size
         self.zdim, self.ydim, self.xdim = parent.zdim, parent.ydim, parent.xdim
         self.zdim_abs, self.ydim_abs, self.xdim_abs = parent.zdim_abs, parent.ydim_abs, parent.xdim_abs
 
@@ -98,7 +98,7 @@ class Electron():
         if z == 0: z = self.z
         if y == 0: y = self.y
         if x == 0: x = self.x
-        return int(z / self.cell_dim), int(y / self.cell_dim), int(x / self.cell_dim)
+        return int(z / self.cell_size), int(y / self.cell_size), int(x / self.cell_size)
 
     def index_corr(self):
         """
@@ -108,7 +108,7 @@ class Electron():
         """
         sign = np.sign(self.point)
         sign[sign == 1] = 0
-        delta = self.point % self.cell_dim
+        delta = self.point % self.cell_size
         return np.int64((delta == 0) * sign)
 
     def check_boundaries(self, z=0, y=0, x=0):
@@ -262,7 +262,7 @@ class ETrajectory(MC_Sim_Base):
         self.grid = structure.deposit
         self.surface = structure.surface_bool
         self.s_neghib = structure.surface_neighbors_bool
-        self.cell_dim = params['cell_dim']
+        self.cell_size = params['cell_size']
         self.sigma = params['sigma']
         self.n = params.get('n', 1)
         self.N = stat
@@ -275,9 +275,9 @@ class ETrajectory(MC_Sim_Base):
         self.__calculate_attributes()
 
     def __calculate_attributes(self):
-        self.x0, self.y0, self.z0 = self.grid.shape[2] * self.cell_dim / 2, self.grid.shape[1] * self.cell_dim / 2, self.grid.shape[0] * self.cell_dim - 1
+        self.x0, self.y0, self.z0 = self.grid.shape[2] * self.cell_size / 2, self.grid.shape[1] * self.cell_size / 2, self.grid.shape[0] * self.cell_size - 1
         self.zdim, self.ydim, self.xdim = self.grid.shape
-        self.zdim_abs, self.ydim_abs, self.xdim_abs = self.zdim * self.cell_dim, self.ydim * self.cell_dim, self.xdim * self.cell_dim
+        self.zdim_abs, self.ydim_abs, self.xdim_abs = self.zdim * self.cell_size, self.ydim * self.cell_size, self.xdim * self.cell_size
         self.chamber_dim = np.asarray([self.zdim_abs, self.ydim_abs, self.xdim_abs])
         self.ztop = np.nonzero(self.surface)[0].max() + 1  # highest point of the structure
 
@@ -327,8 +327,8 @@ class ETrajectory(MC_Sim_Base):
         i = 0
         while x_all.shape[0] <= N:
             # Uniform meshgrid
-            x = rnd.uniform(-bonds+x0, bonds+x0, 100)
-            y = rnd.uniform(-bonds+y0, bonds+y0, 100)
+            x = rnd.uniform(-bonds+x0, bonds+x0, 1000)
+            y = rnd.uniform(-bonds+y0, bonds+y0, 1000)
             # Probability density grid
             p = super_gauss_2d(x, y, self.sigma, self.n)
             # p = super_gauss_2d_mod(x, y, self.sigma, self.n)
@@ -431,7 +431,7 @@ class ETrajectory(MC_Sim_Base):
         print('Running \'map trajectory\'...', end='')
         start = dt()
         try:
-            self.passes = etrajectory_c.start_sim(self.E0, self.Emin, y0, x0, self.cell_dim, self.grid, self.surface.view(dtype=np.uint8), [self.substrate, self.deponat])
+            self.passes = etrajectory_c.start_sim(self.E0, self.Emin, y0, x0, self.cell_size, self.grid, self.surface.view(dtype=np.uint8), [self.substrate, self.deponat])
         except Exception as e:
             raise RuntimeError(f'An error occurred while generating trajectories: {e.args}')
         print(f'finished. \t {dt() - start}')
@@ -471,12 +471,12 @@ class ETrajectory(MC_Sim_Base):
             if self.grid[i, j, k] > -1:  # if current cell is not deposit or substrate, electron flies straight to the surface
                 coords.point_prev[0] = coords.z_prev = coords.z
                 # Finding the highest solid cell
-                coords.point[0] = coords.z = np.amax((self.grid[:, j, k]<0).nonzero()[0], initial=0)*self.cell_dim + self.cell_dim # addition here is required to position at the top of the incident solid cell
+                coords.point[0] = coords.z = np.amax((self.grid[:, j, k]<0).nonzero()[0], initial=0) * self.cell_size + self.cell_size # addition here is required to position at the top of the incident solid cell
                 trajectories.append(coords.coordinates)  # saving current point
                 energies.append(coords.E)
                 mask.append(0)
                 # Finish trajectory if electron does not meet any solid cell
-                if coords.z == self.cell_dim: # if there are no solid cells along the trajectory, we same bottom point and move on to the next trajectory
+                if coords.z == self.cell_size: # if there are no solid cells along the trajectory, we same bottom point and move on to the next trajectory
                     self.passes.append((trajectories, energies, mask))
                     continue
                 self.material = self.substrate
@@ -608,7 +608,7 @@ class ETrajectory(MC_Sim_Base):
                 coords.point_prev[0] = coords.z_prev = coords.z
                 # Finding the highest solid cell
                 coords.point[0] = coords.z = np.amax((self.grid[:, j, k] < 0).nonzero()[0],
-                                                     initial=0) * self.cell_dim + self.cell_dim  # addition here is required to position at the top of the incident solid cell
+                                                     initial=0) * self.cell_size + self.cell_size  # addition here is required to position at the top of the incident solid cell
                 print(f'Got new z coordinate at the surface: {coords.z}')
                 print(f'Recording coordinates: {coords.coordinates}')
                 trajectories.append(coords.coordinates)  # saving current point
@@ -617,7 +617,7 @@ class ETrajectory(MC_Sim_Base):
                 print(f'Recording mask: 0')
                 mask.append(0)
                 # Finish trajectory if electron does not meet any solid cell
-                if coords.z == self.cell_dim:  # if there are no solid cells along the trajectory, we same bottom point and move on to the next trajectory
+                if coords.z == self.cell_size:  # if there are no solid cells along the trajectory, we same bottom point and move on to the next trajectory
                     print(f'Electron did not hit any surface, terminating trajectory.')
                     self.passes.append((trajectories, energies, mask))
                     continue
@@ -755,13 +755,13 @@ class ETrajectory(MC_Sim_Base):
         pn = np.asarray(coords.coordinates)
         direction = pn - p0  #
         sign = np.int8(np.sign(direction))
-        step = np.sign(direction) * self.cell_dim
+        step = np.sign(direction) * self.cell_size
         step_t = step / direction
-        delta = -(p0 % self.cell_dim)
-        t = np.abs((delta + (step == self.cell_dim) * self.cell_dim + (delta == 0) * step) / direction)
+        delta = -(p0 % self.cell_size)
+        t = np.abs((delta + (step == self.cell_size) * self.cell_size + (delta == 0) * step) / direction)
         sign[sign == 1] = 0
         crossing = np.empty(3)
-        traversal.get_surface_crossing(self.surface.view(dtype=np.uint8), self.cell_dim, p0, direction, t, step_t, sign, curr_material, crossing)
+        traversal.get_surface_crossing(self.surface.view(dtype=np.uint8), self.cell_size, p0, direction, t, step_t, sign, curr_material, crossing)
         if not crossing.any():
             return pn
         return crossing
@@ -787,14 +787,15 @@ class ETrajectory(MC_Sim_Base):
 
         direction = pn - p0
         direction[direction==0] = rnd.choice((0.000001, -0.000001)) # sometimes next point is so close to the previous, that their subtraction evaluates to 0
-        step = sign * self.cell_dim
+        step = sign * self.cell_size
         step_t = step / direction
-        delta = -(p0 % self.cell_dim)
-        t = np.abs((delta + (sign > 0) * self.cell_dim + (delta == 0) * step) / direction)
+        delta = -(p0 % self.cell_size)
+        t = np.abs((delta + (sign > 0) * self.cell_size + (delta == 0) * step) / direction)
         sign[sign == 1] = 0
         crossing = np.ones(3)
         crossing1 = np.ones(3)
-        flag = traversal.get_surface_solid_crossing(self.surface.view(dtype=np.uint8), self.grid, self.cell_dim, p0, pn, direction, t, step_t, sign, crossing, crossing1)
+        flag = traversal.get_surface_solid_crossing(self.surface.view(dtype=np.uint8), self.grid, self.cell_size, p0,
+                                                    pn, direction, t, step_t, sign, crossing, crossing1)
         if flag != 0:
             if flag == 2:
                 crossing = pn # ideally, this line should not execute at all, because there is always a surface layer between solid and void

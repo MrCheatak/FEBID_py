@@ -90,7 +90,7 @@ class ETrajMap3d(MC_Sim_Base):
         self.grid = structure.deposit
         self.surface = structure.surface_bool
         self.s_neighb = structure.surface_neighbors_bool  # 3D array representing surface n-nearest neigbors
-        self.cell_dim = structure.cell_dimension  # absolute dimension of a cell, nm
+        self.cell_size = structure.cell_size  # absolute dimension of a cell, nm
         self.DE = np.zeros_like(self.grid)  # array for storing of deposited energies
         self.flux = np.zeros_like(self.grid)  # array for storing SE fluxes
 
@@ -161,7 +161,7 @@ class ETrajMap3d(MC_Sim_Base):
         traversal.det_2d(direction, L)
         des = dEs/L
         sign = np.int8(np.sign(direction))
-        step = sign * self.cell_dim # distance traveled by a ray along each axis in the ray direction, when crossing a cell
+        step = sign * self.cell_size # distance traveled by a ray along each axis in the ray direction, when crossing a cell
         # step_t = step / direction  # iteration step of the t-values
         step_t = None
         # Catching 'Division by zero' error
@@ -175,12 +175,12 @@ class ETrajMap3d(MC_Sim_Base):
                 print(f'p0: {p0[zeros[i]]}, pn: {pn[zeros[i]]}, direction: {direction[zeros[i]]}, L: {L[zeros[i]]}')
             step_t = step / direction
 
-        delta = -(points[:, 0] % self.cell_dim) # positions of the ray origin relative to its enclosing cell position
-        t = np.abs((delta + (step == self.cell_dim) * self.cell_dim + (delta == 0) * step) / direction) # initial t-value
-        max_traversed_cells = int(L.max()/self.cell_dim*2)+10 # maximum number of cells traversed by a segment in the trajectory;
+        delta = -(points[:, 0] % self.cell_size) # positions of the ray origin relative to its enclosing cell position
+        t = np.abs((delta + (step == self.cell_size) * self.cell_size + (delta == 0) * step) / direction) # initial t-value
+        max_traversed_cells = int(L.max() / self.cell_size * 2) + 10 # maximum number of cells traversed by a segment in the trajectory;
         # this is essential to allocate enough memory for the traversal algorithm
         self.DE = np.zeros_like(self.grid)
-        traversal.traverse_segment(self.DE, self.grid, self.cell_dim, p0, pn, direction, t, step_t, des, max_traversed_cells)
+        traversal.traverse_segment(self.DE, self.grid, self.cell_size, p0, pn, direction, t, step_t, des, max_traversed_cells)
 
     def prep_se_emission(self, points, dEs, ends):
         """
@@ -272,7 +272,7 @@ class ETrajMap3d(MC_Sim_Base):
         # and collect them when they cross surface
 
         # Getting cell index for each emission point
-        self.se_coords_all = coords_all = np.int32(ne.evaluate('a/b', global_dict={'a': self.coords_all.T, 'b': self.cell_dim}))
+        self.se_coords_all = coords_all = np.int32(ne.evaluate('a/b', global_dict={'a': self.coords_all.T, 'b': self.cell_size}))
         # Selecting only cells in surface proximity
         neighbors = self.s_neighb
         self.se_coords_included = include = neighbors[coords_all[0], coords_all[1], coords_all[2]]
@@ -307,15 +307,15 @@ class ETrajMap3d(MC_Sim_Base):
         direction[:,1] *= length
         direction[:,2] *= length
         pn = direction + coords
-        step = np.sign(direction) * self.cell_dim
+        step = np.sign(direction) * self.cell_size
         step_t = step / direction
 
         t = ne.evaluate('abs((d + m0s + d0 * s)/dir)', global_dict={'d':delta, 'm0s':np.maximum(step,0), 'd0':delta==0, 's':step, 'dir':direction})
-        max_traversed_cells = int(np.amax(length, initial=0)/self.cell_dim*2+5)
+        max_traversed_cells = int(np.amax(length, initial=0) / self.cell_size * 2 + 5)
         # Here each vector is processed with the same ray traversal algorithm as in 'follow_segment' method.
         # It checks if vectors cross surface cells and if they do, the number of emitted SEs (n) associated
         # with the vector is collected in the cell crossed.
-        traversal.generate_flux(self.flux, self.surface.view(dtype=np.uint8), self.cell_dim, coords, pn, direction, sign, t, step_t, n_se, max_traversed_cells) # Cython script
+        traversal.generate_flux(self.flux, self.surface.view(dtype=np.uint8), self.cell_size, coords, pn, direction, sign, t, step_t, n_se, max_traversed_cells) # Cython script
 
         self.coords = np.empty((coords.shape[0], 2, 3))
         self.coords[:,0] = coords[...]

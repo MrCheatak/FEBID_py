@@ -20,7 +20,7 @@ class MC_Simulation(MC_Sim_Base):
     Monte Carlo simulation main class
     """
     def __init__(self, structure, mc_params):
-        self.cell_dim = structure.cell_dimension
+        self.cell_size = structure.cell_size
         self.grid = structure.deposit
         self.substrate = mc_params['substrate'] = substrates[mc_params['substrate_element']]
         self.deponat = mc_params['deponat'] = Element(mc_params['name'], mc_params['Z'], mc_params['A'], mc_params['rho'], mc_params['e'], mc_params['l'], -1)
@@ -62,9 +62,9 @@ class MC_Simulation(MC_Sim_Base):
         norm_factor = self.pe_sim.get_norm_factor(N)
         self.pe_sim.map_wrapper_cy(y0, x0, N)
         self.se_sim.map_follow(self.pe_sim.passes, heat)
-        const = norm_factor / self.se_sim.amplifying_factor / self.pe_sim.cell_dim ** 2 / self.se_sim.segment_min_length
+        const = norm_factor / self.se_sim.amplifying_factor / self.pe_sim.cell_size ** 2 / self.se_sim.segment_min_length
         if heat:
-            self.beam_heating = self.se_sim.heat * norm_factor / self.pe_sim.cell_dim ** 3
+            self.beam_heating = self.se_sim.heat * norm_factor / self.pe_sim.cell_size ** 3
         self.se_surface_flux = np.int32(self.se_sim.flux * const)
         return self.se_surface_flux
 
@@ -75,7 +75,7 @@ class MC_Simulation(MC_Sim_Base):
 
         :return:
         """
-        render = vr.Render(self.pe_sim.cell_dim)
+        render = vr.Render(self.pe_sim.cell_size)
         kwargs = {}
         if primary_e:
             pe_trajectories = np.asarray(self.pe_sim.passes, dtype='object')
@@ -106,7 +106,7 @@ class MC_Simulation(MC_Sim_Base):
                0:summed.shape[0] + 1]  # +1 because 'shading=flat' requires dropping last column and row
         fig, ax = plt.subplots()
         ax.pcolormesh(x, y, summed, cmap='plasma', shading='flat')
-        locator = plt.MultipleLocator(self.se_sim.cell_dim)
+        locator = plt.MultipleLocator(self.se_sim.cell_size)
         # ax.xaxis.set_major_locator(locator)
         # ax.yaxis.set_major_locator(locator)
         plt.show()
@@ -131,7 +131,7 @@ def run_mc_simulation(structure, E0=20, sigma=5, n=1, N=100, pos='center', precu
                  'Emin': Emin,
                  'I0': 1e-10, 'sigma': sigma, 'n': n,
                  'N': N, 'substrate_element': 'Au',
-                 'cell_dim': structure.cell_dimension,
+                 'cell_size': structure.cell_size,
                  'emission_fraction': emission_fraction}
     if type(precursor) is not str:
         precursor_config = {'name': precursor["deposit"],
@@ -146,8 +146,8 @@ def run_mc_simulation(structure, E0=20, sigma=5, n=1, N=100, pos='center', precu
     sim = MC_Simulation(structure, mc_config)
     x, y = 0, 0
     if pos == 'center':
-        x = structure.shape[2]/2 * structure.cell_dimension
-        y = structure.shape[1]/2 * structure.cell_dimension
+        x = structure.shape[2]/2 * structure.cell_size
+        y = structure.shape[1]/2 * structure.cell_size
     else:
         x, y = pos
     print(f'{N} PE trajectories took:   \t Energy deposition took:   \t SE preparation took:   \t Flux counting took:')
