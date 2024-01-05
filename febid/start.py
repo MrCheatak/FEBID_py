@@ -1,5 +1,5 @@
 """
-Scripting template for running series of simulations
+Interface class for binding GUI and simulation together
 """
 import os
 import random

@@ -1,3 +1,6 @@
+"""
+A Collection of utils for launching series of simulations
+"""
 import os
 import re
 

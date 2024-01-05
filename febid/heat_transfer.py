@@ -125,7 +125,7 @@ def heat_transfer_BE(grid, conditions, k, cp, rho, dt, dl, heat_source = 0, subs
         y, x = grid[0].nonzero()
         grid[0, y, x] = substrate_T
 
-    # Getting equation constanats
+    # Getting equation constants
     a = k / cp / rho * 1e24  # thermal diffusivity
     A = dt * a / dl ** 2  # base matrix coefficient
     S = heat_source * (dt / cp / rho * 1e24 * 1.60217733E-19)  # heating source
@@ -181,7 +181,7 @@ def heat_transfer_steady_sor(grid, k, dl, heat_source, eps, solid_index=None):
             z, y, x = grid.nonzero()
             z, y, x = z.astype(np.intc), y.astype(np.intc), x.astype(np.intc)
         return z, y, x
-    print(f'\nFinding steady state solution using Simultaneous Over-Relaxation:')
+    print('\nFinding steady state solution using Simultaneous Over-Relaxation:')
     p_j = 1 - np.pi ** 2 / grid.shape[0] ** 2 / 2 # spectral radius of the Jacobi iteration
     S = heat_source * dl ** 2 / k * 1.60217733E-19
     grid_gs = np.zeros_like(grid)
@@ -215,8 +215,8 @@ def heat_transfer_steady_sor(grid, k, dl, heat_source, eps, solid_index=None):
             skip = int((np.log(eps) - a)/b) + skip_step * n_predictions # making a prediction with overcompensation
             prediction_step = skip # next prediction will be after another norm is calculated
             n_predictions += 1
-    raise RuntimeError(f'Exceeded a million iterations during solving a steady-state heat transfer problem. \n'
-                       f'function: febid.heat_transfer.heat_transfer_steady_sor')
+    raise RuntimeError('Exceeded a million iterations during solving a steady-state heat transfer problem. \n'
+                       'function: febid.heat_transfer.heat_transfer_steady_sor')
 
 
 def fit_exponential(x0, y0):

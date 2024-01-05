@@ -20,7 +20,7 @@ project = 'FEBID Simulator'
 author = 'mrcheatak'
 
 # The full version, including alpha/beta/rc tags
-release = '0.8'
+release = '0.9.0'
 
 # -- General configuration ---------------------------------------------------
 

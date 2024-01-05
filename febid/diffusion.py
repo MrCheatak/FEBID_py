@@ -7,6 +7,7 @@ import math
 import numpy as np
 from febid.libraries.rolling import roll
 
+
 # Diffusion is solved according to finite-difference explicit
 # FTCS (Forward in Time Central in Space) method.
 # Stability condition in 3D space: ∆t<=∆x^2/6D
@@ -25,7 +26,7 @@ def get_diffusion_stability_time(D, dx):
     return diffusion_dt
 
 
-def diffusion_ftcs(grid, surface, D, dt, cell_dim, surface_index=None, flat=True, add=0):
+def diffusion_ftcs(grid, surface, D, dt, cell_size, surface_index=None, flat=True, add=0):
     """
     Calculate diffusion term for the surface cells using stencil approach
 
@@ -36,7 +37,7 @@ def diffusion_ftcs(grid, surface, D, dt, cell_dim, surface_index=None, flat=True
     :param surface: 3D boolean surface array
     :param D: diffusion coefficient, nm^2/s
     :param dt: time interval over which diffusion term is calculated, s
-    :param cell_dim: grid space step, nm
+    :param cell_size: grid space step, nm
     :param surface_index: a tuple of indices of surface cells for the 3 dimensions
     :param flat: if True, returns a flat array of surface cells. Otherwise, returns a 3d array with the same shape as grid.
     :param add: Runge-Kutta intermediate member
@@ -49,9 +50,9 @@ def diffusion_ftcs(grid, surface, D, dt, cell_dim, surface_index=None, flat=True
     # stencil_debug(grid_out, grid, *surface_index)
     grid -= add
     if type(D) in [int, float]:
-        a = dt * D / (cell_dim * cell_dim)
+        a = dt * D / (cell_size * cell_size)
     else:
-        a = dt * D[surface] / (cell_dim * cell_dim)
+        a = dt * D[surface] / (cell_size * cell_size)
     if flat:
         return grid_out[surface] * a
     else:
@@ -72,7 +73,7 @@ def laplace_term_stencil(grid, surface_index):
     return grid_out
 
 
-def prepare_surface_index(surface:np.ndarray):
+def prepare_surface_index(surface: np.ndarray):
     """
     Get a multiindex from the surface array
 
@@ -85,99 +86,54 @@ def prepare_surface_index(surface:np.ndarray):
 
 def stencil_debug(grid_out, grid, z_index, y_index, x_index):
     xdim, ydim, zdim = grid.shape
+    shape = (zdim, ydim, xdim)
     l = z_index.size
     cond = 0
     zero_count = 0
+
+    def axis(ind):
+        if grid[ind] != 0:
+            grid_out[z, y, x] = grid_out[z, y, x] + grid[ind]
+        else:
+            return 1
+
     for i in range(l):
         z = z_index[i]
         y = y_index[i]
         x = x_index[i]
+        ind_f = (z, y, x)
+        ind_b = (z, y, x)
         zero_count = 0
-        if z<zdim-1 and z>0:
+        if zdim - 1 > z > 0:
             cond += 1
-            if y<ydim-1 and y>0:
+            if ydim - 1 > y > 0:
                 cond += 1
-                if x<xdim-1 and x>0:
+                if xdim - 1 > x > 0:
                     cond += 1
         if cond == 3:
-            # Z - axis
-            if grid[z+1, y, x] != 0:
-                grid_out[z, y, x] = grid_out[z, y, x] + grid[z+1, y, x]
-            else:
-                zero_count += 1
-            if grid[z-1, y, x] != 0:
-                grid_out[z, y, x] = grid_out[z, y, x] + grid[z-1, y, x]
-            else:
-                zero_count += 1
-
-            # Y - axis
-            if grid[z, y+1, x] != 0:
-                grid_out[z, y, x] = grid_out[z, y, x] + grid[z, y+1, x]
-            else:
-                zero_count += 1
-            if grid[z, y-1, x] != 0:
-                grid_out[z, y, x] = grid_out[z, y, x] + grid[z, y-1, x]
-            else:
-                zero_count += 1
-
-            # X - axis
-            if grid[z, y, x+1] != 0:
-                grid_out[z, y, x] = grid_out[z, y, x] + grid[z, y, x+1]
-            else:
-                zero_count += 1
-            if grid[z, y, x-1] != 0:
-                grid_out[z, y, x] = grid_out[z, y, x] + grid[z, y, x-1]
-            else:
-                zero_count += 1
-            grid_out[z, y, x] = grid_out[z, y, x] + grid[z, y, x] * zero_count
-            zero_count = 0
-            cond = 0
+            for j in range(3):
+                ind_f[j] += 1
+                ind_b[j] -= 1
+                zero_count += axis(ind_f)
+                zero_count += axis(ind_b)
+                ind_f[j] -= 1
+                ind_b[j] += 1
         else:
-            # Z - axis
-            if z>zdim-1:
-                zero_count  += 1
-            else:
-                if grid[z + 1, y, x] != 0:
-                    grid_out[z, y, x] = grid_out[z, y, x] + grid[z + 1, y, x]
-                else:
+            for j in range(3):
+                c = ind_f[j]
+                boundary = shape[j]
+                ind_f[j] += 1
+                ind_b[j] -= 1
+                if c > boundary - 1:
                     zero_count += 1
-            if z<1:
-                zero_count += 1
-            else:
-                if grid[z - 1, y, x] != 0:
-                    grid_out[z, y, x] = grid_out[z, y, x] + grid[z - 1, y, x]
                 else:
+                    zero_count += axis(ind_f)
+                if c < 1:
                     zero_count += 1
-            # Y - axis
-            if y>ydim-2:
-                zero_count += 1
-            else:
-                if grid[z, y + 1, x] != 0:
-                    grid_out[z, y, x] = grid_out[z, y, x] + grid[z, y + 1, x]
                 else:
-                    zero_count += 1
-            if y<1:
-                zero_count += 1
-            else:
-                if grid[z, y - 1, x] != 0:
-                    grid_out[z, y, x] = grid_out[z, y, x] + grid[z, y - 1, x]
-                else:
-                    zero_count += 1
-            # X - axis
-            if x>xdim-2:
-                zero_count += 1
-            else:
-                if grid[z, y, x + 1] != 0:
-                    grid_out[z, y, x] = grid_out[z, y, x] + grid[z, y, x + 1]
-                else:
-                    zero_count += 1
-            if x<1:
-                zero_count += 1
-            else:
-                if grid[z, y, x - 1] != 0:
-                    grid_out[z, y, x] = grid_out[z, y, x] + grid[z, y, x - 1]
-                else:
-                    zero_count += 1
-            grid_out[z, y, x] = grid_out[z, y, x] + grid[z, y, x] * zero_count
-            zero_count = 0
+                    zero_count += axis(ind_b)
+                ind_f[j] -= 1
+                ind_b[j] += 1
+        grid_out[z, y, x] = grid_out[z, y, x] + grid[z, y, x] * zero_count
+        zero_count = 0
         cond = 0

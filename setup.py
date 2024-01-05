@@ -59,7 +59,7 @@ ext_modules = [
 
 setuptools.setup(
     name='febid',
-    version='0.8.3',
+    version='0.9.0',
     author='Alexander Kuprava, Michael Huth',
     author_email='sandro1742@gmail.com',
     description='FEBID process simulator',

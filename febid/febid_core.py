@@ -163,36 +163,34 @@ def run_febid(structure, precursor_params, settings, sim_params, path, temperatu
     return process_obj, sim
 
 
-def print_all(path, process_obj, sim, run_flag):
+def print_all(path, pr, sim, run_flag):
     """
     Main event loop, that iterates through consequent points in a stream-file.
 
     :param path: patterning path from a stream file
-    :param process_obj: Process class instance
+    :param pr: Process class instance
     :param sim: Monte Carlo simulation object
     :param run_flag:
     :return:
     """
-    process_obj.x0, process_obj.y0 = path[0, 0:2]
+    pr.x0, pr.y0 = path[0, 0:2]
     start = 0
-    total_time = int(path[:, 2].sum() * process_obj.deposition_scaling * 1e6)
+    total_time = int(path[:, 2].sum() * pr.deposition_scaling * 1e6)
     bar_format = "{desc}: {percentage:.1f}%|{bar}| {n:.0f}/{total_fmt} [{elapsed}<{remaining}, {rate_fmt}{postfix}]"
     t = tqdm(total=total_time, desc='Patterning', position=0, unit='µs',
              bar_format=bar_format)  # the execution speed is shown in µs of simulation time per s of real time
     for x, y, step in path[start:]:
-        process_obj.x0, process_obj.y0 = x, y
-        beam_matrix = sim.run_simulation(y, x, process_obj.request_temp_recalc)
-        process_obj.set_beam_matrix(beam_matrix)
-        if process_obj.beam_matrix.max() <= 1:
+        pr.x0, pr.y0 = x, y
+        beam_matrix = sim.run_simulation(y, x, pr.request_temp_recalc)
+        if beam_matrix.max() <= 1:
             warnings.warn('No surface flux!', RuntimeWarning)
-            process_obj.beam_matrix[...] = 1
-        # process_obj.get_dt()
-        process_obj.update_helper_arrays()
-        # process_obj.get_dt()
-        if process_obj.temperature_tracking:
-            process_obj.heat_transfer(sim.beam_heating)
-            process_obj.request_temp_recalc = False
-        print_step(y, x, step, process_obj, sim, t)
+            pr.set_beam_matrix(1)
+        else:
+            pr.set_beam_matrix(beam_matrix)
+        if pr.temperature_tracking:
+            pr.heat_transfer(sim.beam_heating)
+            pr.request_temp_recalc = False
+        print_step(y, x, step, pr, sim, t)
     run_flag.run_flag = True
 
 
@@ -226,26 +224,20 @@ def print_step(y, x, dwell_time, pr: Process, sim, t):
             flag_dt = False
         pr.deposition()  # depositing on a selected area
         if pr.check_cells_filled():
-            flag_resize = pr.update_surface()  # updating surface on a selected area
+            flag_resize = pr.cell_filled_routine()  # updating surface on a selected area
             if flag_resize:  # update references if the allocated simulation volume was increased
                 sim.update_structure(pr.structure)
             start = timeit.default_timer()
             beam_matrix = sim.run_simulation(y, x, pr.request_temp_recalc)  # run MC sim. and retrieve SE surface flux
-            pr.set_beam_matrix(beam_matrix)
-            pr.t_dissociation = 1 / (pr.precursor.sigma * beam_matrix.max())
             print(f'Finished MC in {timeit.default_timer() - start} s')
-            if pr.beam_matrix.max() <= 1:
+            if beam_matrix.max() <= 1:
                 warnings.warn('No surface flux!', RuntimeWarning)
                 pr.set_beam_matrix(1)
-                continue
-            pr.update_helper_arrays()  # auxiliary method that maintains an efficiency increasing infrastructure
+            else:
+                pr.set_beam_matrix(beam_matrix)
             if pr.temperature_tracking:
                 pr.heat_transfer(sim.beam_heating)
                 pr.request_temp_recalc = False
-            if dwell_time >= pr.dt:
-                pr.dt
-            else:
-                pr.dt = dwell_time
         pr.precursor_density()  # recalculate precursor coverage
         pr.t += pr.dt * pr.deposition_scaling
         time_passed += pr.dt
@@ -253,6 +245,7 @@ def print_step(y, x, dwell_time, pr: Process, sim, t):
         if time_passed % pr.stats_freq < pr.dt * 1.5:
             pr.min_precursor_coverage = pr.precursor_min
             pr.dep_vol = pr.deposited_vol
+        pr.reset_dt()
 
 
 def visualize_process(pr: Process, run_flag, show_process=False, frame_rate=1, displayed_data='precursor'):
