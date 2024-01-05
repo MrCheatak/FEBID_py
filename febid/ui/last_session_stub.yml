@@ -1,0 +1,37 @@
+# Settings from the last session are saved here and loaded
+# upon the launch if the parameter 'load_last_session' is True
+
+load_last_session:
+structure_source:  # vtk - load from a vtk_file, geom - create from parameters, auto - create from stream-file
+vtk_filename:
+geom_parameters_filename: ''
+width:
+length:
+height:
+cell_size:
+substrate_height:
+
+pattern_source:  # simple - print a simple figure, stream_file - load printing path from file
+pattern:  # available: point, line, square, circle, rectangle
+# For the point these parameters are position coordinates, while other patterns are automatically
+# positioned in the center and these parameters define the figures.
+param1:  # nm
+param2:  # nm
+dwell_time:  # us
+pitch:  # nm
+repeats:
+stream_file_filename:  # stream-file path
+hfw: # um
+
+settings_filename:
+precursor_filename:
+temperature_tracking:
+
+save_simulation_data:
+save_structure_snapshot:
+
+simulation_data_interval:
+structure_snapshot_interval:
+unique_name:
+save_directory:
+show_process:

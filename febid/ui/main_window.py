@@ -472,61 +472,71 @@ class Ui_MainWindow(object):
         self.retranslateUi(MainWindow)
         self.tabWidget.setCurrentIndex(0)
         self.pattern_selection.setCurrentIndex(0)
-        self.choice_vtk_file.clicked.connect(MainWindow.vtk_chosen) # type: ignore
-        self.choice_geom_parameters_file.clicked.connect(MainWindow.geom_parameters_chosen) # type: ignore
-        self.choice_auto.clicked.connect(MainWindow.auto_chosen) # type: ignore
-        self.choice_simple_pattern.clicked.connect(MainWindow.simple_pattern_chosen) # type: ignore
-        self.choice_stream_file.clicked.connect(MainWindow.stream_file_chosen) # type: ignore
-        self.open_vtk_file_button.clicked.connect(MainWindow.open_vtk_file) # type: ignore
-        self.open_geom_parameters_file_button.clicked.connect(MainWindow.open_geom_parameters_file) # type: ignore
-        self.open_stream_file_button.clicked.connect(MainWindow.open_stream_file) # type: ignore
-        self.open_precursor_parameters_file_button.clicked.connect(MainWindow.open_precursor_parameters_file) # type: ignore
-        self.open_vtk_file_button_mc.clicked.connect(MainWindow.open_vtk_file) # type: ignore
-        self.choice_vtk_file_mc.clicked.connect(MainWindow.vtk_chosen) # type: ignore
-        self.choice_geom_parameters_file_mc.clicked.connect(MainWindow.geom_parameters_chosen) # type: ignore
-        self.open_beam_parameters_file_button_mc.clicked.connect(MainWindow.open_settings_file) # type: ignore
-        self.open_precursor_parameters_file_button_mc.clicked.connect(MainWindow.open_precursor_parameters_file) # type: ignore
-        self.open_geom_parameters_file_button_mc.clicked.connect(MainWindow.open_geom_parameters_file) # type: ignore
-        self.pattern_selection.currentTextChanged['QString'].connect(MainWindow.pattern_selection_changed) # type: ignore
-        self.start_mc_button.clicked.connect(MainWindow.start_mc) # type: ignore
-        self.start_febid_button.clicked.connect(MainWindow.start_febid) # type: ignore
-        self.input_width.editingFinished.connect(MainWindow.check_input) # type: ignore
-        self.input_height.editingFinished.connect(MainWindow.check_input) # type: ignore
-        self.input_length.editingFinished.connect(MainWindow.check_input) # type: ignore
-        self.input_cell_size.editingFinished.connect(MainWindow.check_input) # type: ignore
-        self.input_substrate_height.editingFinished.connect(MainWindow.check_input) # type: ignore
-        self.input_param2.editingFinished.connect(MainWindow.check_input) # type: ignore
-        self.input_param1.editingFinished.connect(MainWindow.check_input) # type: ignore
-        self.input_width_mc.editingFinished.connect(MainWindow.check_input) # type: ignore
-        self.input_length_mc.editingFinished.connect(MainWindow.check_input) # type: ignore
-        self.input_height_mc.editingFinished.connect(MainWindow.check_input) # type: ignore
-        self.input_cell_size_mc.editingFinished.connect(MainWindow.check_input) # type: ignore
-        self.input_substrate_height_mc.editingFinished.connect(MainWindow.check_input) # type: ignore
-        self.beam_energy.editingFinished.connect(MainWindow.check_input) # type: ignore
-        self.energy_cutoff.editingFinished.connect(MainWindow.check_input) # type: ignore
-        self.number_of_e.editingFinished.connect(MainWindow.check_input) # type: ignore
-        self.gauss_dev.editingFinished.connect(MainWindow.check_input) # type: ignore
-        self.x_pos.editingFinished.connect(MainWindow.check_input) # type: ignore
-        self.y_pos.editingFinished.connect(MainWindow.check_input) # type: ignore
-        self.input_dwell_time.editingFinished.connect(MainWindow.check_input) # type: ignore
-        self.input_pitch.editingFinished.connect(MainWindow.check_input) # type: ignore
-        self.input_repeats.editingFinished.connect(MainWindow.check_input) # type: ignore
-        self.checkbox_save_simulation_data.stateChanged['int'].connect(MainWindow.change_state_save_sim_data) # type: ignore
-        self.checkbox_save_snapshots.stateChanged['int'].connect(MainWindow.change_state_save_snapshots) # type: ignore
-        self.input_sim_data_interval.editingFinished.connect(MainWindow.check_input) # type: ignore
-        self.input_snapshot_interval.editingFinished.connect(MainWindow.check_input) # type: ignore
-        self.tabWidget.currentChanged['int'].connect(MainWindow.tab_switched) # type: ignore
-        self.open_save_folder_button.clicked.connect(MainWindow.open_save_directory) # type: ignore
-        self.checkbox_show.stateChanged['int'].connect(MainWindow.change_state_show_process) # type: ignore
-        self.checkbox_load_last_session.stateChanged['int'].connect(MainWindow.change_state_load_last_session) # type: ignore
-        self.input_unique_name.editingFinished.connect(MainWindow.unique_name_changed) # type: ignore
-        self.open_settings_file_button.clicked.connect(MainWindow.open_settings_file) # type: ignore
-        self.checkbox_temperature_tracking.stateChanged['int'].connect(MainWindow.change_state_temperature_tracking) # type: ignore
-        self.gauss_order.editingFinished.connect(MainWindow.check_input) # type: ignore
-        self.checkbox_beam_heating.stateChanged['int'].connect(MainWindow.change_state_temperature_tracking) # type: ignore
-        self.input_hfw.editingFinished.connect(MainWindow.check_input) # type: ignore
-        self.actionOpen_session.triggered['bool'].connect(MainWindow.open_new_session) # type: ignore
+        self.connect_signals_to_slots(MainWindow)
         QtCore.QMetaObject.connectSlotsByName(MainWindow)
+
+    def connect_signals_to_slots(self, MainWindow):
+        self.choice_vtk_file.clicked.connect(MainWindow.vtk_chosen)  # type: ignore
+        self.choice_geom_parameters_file.clicked.connect(MainWindow.geom_parameters_chosen)  # type: ignore
+        self.choice_auto.clicked.connect(MainWindow.auto_chosen)  # type: ignore
+        self.choice_simple_pattern.clicked.connect(MainWindow.simple_pattern_chosen)  # type: ignore
+        self.choice_stream_file.clicked.connect(MainWindow.stream_file_chosen)  # type: ignore
+        self.open_vtk_file_button.clicked.connect(MainWindow.open_vtk_file)  # type: ignore
+        self.open_geom_parameters_file_button.clicked.connect(MainWindow.open_geom_parameters_file)  # type: ignore
+        self.open_stream_file_button.clicked.connect(MainWindow.open_stream_file)  # type: ignore
+        self.open_precursor_parameters_file_button.clicked.connect(
+            MainWindow.open_precursor_parameters_file)  # type: ignore
+        self.open_vtk_file_button_mc.clicked.connect(MainWindow.open_vtk_file)  # type: ignore
+        self.choice_vtk_file_mc.clicked.connect(MainWindow.vtk_chosen)  # type: ignore
+        self.choice_geom_parameters_file_mc.clicked.connect(MainWindow.geom_parameters_chosen)  # type: ignore
+        self.open_beam_parameters_file_button_mc.clicked.connect(MainWindow.open_settings_file)  # type: ignore
+        self.open_precursor_parameters_file_button_mc.clicked.connect(
+            MainWindow.open_precursor_parameters_file)  # type: ignore
+        self.open_geom_parameters_file_button_mc.clicked.connect(MainWindow.open_geom_parameters_file)  # type: ignore
+        self.pattern_selection.currentTextChanged['QString'].connect(
+            MainWindow.pattern_selection_changed)  # type: ignore
+        self.start_mc_button.clicked.connect(MainWindow.start_mc)  # type: ignore
+        self.start_febid_button.clicked.connect(MainWindow.start_febid)  # type: ignore
+        self.input_width.editingFinished.connect(MainWindow.check_input)  # type: ignore
+        self.input_height.editingFinished.connect(MainWindow.check_input)  # type: ignore
+        self.input_length.editingFinished.connect(MainWindow.check_input)  # type: ignore
+        self.input_cell_size.editingFinished.connect(MainWindow.check_input)  # type: ignore
+        self.input_substrate_height.editingFinished.connect(MainWindow.check_input)  # type: ignore
+        self.input_param2.editingFinished.connect(MainWindow.check_input)  # type: ignore
+        self.input_param1.editingFinished.connect(MainWindow.check_input)  # type: ignore
+        self.input_width_mc.editingFinished.connect(MainWindow.check_input)  # type: ignore
+        self.input_length_mc.editingFinished.connect(MainWindow.check_input)  # type: ignore
+        self.input_height_mc.editingFinished.connect(MainWindow.check_input)  # type: ignore
+        self.input_cell_size_mc.editingFinished.connect(MainWindow.check_input)  # type: ignore
+        self.input_substrate_height_mc.editingFinished.connect(MainWindow.check_input)  # type: ignore
+        self.beam_energy.editingFinished.connect(MainWindow.check_input)  # type: ignore
+        self.energy_cutoff.editingFinished.connect(MainWindow.check_input)  # type: ignore
+        self.number_of_e.editingFinished.connect(MainWindow.check_input)  # type: ignore
+        self.gauss_dev.editingFinished.connect(MainWindow.check_input)  # type: ignore
+        self.x_pos.editingFinished.connect(MainWindow.check_input)  # type: ignore
+        self.y_pos.editingFinished.connect(MainWindow.check_input)  # type: ignore
+        self.input_dwell_time.editingFinished.connect(MainWindow.check_input)  # type: ignore
+        self.input_pitch.editingFinished.connect(MainWindow.check_input)  # type: ignore
+        self.input_repeats.editingFinished.connect(MainWindow.check_input)  # type: ignore
+        self.checkbox_save_simulation_data.stateChanged['int'].connect(
+            MainWindow.change_state_save_sim_data)  # type: ignore
+        self.checkbox_save_snapshots.stateChanged['int'].connect(MainWindow.change_state_save_snapshots)  # type: ignore
+        self.input_sim_data_interval.editingFinished.connect(MainWindow.check_input)  # type: ignore
+        self.input_snapshot_interval.editingFinished.connect(MainWindow.check_input)  # type: ignore
+        self.tabWidget.currentChanged['int'].connect(MainWindow.tab_switched)  # type: ignore
+        self.open_save_folder_button.clicked.connect(MainWindow.open_save_directory)  # type: ignore
+        self.checkbox_show.stateChanged['int'].connect(MainWindow.change_state_show_process)  # type: ignore
+        self.checkbox_load_last_session.stateChanged['int'].connect(
+            MainWindow.change_state_load_last_session)  # type: ignore
+        self.input_unique_name.editingFinished.connect(MainWindow.unique_name_changed)  # type: ignore
+        self.open_settings_file_button.clicked.connect(MainWindow.open_settings_file)  # type: ignore
+        self.checkbox_temperature_tracking.stateChanged['int'].connect(
+            MainWindow.change_state_temperature_tracking)  # type: ignore
+        self.gauss_order.editingFinished.connect(MainWindow.check_input)  # type: ignore
+        self.checkbox_beam_heating.stateChanged['int'].connect(
+            MainWindow.change_state_temperature_tracking)  # type: ignore
+        self.input_hfw.editingFinished.connect(MainWindow.check_input)  # type: ignore
+        self.actionOpen_session.triggered['bool'].connect(MainWindow.open_new_session)  # type: ignore
 
     def retranslateUi(self, MainWindow):
         _translate = QtCore.QCoreApplication.translate

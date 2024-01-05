@@ -4,7 +4,8 @@ Package main entry point
 import sys
 
 import febid
-from febid.start import start_default, start_no_ui
+from febid.ui import ui_shell
+from febid.start import Starter
 
 intro = ('Welcome to the FEBID simulator. \n'
          ' To start a basic session with GUI use \n'
@@ -19,35 +20,51 @@ intro = ('Welcome to the FEBID simulator. \n'
          ' To view an animated series from .vtk-files use \n'
          ' \t `python -m febid show_animation <directory>` \t if a directory is not specified, a directory prompt window will open. \n')
 
-if __name__ == '__main__':
+
+def start_ui(config_f=None):
+    """
+    Start FEBID with graphical user interface.
+
+    :param config_f: configuration file
+    :return:
+    """
+    ui_shell.start(config_f)
+
+
+def start_no_ui(config_f=None):
+    """
+    Start FEBID without graphical user interface.
+
+    :param config_f: configuration file
+    :return:
+    """
+    Starter(config_f).start()
+
+
+def welcome():
+    """
+    This function prints the intro and performs actions based on command line arguments.
+    """
     print(intro)
+    command_functions = {
+        'show_file': febid.show_file.show_structure,
+        'show_animation': febid.show_animation.show_animation,
+        'gui': start_ui,
+        'no_gui': Starter().start
+    }
     if len(sys.argv) > 1:
-        if sys.argv[1] in ['show_file', 'show_animation', 'gui', 'no_gui']:
-            if sys.argv[1] == 'show_file':
-                file = None
-                try:
-                    file = sys.argv[2]
-                except:
-                    pass
-                febid.show_file.show_structure(file)
-            if sys.argv[1] == 'show_animation':
-                directory = None
-                try:
-                    directory = sys.argv[2]
-                except:
-                    pass
-                febid.show_animation.show_animation(directory)
-            if sys.argv[1] == 'gui':
-                if len(sys.argv) > 2:
-                    start_default(sys.argv[2])
-                else:
-                    start_default()
-            if sys.argv[1] == 'no_gui':
-                if len(sys.argv) < 2:
-                    print(f'Please specify configuration file when starting without GUI')
-                else:
-                    start_no_ui(sys.argv[2])
+        command = sys.argv[1]
+        if command in command_functions:
+            function = command_functions[command]
+            if len(sys.argv) > 2:
+                function(sys.argv[2])
+            else:
+                function()
         else:
-            print(f'Unexpected argument {sys.argv[1]}')
+            print(f'Unexpected argument {command}')
     else:
-        start_default()
+        start_ui()
+
+
+if __name__ == '__main__':
+    welcome()
