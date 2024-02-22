@@ -3,7 +3,7 @@ Mixed Cell Cellular Automata
 """
 import numpy as np
 
-from slice_trics import get_3d_slice, get_boundary_indices
+from .slice_trics import get_3d_slice, get_boundary_indices
 
 
 class MixedCellCellularAutomata:

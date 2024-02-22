@@ -13,7 +13,6 @@ import time
 import warnings
 import timeit
 from threading import Thread
-from tkinter import filedialog as fd
 
 # Core packages
 import numpy as np
@@ -145,8 +144,8 @@ def run_febid(structure, precursor_params, settings, sim_params, path, temperatu
         stats.get_params(precursor_params, 'Precursor parameters')
         stats.get_params(settings, 'Beam parameters and settings')
         stats.get_params(sim_params, 'Simulation volume parameters')
-        process_obj.stats_freq = min(saving_params['gather_stats_interval'], saving_params['save_snapshot_interval'],
-                                     rendering.get('frame_rate', 1))
+        process_obj.stats_frequency = min(saving_params['gather_stats_interval'], saving_params['save_snapshot_interval'],
+                                           rendering.get('frame_rate', 1))
         stats.start()
     if saving_params['save_snapshot']:
         struc = StructureSaver(process_obj, flag, saving_params['save_snapshot'], saving_params['filename'])
@@ -242,7 +241,7 @@ def print_step(y, x, dwell_time, pr: Process, sim, t):
         pr.t += pr.dt * pr.deposition_scaling
         time_passed += pr.dt
         t.update(pr.dt * pr.deposition_scaling * 1e6)
-        if time_passed % pr.stats_freq < pr.dt * 1.5:
+        if time_passed % pr.stats_frequency < pr.dt * 1.5:
             pr.min_precursor_coverage = pr.precursor_min
             pr.dep_vol = pr.deposited_vol
         pr.reset_dt()
@@ -282,7 +281,6 @@ def visualize_process(pr: Process, run_flag, show_process=False, frame_rate=1, d
         update_graphical(rn, pr, now - start_time, displayed_data, False)
         rn.show(interactive_update=False)
         print('Closing rendering.')
-
 
 
 def update_graphical(rn: vr.Render, pr: Process, time_spent, displayed_data='precursor', update=True):

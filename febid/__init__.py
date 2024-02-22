@@ -4,6 +4,7 @@ FEBID Simulator package
 from . import Statistics
 from . import Structure
 from .libraries.vtk_rendering import VTK_Rendering
+from . import continuum_model_base
 from . import Process
 from . import mcca
 from . import monte_carlo

@@ -11,6 +11,7 @@ import pyvista as pv
 import febid.simple_patterns as sp
 from febid import febid_core
 from febid.Structure import Structure
+from febid.monte_carlo import etraj3d as e3d
 
 
 class Starter:
@@ -36,6 +37,11 @@ class Starter:
         self._open_settings_and_precursor_params()
         self._run_febid_interface()
         return self.process_obj, self.sim
+
+    def start_mc(self, **kwargs):
+        self._create_simulation_volume()
+        self.precursor_params = self._open_precursor_params()
+        self._run_mc_interface(**kwargs)
 
     def _create_simulation_volume(self):
         """
@@ -240,6 +246,13 @@ class Starter:
                                                                     self.settings,
                                                                     sim_volume_params, self.printing_path,
                                                                     temperature_tracking, saving_params, rendering)
+
+    def _run_mc_interface(self, **kwargs):
+        """
+        Run Monte Carlo simulation
+        """
+        sim_volume_params = self.get_simulation_volume_parameters()
+        return e3d.run_mc_simulation(self.structure, precursor=self.precursor_params, **kwargs)
 
     def get_simulation_volume_parameters(self):
         sim_volume_params = {

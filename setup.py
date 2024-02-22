@@ -59,7 +59,7 @@ ext_modules = [
 
 setuptools.setup(
     name='febid',
-    version='0.9.0',
+    version='0.9.1',
     author='Alexander Kuprava, Michael Huth',
     author_email='sandro1742@gmail.com',
     description='FEBID process simulator',
@@ -70,11 +70,12 @@ setuptools.setup(
     license='MIT',
     packages=['febid', 'febid.monte_carlo', 'febid.monte_carlo.compiled', 'febid.ui', 'febid.libraries.vtk_rendering',
               'febid.libraries.rolling', 'febid.libraries.ray_traversal', 'febid.libraries.pde'],
-    package_data = {'': ['*.pyx']},
+    package_data = {'': ['*.pyx', 'ui/last_session_stub.yml']},
     include_package_data=True,
-    install_requires=['numpy<1.23.0', 'pyvista', 'pandas', 'ruamel.yaml', 'cython', 'openpyxl', 'tqdm', 'pyqt5', 'pyaml',
+    install_requires=['numpy', 'pyvista==0.38.5', 'pandas', 'ruamel.yaml', 'cython', 'openpyxl', 'tqdm', 'pyqt5',
+                      'pyaml',
                       'numexpr_mod'],
     ext_modules=cythonize(ext_modules),
     include_dirs=[np.get_include()],
-    # pyhton_requires='>=3.7',
+    pyhton_requires='>=3.7',
 )

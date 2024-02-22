@@ -2,14 +2,24 @@
 View series of consequent 3D-Structure files as an animated process.
 """
 import os, time
+import sys
 from datetime import datetime
-from tkinter import filedialog as fd
+from PyQt5.QtWidgets import QApplication
+from PyQt5.QtWidgets import QFileDialog as fd
 
 import numpy as np
 import vtk
 
 import febid.libraries.vtk_rendering.VTK_Rendering as vr
 from febid.Structure import Structure
+
+def ask_directory():
+    os.chdir('../../..')
+    init_dir = os.getcwd()
+    app = QApplication(sys.argv)
+    directory = fd.getExistingDirectory(None, 'Select the folder with vtk files', init_dir)
+    app.quit()
+    return directory
 
 def open_file(directory=''):
     """
@@ -41,7 +51,13 @@ def open_file(directory=''):
 
     return files, times
 
-def show_animation(directory='', show='precursor'):
+def show_animation(directory=None, **kwargs):
+    if not directory:
+        directory = ask_directory()
+    result = show_animation(directory, **kwargs)
+    return result
+
+def show_animation(directory, show='precursor'):
     """
     Show animated process from series of vtk files.
     Files must have consequent creation dates to align correctly
@@ -56,9 +72,7 @@ def show_animation(directory='', show='precursor'):
 
     # Opening files
     if not directory:
-        os.chdir('../../..')
-        init_dir = os.getcwd()
-        directory = fd.askdirectory()
+        directory = ask_directory()
     files, times = open_file(directory)
 
     # Getting data for initialization
@@ -247,7 +261,15 @@ def show_animation(directory='', show='precursor'):
             end = np.array([0, 0, -100]).reshape(1, 3)  # direction and resulting size
             render.arrow = render.p.add_arrows(start, end, color='tomato')
             render.arrow.SetPosition(x_pos, y_pos, max_z * render.cell_size + 30)  # relative to the initial position
-        render.show(interactive_update=False)
+        cam_pos = render.show(interactive_update=False)
+    return cam_pos
 
 if __name__ == '__main__':
+    filenames = None
+    try:
+        filename = sys.argv[1]
+    except Exception as e:
+        print(e.args)
+        if not filenames:
+            filenames = ask_directory()
     show_animation()

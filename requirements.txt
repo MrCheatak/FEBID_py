@@ -1,7 +1,6 @@
 matplotlib
 numpy
-numpy<1.23.0
-pyvista
+pyvista==0.38.5
 pandas
 ruamel.yaml
 cython

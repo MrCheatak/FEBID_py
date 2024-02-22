@@ -96,13 +96,18 @@ class SessionHandler:
         if name in self.params:
             self.params[name] = value
 
-    def start(self):
+    def start(self, module='febid', **kwargs):
         """
         Start the simulation
 
         :return:
         """
-        return self.starter.start()
+        if module == 'febid':
+            return self.starter.start()
+        elif module == 'monte_carlo':
+            self.starter.start_mc(**kwargs)
+        else:
+            raise ValueError(f'Unknown module: {module}')
 
 
 class UI_Group(list):
@@ -459,6 +464,7 @@ class MainPanel(QMainWindow, UI_MainPanel):
             # A naming convention is made: lineEdit objects are named the same
             # as the parameters in the file only with 'input_' in the beginning
             name = lineEdit.objectName()[6:]  # stripping 'input_'
+            name = name.replace('_mc', '')  # stripping '_mc' if present
             if self.__is_int(val) / val == 1:
                 val = int(val)
             self.__save_parameter(name, val)
@@ -489,54 +495,6 @@ class MainPanel(QMainWindow, UI_MainPanel):
             self.__exception_handler(e)
 
     def start_mc(self):
-        # Creating a simulation volume
-        structure = Structure()
-        params = None
-        if self.structure_source == 'auto':
-            self.__view_message('Structure source not set', 'Seems like \'Auto\' option was chosen previously '
-                                                            'in the FEBID tab...')
-            return
-        if self.structure_source == 'vtk':  # opening from a .vtk file
-            try:
-                vtk_obj = pv.read(self.session_handler.params['vtk_filename'])
-                structure.load_from_vtk(vtk_obj)
-                params = read_field_data(vtk_obj)
-            except Exception as e:
-                if not self.vtk_filename:
-                    self.__view_message('File not specified',
-                                        'VTK file not specified. Please choose the file and try again.')
-                else:
-                    self.__view_message(additional_message='VTK file not found')
-                return
-            cell_size = structure.cell_size
-            substrate_height = structure.substrate_height
-
-        if self.structure_source == 'geom':  # creating from geometry parameters
-            try:
-                cell_size = int(self.input_cell_size_mc.text())
-                xdim = int(float(self.input_width_mc.text())) // cell_size  # array length
-                ydim = int(float(self.input_length_mc.text())) // cell_size  # array length
-                zdim = int(float(self.input_height_mc.text())) // cell_size  # array length
-                substrate_height = math.ceil(int(float(self.input_substrate_height_mc.text())) / cell_size)
-                structure.create_from_parameters(cell_size, xdim, ydim, zdim, substrate_height)
-            except Exception as e:
-                self.__view_message('Input error',
-                                    'An error occurred while fetching geometry parameters for the simulation volume. \n '
-                                    'Check values and try again.')
-                print(e.args)
-                return
-
-        # Opening precursor file
-        try:
-            with open(self.session_handler.params['precursor_filename'], mode='rb') as f:
-                precursor_params = yaml.load(f, Loader=yaml.FullLoader)
-        except:
-            if not self.session_handler.params['precursor_filename']:
-                self.__view_message('File not specified',
-                                    'Precursor parameters file not specified. Please choose the file and try again.')
-            else:
-                self.__view_message(additional_message='Precursor parameters file not found')
-            return
         E0 = float(self.beam_energy.text())
         Emin = float(self.energy_cutoff.text())
         gauss_dev = float(self.gauss_dev.text())
@@ -545,8 +503,8 @@ class MainPanel(QMainWindow, UI_MainPanel):
         N = int(self.number_of_e.text())
         n = int(self.gauss_order.text())
         heating = self.checkbox_beam_heating.isChecked()
-        self.cam_pos = e3d.run_mc_simulation(structure, E0, gauss_dev, n, N, (x0, y0), precursor_params, Emin, 0.6,
-                                             heating, params, self.cam_pos)
+        params = {'E0': E0, 'Emin': Emin, 'sigma': gauss_dev, 'pos': (x0, y0), 'N': N, 'n': n, 'heating': heating, 'cam_pos': self.cam_pos}
+        self.session_handler.start(module='monte_carlo', **params)
         return 1
 
 
@@ -648,9 +606,12 @@ class MainPanel(QMainWindow, UI_MainPanel):
                 params[parameter] = element.isChecked()
             elif element.__class__ == QtWidgets.QLineEdit:
                 text = element.text()
-                val = float(text)
-                if int(val) - val == 0:
-                    val = int(text)
+                if self.__is_float(text):
+                    val = float(text)
+                    if int(val) - val == 0:
+                        val = int(text)
+                else:
+                    val = text
                 params[parameter] = val
             elif element.__class__ == QtWidgets.QComboBox:
                 params[parameter] = element.currentText()
