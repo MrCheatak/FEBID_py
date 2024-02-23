@@ -1,4 +1,4 @@
-name: Build for all systems
+name: build
 
 on:
   workflow_dispatch:
@@ -62,9 +62,9 @@ jobs:
             p_ver: "3.11"
 
     steps:
-      - uses: actions/checkout@v3
+      - uses: actions/checkout@v4
 
-      - uses: actions/setup-python@v3
+      - uses: actions/setup-python@v5
         name: Install Python
         with:
           python-version: '3.x'
@@ -78,7 +78,7 @@ jobs:
         run: |
           python -m pip install cibuildwheel
 
-      - uses: docker/setup-qemu-action@v1
+      - uses: docker/setup-qemu-action@v3
         if: ${{ matrix.arch == 'aarch64' }}
         name: Set up QEMU
       

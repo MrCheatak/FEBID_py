@@ -9,15 +9,24 @@ FEBID Simulation package
 :Documentation: http://febid-py.readthedocs.io
 :PyPi: |version|
 :ReadTheDocs: |docs|
-:Code quality: |codiga|
+
+
+|build| |dependencies| |contributors|
 
 .. |version| image:: https://badge.fury.io/py/febid.svg
     :target: https://badge.fury.io/py/febid
 .. |docs| image:: https://readthedocs.org/projects/febid-py/badge/?version=latest
     :target: https://febid-py.readthedocs.io/en/latest/?badge=latest
     :alt: Documentation Status
-.. |codiga| image:: https://api.codiga.io/project/35990/status/svg
-    :target: https://app.codiga.io/hub/project/35990/FEBID_py
+.. |contributors| image:: https://img.shields.io/badge/contributions-welcome-brightgreen.svg?style=flat
+    :target: https://github.com/mrchetak/febid_py/issues
+.. |build| image:: https://github.com/MrCheatak/FEBID_py/actions/workflows/build_orig.yml/badge.svg?style=flat
+    :target: https://github.com/MrCheatak/FEBID_py/actions/workflows/build_orig.yml
+.. |dependencies| image:: https://img.shields.io/librariesio/github/mrcheatak/FEBID_py
+   :target: https://libraries.io/github/mrcheatak/FEBID_py
+    :alt: Libraries.io dependency status for FEBID_py repo
+
+
 
 
 What is FEBID Simulation?
@@ -45,8 +54,8 @@ Alternatively, it can be installed directly from GitHub via pip, although that w
 
 :code:`pip install git+https://github.com/MrCheatak/FEBID_py`
 
-*Tip*: Linux user may need to manually install vtk9(visualisation), tkinter(file opening) and pyqt5(interface)
-with *apt* as they may have to be explicitly added to the system for support.
+*Tip*: Linux user may need to manually install vtk9(visualisation) and pyqt5(interface)
+with the system package manager as they may have to be explicitly added to the system for support.
 
 Running the first simulation
 -----------------------------
