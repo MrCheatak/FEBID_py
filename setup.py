@@ -27,39 +27,40 @@ print(f'Platform: {platform, openMP_arg}')
 
 # Add include/link dirs, and modify the stdlib to libc++
 ext_modules = [
-             Extension("febid.monte_carlo.compiled.etrajectory_c", ['febid/monte_carlo/compiled/etrajectory_c.pyx'],
-                         # include_dirs=["/usr/local/opt/llvm/include"],
-                         # library_dirs=["/usr/local/opt/llvm/lib"],
-                         # extra_compile_args=["-w", '-fopenmp'],
-                         # libraries=libraries,
-                         # extra_link_args=[openMP_arg]
-                         ),
-               Extension("febid.libraries.ray_traversal.traversal", ['febid/libraries/ray_traversal/traversal.pyx'],
-                         # include_dirs=["/usr/local/opt/llvm/include"],
-                         # library_dirs=["/usr/local/opt/llvm/lib"],
-                         # extra_compile_args=["-w", '-fopenmp'],
-                         # libraries=libraries,
-                         # extra_link_args=[openMP_arg]
-                         ),
-               Extension("febid.libraries.rolling.roll", ['febid/libraries/rolling/roll.pyx'],
-                         # include_dirs=["/usr/local/opt/llvm/include"],
-                         # library_dirs=["/usr/local/opt/llvm/lib"],
-                         # extra_compile_args=["-w", '-fopenmp'],
-                         # libraries=libraries,
-                         # extra_link_args=[openMP_arg]
-                         ),
-              Extension("febid.libraries.pde.tridiag", ['febid/libraries/pde/tridiag.pyx'],
-                         # include_dirs=["/usr/local/opt/llvm/include"],
-                         # library_dirs=["/usr/local/opt/llvm/lib"],
-                         # extra_compile_args=["-w", "-fopenmp"],
-                         # libraries=libraries,
-                         # extra_link_args=[openMP_arg]
-                         ),
-               ]
-
+    Extension("febid.monte_carlo.compiled.etrajectory_c", ['febid/monte_carlo/compiled/etrajectory_c.pyx'],
+              # include_dirs=["/usr/local/opt/llvm/include"],
+              # library_dirs=["/usr/local/opt/llvm/lib"],
+              # extra_compile_args=["-w", '-fopenmp'],
+              # libraries=libraries,
+              # extra_link_args=[openMP_arg]
+              ),
+    Extension("febid.libraries.ray_traversal.traversal", ['febid/libraries/ray_traversal/traversal.pyx'],
+              # include_dirs=["/usr/local/opt/llvm/include"],
+              # library_dirs=["/usr/local/opt/llvm/lib"],
+              # extra_compile_args=["-w", '-fopenmp'],
+              # libraries=libraries,
+              # extra_link_args=[openMP_arg]
+              ),
+    Extension("febid.libraries.rolling.roll", ['febid/libraries/rolling/roll.pyx'],
+              # include_dirs=["/usr/local/opt/llvm/include"],
+              # library_dirs=["/usr/local/opt/llvm/lib"],
+              # extra_compile_args=["-w", '-fopenmp'],
+              # libraries=libraries,
+              # extra_link_args=[openMP_arg]
+              ),
+    Extension("febid.libraries.pde.tridiag", ['febid/libraries/pde/tridiag.pyx'],
+              # include_dirs=["/usr/local/opt/llvm/include"],
+              # library_dirs=["/usr/local/opt/llvm/lib"],
+              # extra_compile_args=["-w", "-fopenmp"],
+              # libraries=libraries,
+              # extra_link_args=[openMP_arg]
+              ),
+]
+with open('requirements.txt') as f:
+    requirements = f.read().splitlines()
 setuptools.setup(
     name='febid',
-    version='0.9.1',
+    version='0.9.2',
     author='Alexander Kuprava, Michael Huth',
     author_email='sandro1742@gmail.com',
     description='FEBID process simulator',
@@ -72,10 +73,8 @@ setuptools.setup(
               'febid.libraries.rolling', 'febid.libraries.ray_traversal', 'febid.libraries.pde'],
     package_data = {'': ['*.pyx', 'ui/last_session_stub.yml']},
     include_package_data=True,
-    install_requires=['numpy', 'pyvista==0.38.5', 'pandas', 'ruamel.yaml', 'cython', 'openpyxl', 'tqdm', 'pyqt5',
-                      'pyaml',
-                      'numexpr_mod'],
+    install_requires=requirements,
     ext_modules=cythonize(ext_modules),
     include_dirs=[np.get_include()],
-    pyhton_requires='>=3.7',
+    pyhton_requires='>=3.9',
 )
