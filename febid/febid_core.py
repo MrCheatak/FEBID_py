@@ -144,25 +144,28 @@ def run_febid(structure, precursor_params, settings, sim_params, path, temperatu
         stats.get_params(precursor_params, 'Precursor parameters')
         stats.get_params(settings, 'Beam parameters and settings')
         stats.get_params(sim_params, 'Simulation volume parameters')
-        process_obj.stats_frequency = min(saving_params['gather_stats_interval'], saving_params['save_snapshot_interval'],
-                                           rendering.get('frame_rate', 1))
+        process_obj.stats_frequency = min(saving_params.get('gather_stats_interval', 1),
+                                          saving_params.get('save_snapshot_interval', 1),
+                                          rendering.get('frame_rate', 1))
         stats.start()
     if saving_params['save_snapshot']:
-        struc = StructureSaver(process_obj, flag, saving_params['save_snapshot'], saving_params['filename'])
+        struc = StructureSaver(process_obj, flag, saving_params['save_snapshot_interval'], saving_params['filename'])
         struc.start()
     printing.start()
-    if rendering['show_process']:
-        visualize_process(process_obj, flag, **rendering)
+    if rendering['show_process']: # running visualization in the main loop
+        total_time = visualize_process(process_obj, flag, **rendering)
     printing.join()
     if saving_params['gather_stats']:
         stats.join()
     if saving_params['save_snapshot']:
         struc.join()
     print('Finished path.')
+    if rendering['show_process']:
+        visualize_result(process_obj, total_time, **rendering)
     return process_obj, sim
 
 
-def print_all(path, pr, sim, run_flag):
+def print_all(path, pr: Process, sim: MC_Simulation, run_flag: SynchronizationHelper):
     """
     Main event loop, that iterates through consequent points in a stream-file.
 
@@ -172,6 +175,7 @@ def print_all(path, pr, sim, run_flag):
     :param run_flag:
     :return:
     """
+    pr.start_time = datetime.datetime.now()
     pr.x0, pr.y0 = path[0, 0:2]
     start = 0
     total_time = int(path[:, 2].sum() * pr.deposition_scaling * 1e6)
@@ -189,11 +193,11 @@ def print_all(path, pr, sim, run_flag):
         if pr.temperature_tracking:
             pr.heat_transfer(sim.beam_heating)
             pr.request_temp_recalc = False
-        print_step(y, x, step, pr, sim, t)
+        print_step(y, x, step, pr, sim, t, run_flag)
     run_flag.run_flag = True
 
 
-def print_step(y, x, dwell_time, pr: Process, sim, t):
+def print_step(y, x, dwell_time, pr: Process, sim: MC_Simulation, t, run_flag: SynchronizationHelper):
     """
     Sub-loop, that iterates through the dwell time by a time step
 
@@ -203,6 +207,7 @@ def print_step(y, x, dwell_time, pr: Process, sim, t):
     :param pr: Process object
     :param sim: MC simulation object
     :param t: tqdm progress bar
+    :param run_flag: Thread synchronization object
 
     :return:
     """
@@ -240,47 +245,59 @@ def print_step(y, x, dwell_time, pr: Process, sim, t):
         pr.precursor_density()  # recalculate precursor coverage
         pr.t += pr.dt * pr.deposition_scaling
         time_passed += pr.dt
+        run_flag.timer = pr.t
         t.update(pr.dt * pr.deposition_scaling * 1e6)
         if time_passed % pr.stats_frequency < pr.dt * 1.5:
             pr.min_precursor_coverage = pr.precursor_min
             pr.dep_vol = pr.deposited_vol
         pr.reset_dt()
+        # Allow only one tick of the loop for daemons per one tick of simulation
+        run_flag.loop_tick.acquire()
+        run_flag.loop_tick.notify_all()
+        run_flag.loop_tick.release()
 
 
-def visualize_process(pr: Process, run_flag, show_process=False, frame_rate=1, displayed_data='precursor'):
+def visualize_process(pr: Process, run_flag, frame_rate=1, displayed_data='precursor', **kwargs):
     """
     A daemon process function to manage statistics gathering and graphics update.
 
     :param pr: object of the core deposition process
-    :param run_flag:
-    :param show_process: True will enable graphical monitoring of the process
+    :param run_flag: thread synchronization object, allows to stop visualization when simulation concludes
     :param frame_rate: redrawing delay
-    :param displayed_data: name of the displayed data
+    :param displayed_data: name of the displayed data. Options: 'precursor', 'deposit', 'temperature', 'surface_temperature'
     :return:
     """
-
-    # When deposition process thread finishes, it sets flag to False which will finish current thread
-
-    pr.start_time = datetime.datetime.now()
     start_time = timeit.default_timer()
     # Initializing graphical monitoring
-    if show_process:
-        rn = vr.Render(pr.structure.cell_size)
-        rn.p.clear
-        pr.redraw = True
-        # Event loop
-        while not run_flag:
-            now = timeit.default_timer()
-            update_graphical(rn, pr, now - start_time, displayed_data)
-            time.sleep(frame_rate)
-        print('Rendering last frame interactively.')
+
+    rn = vr.Render(pr.structure.cell_size)
+    rn.p.clear()
+    pr.redraw = True
+    now = 0
+    # Event loop
+    while not run_flag:
         now = timeit.default_timer()
-        rn.p.close()
-        rn = vr.Render(pr.structure.cell_size)
-        pr.redraw = True
-        update_graphical(rn, pr, now - start_time, displayed_data, False)
-        rn.show(interactive_update=False)
-        print('Closing rendering.')
+        update_graphical(rn, pr, now - start_time, displayed_data)
+        time.sleep(frame_rate)
+    rn.p.close()
+    print('Closing rendering.')
+    return now - start_time
+
+
+def visualize_result(pr, total_time, displayed_data='precursor', **kwargs):
+    """
+    Rendering the final state of the process.
+
+    :param pr: object of the core deposition process
+    :param displayed_data: name of the displayed data
+    :param total_time: total time of the simulation
+    :return:
+    """
+    print('Rendering last frame interactively.')
+    rn = vr.Render(pr.structure.cell_size)
+    pr.redraw = True
+    update_graphical(rn, pr, total_time, displayed_data, False)
+    rn.show(interactive_update=False)
 
 
 def update_graphical(rn: vr.Render, pr: Process, time_spent, displayed_data='precursor', update=True):
@@ -375,7 +392,7 @@ def update_graphical(rn: vr.Render, pr: Process, time_spent, displayed_data='pre
                                     f'Sim. time: {(pr.t):.8f} s \n'  # showing simulation time passed
                                     f'Speed: {speed:.8f} \n'
                                     f'Av. growth rate: {growth_rate} nm^3/s \n'
-                                    f'Max. temperature: {max_T:.3f} K')
+                                    f'Max. temperature: {max_T:.1f} K')
         rn.p.actors['stats'].SetText(3,
                                      f'Cells: {pr.n_filled_cells[i]} \n'  # showing total number of deposited cells
                                      f'Height: {height} nm \n'
@@ -395,10 +412,6 @@ def update_graphical(rn: vr.Render, pr: Process, time_spent, displayed_data='pre
                       f"{e.args}")
         pr.redraw = True
     return 0
-
-
-def dump_structure(structure: Structure, sim_t=None, t=None, beam_position=None, filename='FEBID_result'):
-    vr.save_deposited_structure(structure, sim_t, t, beam_position, filename)
 
 
 if __name__ == '__main__':

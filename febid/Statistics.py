@@ -6,7 +6,7 @@ import sys
 import time
 import timeit
 from math import floor, log
-from threading import Thread
+from threading import Thread, Condition
 from dataclasses import dataclass
 
 import numpy as np
@@ -20,8 +20,19 @@ class SynchronizationHelper:
     """
     Secures a flag that serves as a signal to the threads that have it weather to stop execution or not.
     True to stop execution, False to continue.
+    Also contains timer that counts intrinsic simulation time.
     """
     run_flag: bool
+    loop_tick: Condition = Condition() # this allows the thread to pause instead of constantly looping
+    _current_time: float = 0
+
+    @property
+    def timer(self):
+        return self._current_time
+
+    @timer.setter
+    def timer(self, value):
+        self._current_time = value
 
     def __repr__(self):
         return str(self.run_flag)
@@ -37,13 +48,21 @@ class MonitoringDaemon(Thread):
         self.refresh_rate = refresh_rate
         self.purpose = purpose
         self.start_time = timeit.default_timer()
+        self.start_time_sim = run_flag.timer
+        self.passed_time = run_flag.timer
 
     def run(self):
         print(f'Starting {self.purpose} daemon.')
+        next_record_time = self.passed_time + self.refresh_rate
+        self.run_flag.loop_tick.acquire()
         while not self.run_flag:
-            self.looped_func()
-            time.sleep(self.refresh_rate)
+            self.run_flag.loop_tick.wait()
+            if next_record_time < self.run_flag.timer:
+                self.passed_time = self.run_flag.timer
+                next_record_time = self.passed_time + self.refresh_rate
+                self.looped_func()
         self.looped_func(end=True)
+        self.run_flag.loop_tick.release()
         print(f'Closing {self.purpose} daemon.')
 
     def looped_func(self, end=False):
@@ -182,6 +201,13 @@ class Statistics(MonitoringDaemon):
         The gathered statistics are appended to the end of the table every couple of seconds
         Caution: the session keeps the file open until it finishes.
         """
+
+        def write_to_file(data, header, last_row):
+            args, kwargs = self.__get_writer_args_and_kwargs()
+            with pd.ExcelWriter(*args, **kwargs) as writer:
+                data.to_excel(writer, startrow=last_row, sheet_name=self.sheet_name, header=header)
+                self.last_row = writer.sheets[self.sheet_name].max_row
+
         if timeit.default_timer() - self.time <= self.save_freq and not force:
             return
         else:
@@ -193,14 +219,13 @@ class Statistics(MonitoringDaemon):
             last_row = self.last_row
             header = False
         data = self.data.iloc[last_row:]
-        try:
-            args, kwargs = self.__get_writer_args_and_kwargs()
-            with pd.ExcelWriter(*args, **kwargs) as writer:
-                data.to_excel(writer, startrow=last_row, sheet_name=self.sheet_name, header=header)
-                self.last_row = writer.sheets[self.sheet_name].max_row
-        except Exception as e:
-            print(f'Was unable to save statistics to file, the following error occurred: {e.args}')
-            sys.exit()
+        while True:
+            try:
+                write_to_file(data, header, last_row)
+                break
+            except PermissionError as e:
+                print(f'Was unable to save statistics to file, the following error occurred: {e.args}')
+                input('Please close the file and press Enter to continue recording.')
 
     def get_growth_rate(self):
         delta = 4
