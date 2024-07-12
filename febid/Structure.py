@@ -195,20 +195,23 @@ class Structure(BaseSolidStructure):
                 self.temperature = np.zeros_like(self.deposit)
                 self.temperature[self.deposit < 0] = self.room_temp
         else:
-            # TODO: if a sample structure would be provided, it will be necessary to create a substrate under it
             print('VTK file is a regular file, generating auxiliary arrays...', end='')
             self.deposit = np.asarray(vtk_obj.cell_data.active_scalars.reshape(shape))
-            self.deposit[self.deposit != 0] = -1
+            # self.deposit[self.deposit != 0] = -1
+            # Electrons need at least one empty cell layer for creation
+            empty_layer = np.zeros((5, shape[1], shape[2]), dtype=np.float64)
+            self.deposit = np.concatenate((self.deposit, empty_layer), axis=0)
             if add_substrate:
                 self.substrate_height = add_substrate
                 substrate = np.full((self.substrate_height, shape[1], shape[2]), -2)
-                self.deposit = np.concatenate((self.deposit, substrate), axis=0)
-                shape = (self.zdim, self.ydim, self.xdim)
-            self.precursor = np.zeros(shape, dtype=np.float64)
-
+                self.deposit = np.concatenate((substrate,self.deposit), axis=0)
+                shape = self.shape
+            self.precursor = np.zeros_like(self.deposit)
             self.surface_bool = np.zeros(shape, dtype=bool)
             self.semi_surface_bool = np.zeros(shape, dtype=bool)
             self.ghosts_bool = np.zeros(shape, dtype=bool)
+            self.surface_neighbors_bool = np.zeros(shape, dtype=bool)
+            self.temperature = np.zeros(shape, dtype=np.float64)
             self.define_surface()
             self.define_semi_surface()
             self.define_surface_neighbors()
@@ -217,6 +220,7 @@ class Structure(BaseSolidStructure):
         self.precursor[self.precursor < 0] = 0
         if self.substrate_height == 0:
             self.substrate_height = (self.deposit == -2).nonzero()[0].max()
+        self.temperature[self.deposit < 0] = self.room_temp
         self.initialized = True
 
     def create_from_parameters(self, cell_size=5, width=50, length=50, height=100, substrate_height=4, nr=0):
