@@ -17,8 +17,6 @@ from febid.Structure import Structure
 from febid.monte_carlo import etraj3d as e3d
 from febid.libraries.vtk_rendering.VTK_Rendering import read_field_data
 
-faulthandler.enable(file=sys.stderr)
-
 
 class SessionHandler:
     """
@@ -563,8 +561,8 @@ class MainPanel(QMainWindow, UI_MainPanel):
             'temperature_tracking': self.checkbox_temperature_tracking,
             'save_simulation_data': self.checkbox_save_simulation_data,
             'save_structure_snapshot': self.checkbox_save_snapshots,
-            'simulation_data_interval': self.input_sim_data_interval,
-            'structure_snapshot_interval': self.input_snapshot_interval,
+            'simulation_data_interval': self.input_simulation_data_interval,
+            'structure_snapshot_interval': self.input_structure_snapshot_interval,
             'unique_name': self.input_unique_name,
             'save_directory': self.save_folder_display,
             'show_process': self.checkbox_show
@@ -651,9 +649,9 @@ class MainPanel(QMainWindow, UI_MainPanel):
 
         self.ui_hfw = UI_Group(self.l_hfw, self.input_hfw, self.l_hfw_units)
 
-        self.ui_sim_data_interval = UI_Group(self.l_sim_data_interval, self.input_sim_data_interval,
+        self.ui_sim_data_interval = UI_Group(self.l_sim_data_interval, self.input_simulation_data_interval,
                                              self.l_sim_data_interval_units)
-        self.ui_snapshot = UI_Group(self.l_snapshot_interval, self.input_snapshot_interval,
+        self.ui_snapshot = UI_Group(self.l_snapshot_interval, self.input_structure_snapshot_interval,
                                     self.l_snapshot_interval_units)
         self.ui_unique_name = UI_Group(self.l_unique_name, self.input_unique_name)
         self.ui_save_folder = UI_Group(self.open_save_folder_button, self.save_folder_display)

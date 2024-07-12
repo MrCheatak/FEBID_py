@@ -207,13 +207,15 @@ class Starter:
         Compile simulation parameters and start the simulation
         """
         sim_volume_params = self.get_simulation_volume_parameters()
-        saving_params = {'gather_stats': False, 'gather_stats_interval': None, 'save_snapshot': False, 'snapshot_interval': None,
-                         'filename': None}
+        saving_params = {'gather_stats': False, 'gather_stats_interval': None, 'save_snapshot': False, 'save_snapshot_interval': None,
+                         'filename': ''}
         flag1, flag2 = self._params['save_simulation_data'], self._params['save_structure_snapshot']
-        saving_params['gather_stats'] = self._params['save_simulation_data']
-        saving_params['gather_stats_interval'] = float(self._params['simulation_data_interval'])
-        saving_params['save_snapshot'] = self._params['save_structure_snapshot']
-        saving_params['save_snapshot_interval'] = float(self._params['structure_snapshot_interval'])
+        gather_stats = saving_params['gather_stats'] = self._params['save_simulation_data']
+        if gather_stats:
+            saving_params['gather_stats_interval'] = float(self._params['simulation_data_interval'])
+        save_snapshot = saving_params['save_snapshot'] = self._params['save_structure_snapshot']
+        if save_snapshot:
+            saving_params['save_snapshot_interval'] = float(self._params['structure_snapshot_interval'])
         flag1, flag2, flag3 = self._params['save_simulation_data'], self._params['save_structure_snapshot'], self._params['show_process']
         if flag1 or flag2:
             try:

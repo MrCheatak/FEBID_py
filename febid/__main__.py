@@ -48,7 +48,7 @@ def welcome():
     print(intro)
     command_functions = {
         'show_file': febid.show_file.show_structure,
-        'show_animation': febid.show_animation.show_animation,
+        'show_animation': febid.show_animation.render_animation,
         'gui': start_ui,
         'no_gui': Starter().start
     }

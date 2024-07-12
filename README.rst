@@ -46,7 +46,7 @@ By using the same input data, it is possible to inspect electron scattering prof
 
 Installation
 ---------------
-The simulation requires Python 3.7 or later.
+The simulation requires Python 3.9 or later.
 
 Package is available via PyPi: :code:`pip install febid`
 

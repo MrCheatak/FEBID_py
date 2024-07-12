@@ -7,7 +7,7 @@
     <x>0</x>
     <y>0</y>
     <width>605</width>
-    <height>698</height>
+    <height>745</height>
    </rect>
   </property>
   <property name="windowTitle">
@@ -933,10 +933,10 @@
           </rect>
          </property>
          <property name="text">
-          <string>x 0.1 s</string>
+          <string> s</string>
          </property>
         </widget>
-        <widget class="QLineEdit" name="input_sim_data_interval">
+        <widget class="QLineEdit" name="input_simulation_data_interval">
          <property name="geometry">
           <rect>
            <x>240</x>
@@ -946,16 +946,16 @@
           </rect>
          </property>
          <property name="text">
-          <string>0.1</string>
+          <string/>
          </property>
          <property name="maxLength">
-          <number>5</number>
+          <number>6</number>
          </property>
          <property name="placeholderText">
-          <string>1</string>
+          <string>1e-2</string>
          </property>
         </widget>
-        <widget class="QLineEdit" name="input_snapshot_interval">
+        <widget class="QLineEdit" name="input_structure_snapshot_interval">
          <property name="geometry">
           <rect>
            <x>240</x>
@@ -965,13 +965,13 @@
           </rect>
          </property>
          <property name="text">
-          <string>1</string>
+          <string/>
          </property>
          <property name="maxLength">
           <number>5</number>
          </property>
          <property name="placeholderText">
-          <string>10</string>
+          <string>1e-1</string>
          </property>
         </widget>
         <widget class="QLabel" name="l_snapshot_interval">
@@ -997,7 +997,7 @@
           </rect>
          </property>
          <property name="text">
-          <string>x 0.1 s</string>
+          <string> s</string>
          </property>
         </widget>
         <widget class="QLineEdit" name="input_unique_name">
@@ -1822,7 +1822,7 @@
      <x>0</x>
      <y>0</y>
      <width>605</width>
-     <height>22</height>
+     <height>30</height>
     </rect>
    </property>
    <widget class="QMenu" name="menuFile">
@@ -2517,7 +2517,7 @@
    </hints>
   </connection>
   <connection>
-   <sender>input_sim_data_interval</sender>
+   <sender>input_simulation_data_interval</sender>
    <signal>editingFinished()</signal>
    <receiver>MainWindow</receiver>
    <slot>check_input()</slot>
@@ -2533,7 +2533,7 @@
    </hints>
   </connection>
   <connection>
-   <sender>input_snapshot_interval</sender>
+   <sender>input_structure_snapshot_interval</sender>
    <signal>editingFinished()</signal>
    <receiver>MainWindow</receiver>
    <slot>check_input()</slot>
