@@ -384,6 +384,9 @@ class Render:
         :param force_redraw: redraw the plot immediately
         :return:
         """
+        self.p.iren.process_events()  # letting the Plotter update if window was closed
+        if not self.p.render_window.IsCurrent():
+            return 1
         self.p.update(stime=time, force_redraw=force_redraw)
         self.y_pos -= self.size * self.meshes_count
         self.meshes_count = 0

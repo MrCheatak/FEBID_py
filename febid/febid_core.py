@@ -12,7 +12,7 @@ import sys
 import time
 import warnings
 import timeit
-from threading import Thread
+from threading import Thread, Event
 
 # Core packages
 import numpy as np
@@ -108,8 +108,8 @@ def setup_structure_saving(process_obj, run_flag, saving_params):
 
 
 def run_febid_interface(*args, **kwargs):
-    process_obj, sim = run_febid(*args, **kwargs)
-    return process_obj, sim
+    process_obj, sim, printing_thread = run_febid(*args, **kwargs)
+    return process_obj, sim, printing_thread
 
 
 def run_febid(structure, precursor_params, settings, sim_params, path, temperature_tracking,
@@ -129,7 +129,8 @@ def run_febid(structure, precursor_params, settings, sim_params, path, temperatu
     equation_values = prepare_equation_values(precursor_params, settings)
     mc_config = prepare_ms_config(precursor_params, settings, structure)
 
-    flag = SynchronizationHelper(False)
+    global flag
+    flag.run_flag = False
     process_obj = Process(structure, equation_values, temp_tracking=temperature_tracking)
 
     sim = MC_Simulation(structure, mc_config)
@@ -138,7 +139,7 @@ def run_febid(structure, precursor_params, settings, sim_params, path, temperatu
     process_obj.structure.define_surface_neighbors(process_obj.max_neib)
     # Actual simulation runs in a second Thread, because visualization of the process
     # via Pyvista works only from the main Thread
-    printing = Thread(target=print_all, args=[path, process_obj, sim, flag])
+    printing = Thread(target=print_all, args=[path, process_obj, sim])
     if saving_params['gather_stats']:
         stats = setup_stats_collection(process_obj, flag, saving_params)
         stats.get_params(precursor_params, 'Precursor parameters')
@@ -154,18 +155,18 @@ def run_febid(structure, precursor_params, settings, sim_params, path, temperatu
     printing.start()
     if rendering['show_process']: # running visualization in the main loop
         total_time = visualize_process(process_obj, flag, **rendering)
-    printing.join()
-    if saving_params['gather_stats']:
-        stats.join()
-    if saving_params['save_snapshot']:
-        struc.join()
-    print('Finished path.')
-    if rendering['show_process']:
-        visualize_result(process_obj, total_time, **rendering)
-    return process_obj, sim
+    # printing.join()
+    # if saving_params['gather_stats']:
+    #     stats.join()
+    # if saving_params['save_snapshot']:
+    #     struc.join()
+    # print('Finished path.')
+    # if rendering['show_process']:
+    #     visualize_result(process_obj, total_time, **rendering)
+    return process_obj, sim, printing
 
 
-def print_all(path, pr: Process, sim: MC_Simulation, run_flag: SynchronizationHelper):
+def print_all(path, pr: Process, sim: MC_Simulation):
     """
     Main event loop, that iterates through consequent points in a stream-file.
 
@@ -175,6 +176,8 @@ def print_all(path, pr: Process, sim: MC_Simulation, run_flag: SynchronizationHe
     :param run_flag:
     :return:
     """
+    global flag
+    run_flag = flag
     pr.start_time = datetime.datetime.now()
     pr.x0, pr.y0 = path[0, 0:2]
     start = 0
@@ -194,6 +197,9 @@ def print_all(path, pr: Process, sim: MC_Simulation, run_flag: SynchronizationHe
             pr.heat_transfer(sim.beam_heating)
             pr.request_temp_recalc = False
         print_step(y, x, step, pr, sim, t, run_flag)
+        if run_flag.run_flag:
+            print('Stopping simulation...')
+            break
     run_flag.run_flag = True
 
 
@@ -222,7 +228,7 @@ def print_step(y, x, dwell_time, pr: Process, sim: MC_Simulation, t, run_flag: S
     # The FEBID process is 'constructed' here by arranging events like deposition(dissociated volume calculation),
     # precursor coverage recalculation, execution of the MC simulation, temperature profile recalculation and other.
     # If any additional calculations and to be included, they shall be run from this loop
-    while flag_dt:
+    while flag_dt and not run_flag.run_flag:
         if time_passed + pr.dt > dwell_time:  # stepping only for remaining dwell time to avoid accumulating of excess deposit
             pr.dt = dwell_time - time_passed
             flag_dt = False
@@ -273,14 +279,19 @@ def visualize_process(pr: Process, run_flag, frame_rate=1, displayed_data='precu
     rn = vr.Render(pr.structure.cell_size)
     rn.p.clear()
     pr.redraw = True
-    now = 0
+    now = timeit.default_timer()
+    update_graphical(rn, pr, now, displayed_data)
     # Event loop
     while not run_flag:
         now = timeit.default_timer()
-        update_graphical(rn, pr, now - start_time, displayed_data)
+        return_val = update_graphical(rn, pr, now - start_time, displayed_data)
+        if return_val or not rn.p.render_window.IsCurrent():
+            print('Visualization window closed, stopping rendering.')
+            return
         time.sleep(frame_rate)
     rn.p.close()
     print('Closing rendering.')
+    visualize_result(pr, now - start_time, displayed_data)
     return now - start_time
 
 
@@ -406,7 +417,8 @@ def update_graphical(rn: vr.Render, pr: Process, time_spent, displayed_data='pre
         rn.p.update_scalar_bar_range(clim=[_min, data.max()])
 
         if update:
-            rn.update()
+            return_val = rn.update()
+            return return_val
     except Exception as e:
         warnings.warn(f"Failed to redraw the scene.\n"
                       f"{e.args}")

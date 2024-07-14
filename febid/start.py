@@ -36,12 +36,19 @@ class Starter:
         self._create_printing_path()
         self._open_settings_and_precursor_params()
         self._run_febid_interface()
-        return self.process_obj, self.sim
+        return self.process_obj, self.sim, self.printing_thread
 
     def start_mc(self, **kwargs):
         self._create_simulation_volume()
         self.precursor_params = self._open_precursor_params()
         self._run_mc_interface(**kwargs)
+
+    def stop(self):
+        """
+        Stop the simulation
+        """
+        if self.printing_thread.is_alive():
+            febid_core.flag.run_flag = True
 
     def _create_simulation_volume(self):
         """
@@ -244,8 +251,8 @@ class Starter:
             e.errno = 9
             raise e
         rendering = {'show_process': self._params['show_process'], 'frame_rate': 0.5}
-        self.process_obj, self.sim = febid_core.run_febid_interface(self.structure, self.precursor_params,
-                                                                    self.settings,
+        self.process_obj, self.sim, self.printing_thread = febid_core.run_febid_interface(self.structure,
+                                                                    self.precursor_params, self.settings,
                                                                     sim_volume_params, self.printing_path,
                                                                     temperature_tracking, saving_params, rendering)
 

@@ -107,6 +107,14 @@ class SessionHandler:
         else:
             raise ValueError(f'Unknown module: {module}')
 
+    def stop(self):
+        """
+        Stop the simulation
+
+        :return:
+        """
+        self.starter.stop()
+
 
 class UI_Group(list):
     """
@@ -182,6 +190,8 @@ class MainPanel(QMainWindow, UI_MainPanel):
         super().__init__(parent)
         self.initialized = False
         self.setupUi(self)
+        self.setWindowTitle('FEBID Control Panel')
+        self.stop_febid_button.setVisible(False)
         self.show()
         self.tab_switched(self.tabWidget.currentIndex())
         self.__group_interface_elements()
@@ -486,11 +496,20 @@ class MainPanel(QMainWindow, UI_MainPanel):
         self.change_state_load_last_session(True)
 
     def start_febid(self):
-        # Creating a simulation volume
         try:
             self.session_handler.start()
         except Exception as e:
             self.__exception_handler(e)
+        self.start_febid_button.setVisible(False)
+        self.stop_febid_button.setVisible(True)
+
+    def stop_febid(self):
+        self.session_handler.stop()
+        while self.session_handler.starter.printing_thread.is_alive():
+            pass
+        print('Simulation stopped.')
+        self.start_febid_button.setVisible(True)
+        self.stop_febid_button.setVisible(False)
 
     def start_mc(self):
         E0 = float(self.beam_energy.text())
@@ -504,7 +523,6 @@ class MainPanel(QMainWindow, UI_MainPanel):
         params = {'E0': E0, 'Emin': Emin, 'sigma': gauss_dev, 'pos': (x0, y0), 'N': N, 'n': n, 'heating': heating, 'cam_pos': self.cam_pos}
         self.session_handler.start(module='monte_carlo', **params)
         return 1
-
 
     # Supporting functions
     def load_last_session(self, filename=''):
