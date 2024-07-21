@@ -171,8 +171,8 @@ class ETrajMap3d(MC_Sim_Base):
         except Exception as e:
             print(e.args)
             zeros = np.nonzero(direction==0)[0]
-            for i in range(len(zeros)):
-                print(f'p0: {p0[zeros[i]]}, pn: {pn[zeros[i]]}, direction: {direction[zeros[i]]}, L: {L[zeros[i]]}')
+            for i, item in enumerate(zeros):
+                print(f'p0: {p0[item]}, pn: {pn[item]}, direction: {direction[item]}, L: {L[item]}')
             step_t = step / direction
 
         delta = -(points[:, 0] % self.cell_size) # positions of the ray origin relative to its enclosing cell position

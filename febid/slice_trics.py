@@ -100,13 +100,13 @@ def get_slice_into_parent(slc1, slc2):
     if len(slc1) != len(slc2):
         raise IndexError("Slice has different number of dimensions")
     result_slice = []
-    for i in range(len(slc1)):
-        if all([True if s is None else False for s in slc1[i]]):
+    for i, item in enumerate(slc1):
+        if all([True if s is None else False for s in item]):
             result_slice.append(slc2[i])
         elif all([True if s is None else False for s in slc2[i]]):
-            result_slice.append(slc1[i])
-        slc_start = get_start(slc1[i].start, slc2[i].start)
-        slc_stop = get_stop(slc1[i].stop, slc2[i].stop, to_zero(slc1[i].stop) - to_zero(slc1[i].start), slc_start)
+            result_slice.append(item)
+        slc_start = get_start(item.start, slc2[i].start)
+        slc_stop = get_stop(item.stop, slc2[i].stop, to_zero(item.stop) - to_zero(item.start), slc_start)
         slc = slice[slc_start: slc_stop]
         result_slice.append(slc[0])
     return tuple(result_slice)
