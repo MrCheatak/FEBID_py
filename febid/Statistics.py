@@ -176,8 +176,8 @@ class Statistics(MonitoringDaemon):
             time_now = pd.Timestamp.now()
             record[cols[0]] = time_now
             record[cols[1]] = (time_now - self.data.at[0, cols[0]]).total_seconds()
-            for i in range(len(stats)):
-                record[cols[i + 2]] = stats[i]
+            for i, item in enumerate(stats):
+                record[cols[i + 2]] = item
             self.data.loc[self.shape[0]] = tuple([record[cols[i]] for i in range(len(cols))])
         except Exception as e:
             print('An error occurred while recording statistics.')
