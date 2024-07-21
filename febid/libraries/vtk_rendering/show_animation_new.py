@@ -136,7 +136,7 @@ def render_animation(directory, show='precursor'):
                        scalar_name=data_name, button_name=data_name, cmap=cmap)
     # Hiding cells
     index = np.zeros_like(data, dtype=np.uint8)
-    index[mask == False] = vtk.vtkDataSetAttributes.HIDDENCELL
+    index[mask is False] = vtk.vtkDataSetAttributes.HIDDENCELL
     render.p.mesh.cell_data[vtk.vtkDataSetAttributes.GhostArrayName()] = index.ravel()
     render.p.mesh.set_active_scalars(data_name)
     # Adding text

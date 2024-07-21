@@ -202,7 +202,7 @@ class Render:
         :return: adds PolyData() to Plotter()
         """
 
-        if nan_opacity == None:
+        if nan_opacity is None:
             nan_opacity = opacity
         self.obj = self._render_3Darray(arr=arr, lower_t=lower_t, upper_t=upper_t, exclude_zeros=exclude_zeros,
                                         name=scalar_name, invert=invert)
@@ -461,7 +461,7 @@ def save_deposited_structure(structure, sim_t=None, t=None, beam_position=None, 
     vtk_obj.field_data['time'] = [str(datetime.timedelta(seconds=int(t)))]
     vtk_obj.field_data['simulation_time'] = [sim_t]
     vtk_obj.field_data['beam_position'] = [beam_position]
-    if filename == None:
+    if filename is None:
         filename = "Structure"
     vtk_obj.save(f'{filename}_{time.strftime("%H.%M.%S", time.localtime())}.vtk')
 

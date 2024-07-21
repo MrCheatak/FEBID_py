@@ -178,7 +178,7 @@ class Electron():
         :param psi:
         :return:
         """
-        if ctheta != None:
+        if ctheta is not None:
             self.ctheta, self.stheta, self.psi = ctheta, stheta, psi
         if self.cz == 0.0: self.cz = 0.00001
         self.cz, self.cy, self.cx = traversal.get_direction(self.ctheta, self.stheta, self.psi, self.cz, self.cy,
