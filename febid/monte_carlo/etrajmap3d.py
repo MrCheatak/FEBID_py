@@ -171,7 +171,7 @@ class ETrajMap3d(MC_Sim_Base):
         except Exception as e:
             print(e.args)
             zeros = np.nonzero(direction==0)[0]
-            for i, item in enumerate(zeros):
+            for item in zeros:
                 print(f'p0: {p0[item]}, pn: {pn[item]}, direction: {direction[item]}, L: {L[item]}')
             step_t = step / direction
 
