@@ -206,10 +206,7 @@ class Electron():
         self.point[0] = self.z
         self.point[1] = self.y
         self.point[2] = self.x
-        if check is True:
-            return True
-        else:
-            return False
+        return check is True
 
     def get_next_point(self, a, step):
         self.__generate_angles(a)
