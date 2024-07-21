@@ -598,7 +598,7 @@ class MainPanel(QMainWindow, UI_MainPanel):
         :return: dictionary with parameters
         """
         mapping = self.ui_to_parameters_mapping()
-        params = dict()
+        params = {}
         for parameter, element in mapping.items():
             if element.__class__ == QtWidgets.QCheckBox:
                 params[parameter] = element.isChecked()
