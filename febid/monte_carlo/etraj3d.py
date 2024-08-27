@@ -112,7 +112,7 @@ class MC_Simulation(MC_Sim_Base):
         plt.show()
 
 
-def run_mc_simulation(structure, E0=20, sigma=5, n=1, N=100, pos='center', precursor='Au', Emin=0.1, emission_fraction=0.6, heating=False, params={}, cam_pos=None):
+def run_mc_simulation(structure, E0=20, sigma=5, n=1, N=100, pos='center', precursor='Au', Emin=0.1, emission_fraction=0.6, heating=False, params=None, cam_pos=None):
     """
     Create necessary objects and run the MC simulation
 

@@ -3,7 +3,8 @@ Mixed Cell Cellular Automata
 """
 import numpy as np
 
-from .slice_trics import get_3d_slice, get_boundary_indices
+from febid.slice_trics import get_3d_slice, get_boundary_indices
+from febid.libraries.vtk_rendering.VTK_Rendering import SetVisibilityCallback
 
 
 class MixedCellCellularAutomata:
@@ -111,3 +112,67 @@ class MixedCellCellularAutomata:
                                        [[0, 1, 0],
                                         [1, 0, 1],
                                         [0, 1, 0]]])
+
+
+def visualize_kernel(*arrays):
+    import pyvista as pv
+
+    # Step 1: Create a UniformGrid
+    grids = []
+    for arr in arrays:
+        grid = pv.UniformGrid()
+        grid.dimensions = np.array(arr.shape) + 1
+        grid.cell_data["values"] = arr.flatten(order="F")  # Flatten the array in Fortran order
+        grid1 = grid.threshold(0.000001, method='upper')
+        grid2 = grid.threshold(-0.00001, method='lower')
+        grid = grid1 + grid2
+        grids.append(grid)
+
+    # Step 2: Add the grid to the Plotter
+    plotter = pv.Plotter()
+    meshes = []
+    # colors = list(pv.hexcolors.keys())
+    colors_dict = {
+    'Red': '#D32F2F',
+    'Blue': '#1976D2',
+    'Green': '#388E3C',
+    'Yellow': '#FBC02D',
+    'Purple': '#8E24AA',
+    'Orange': '#F57C00',
+    'Light Blue': '#0288D1',
+    'Dark Purple': '#7B1FA2',
+    'Pink': '#C2185B',
+    'Teal': '#00796B'
+    }
+    colors = list(colors_dict.values())
+    i = 0
+    for grid in grids:
+        color = colors[i]
+        colors.remove(color)
+        mesh = plotter.add_mesh(grid, show_edges=True, opacity=0.8, color=color, label=f'Array {i}')
+        i += 1
+        meshes.append(mesh)
+
+    # Step 3: Add a checkbox widget to toggle visibility
+    toggles = []
+    i = 0
+    for mesh in meshes:
+        toggle = SetVisibilityCallback(mesh)
+        toggles.append(toggle)
+        plotter.add_checkbox_button_widget(toggle, value=True, position=(10, 10+i*30), size=25)
+        plotter.add_text(f"Array {i}", position=(40, 10+i*30), font_size=18)
+        i += 1
+
+    # Step 4: Show the plot
+    plotter.show_grid()
+    plotter.show_axes()
+    plotter.show_axes_all()
+    plotter.show()
+
+
+if __name__ == '__main__':
+    bool_array = np.zeros((5, 5, 5), dtype=bool)
+    bool_array[1:2, 1:4, :] = True
+    bool_array1 = np.zeros((5, 5, 5), dtype=bool)
+    bool_array1[1:4, 1:2, :] = True
+    visualize_kernel(bool_array, bool_array1)

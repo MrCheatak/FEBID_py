@@ -23,6 +23,19 @@ from febid.Structure import Structure
 filename = ''
 
 
+class SetVisibilityCallback:
+    """
+    Helper callback to keep a reference to the actor being modified.
+    This helps button show and hide plot elements
+    """
+
+    def __init__(self, actor):
+        self.actor = actor
+
+    def __call__(self, state):
+        self.actor.SetVisibility(state)
+
+
 class Render:
     """
     Class implementing rendering utilities for visualizing of Numpy data using Pyvista
@@ -42,18 +55,6 @@ class Render:
         self.x_pos = self.size + 5  # x-position of a button
         self.meshes_count = 0
         self.arrow = None  # serves to indicate beam position
-
-    class SetVisibilityCallback:
-        """
-        Helper callback to keep a reference to the actor being modified.
-        This helps button show and hide plot elements
-        """
-
-        def __init__(self, actor):
-            self.actor = actor
-
-        def __call__(self, state):
-            self.actor.SetVisibility(state)
 
     def show_full_structure(self, structure: Structure, struct=True, deposit=True, precursor=True, surface=True,
                             semi_surface=True, temperature=True, ghosts=True, t=None, sim_time=None, beam=None,
@@ -233,7 +234,7 @@ class Render:
                 return
         self.p.add_text(name, font_size=self.font, position=(self.x_pos + 5, self.y_pos),
                         name=name + '_caption')  # captioning button
-        obj_aa = self.SetVisibilityCallback(obj_a)
+        obj_aa = SetVisibilityCallback(obj_a)
         self.p.add_checkbox_button_widget(obj_aa, value=True, position=(5, self.y_pos), size=self.size,
                                           color_on='blue')  # adding button
         self.y_pos += self.size

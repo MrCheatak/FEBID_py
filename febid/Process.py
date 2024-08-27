@@ -51,13 +51,13 @@ class Process:
         else:
             self.name = name
         # Declaring necessary properties
-        self.beam: BeamSettings = None
-        self.precursor: PrecursorParams = None
-        self.model: ContinuumModel = None
+        self.beam: BeamSettings
+        self.precursor: PrecursorParams
+        self.model: ContinuumModel
         self.set_model(ContinuumModel())
         self.structure: Structure = structure
         self.cell_size = None
-        self.cell_V = None
+        self.cell_V = 0
         self.heat_cond = 0
         # Main arrays
         # Semi-surface cells are virtual cells that can hold precursor density value, but cannot create deposit.
@@ -290,7 +290,15 @@ class Process:
         ghosts_kern[:] = ghosts_bool
         surf_diff = surf_bool_prev ^ surf_kern  # difference in surface
         semi_s_diff = semi_s_bool_prev ^ surf_semi_kern  # difference in semi-surface
-        deposit_kern[surf_diff] += surplus_deposit / np.count_nonzero(surf_diff)  # redistribute excess deposit
+        surf_resid_sum = np.count_nonzero(surf_diff)
+        # This condition covers one specific case
+        # Typically, a newly filled cells spawns at least one surface cell, but it is not always so.
+        # If the new cell is located in the corner or at the corner edge, it will not spawn any new surface cells.
+        # This means that there will be no new surface cells to distribute the surplus deposit to.
+        if surf_resid_sum == 0:
+            deposit_kern[surf_diff] += surplus_deposit  # redistribute excess deposit
+        else:
+            deposit_kern[surf_diff] += surplus_deposit / surf_resid_sum  # redistribute excess deposit
         condition = (semi_s_diff | surf_diff) & (precursor_kern < 1e-6)
         precursor_kern[condition] = precursor_cov  # assign average precursor coverage to new surface cells
 
@@ -301,7 +309,7 @@ class Process:
 
         :return: True if the structure was resized
         """
-        with self.lock:  # blocks run with Lock should exclude calls of decorated functions, otherwise the thread will hang
+        with Lock():  # blocks run with Lock should exclude calls of decorated functions, otherwise the thread will hang
             shape_old = self.structure.shape
             self.structure.resize_structure(200)
             self.structure.define_surface_neighbors(self.max_neib)
@@ -780,7 +788,7 @@ class Process:
         """
         indices = np.nonzero(self.__beam_matrix_reduced_2d)
         y_start, y_end, x_start, x_end = indices[1].min(), indices[1].max() + 1, indices[2].min(), indices[2].max() + 1
-        irradiated_area_3D = np.s_[self.structure.substrate_height-1:self.max_z, y_start:y_end,
+        irradiated_area_3D = np.s_[self.structure.substrate_height - 1:self.max_z, y_start:y_end,
                              x_start:x_end]  # a slice of the currently irradiated area
         return irradiated_area_3D  # a slice of the currently irradiated area
 
