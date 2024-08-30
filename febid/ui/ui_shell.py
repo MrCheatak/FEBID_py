@@ -532,6 +532,13 @@ class MainPanel(QMainWindow, UI_MainPanel):
         self.start_febid_button.setVisible(False)
         self.stop_febid_button.setVisible(True)
 
+        def wait_for_success():
+            success_flag.event.wait()
+            self.on_finish()
+
+        thread = Thread(target=wait_for_success)
+        thread.start()
+
     def stop_febid(self):
         self.session_handler.stop()
         while self.session_handler.starter.printing_thread.is_alive():

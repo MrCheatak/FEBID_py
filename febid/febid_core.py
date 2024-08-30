@@ -179,7 +179,7 @@ def print_all(path, pr: Process, sim: MC_Simulation):
     :param run_flag:
     :return:
     """
-    global flag
+    global flag, success_flag
     run_flag = flag
     pr.start_time = datetime.datetime.now()
     pr.x0, pr.y0 = path[0, 0:2]
@@ -204,6 +204,8 @@ def print_all(path, pr: Process, sim: MC_Simulation):
             print('Stopping simulation...')
             break
     run_flag.run_flag = True
+    success_flag.run_flag = True
+    success_flag.event.set()
 
 
 def print_step(y, x, dwell_time, pr: Process, sim: MC_Simulation, t, run_flag: SynchronizationHelper):

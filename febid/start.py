@@ -27,6 +27,7 @@ class Starter:
         self.precursor_params = None
         self.process_obj = None
         self.sim = None
+        self.printing_thread = None
 
     def start(self):
         """
@@ -47,8 +48,9 @@ class Starter:
         """
         Stop the simulation
         """
-        if self.printing_thread.is_alive():
-            febid_core.flag.run_flag = True
+        if self.printing_thread is not None:
+            if self.printing_thread.is_alive():
+                febid_core.flag.run_flag = True
 
     def _create_simulation_volume(self):
         """
