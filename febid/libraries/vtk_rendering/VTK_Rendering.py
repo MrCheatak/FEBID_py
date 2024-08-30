@@ -10,6 +10,7 @@ import copy
 # Core packages
 import numpy as np
 import pyvista as pv
+import pyvistaqt as pvqt
 from vtk import vtkDataSetAttributes
 
 # Axillary packeges
@@ -41,13 +42,21 @@ class Render:
     Class implementing rendering utilities for visualizing of Numpy data using Pyvista
     """
 
-    def __init__(self, cell_size: int, font=12, button_size=25):
+    def __init__(self, cell_size: int, font=12, button_size=25, app=None, show=True, plotter='pvqt'):
         """
         :param cell_size: cell data spacing for VTK objects
         :param font: button caption font size
         :param button_size: size of the show on/off button
+        :param app: parent QApplication
+        :param show: if True, show the plot immediately, if False, call show() to display the plot
         """
-        self.p = pv.Plotter()  # main object that keeps the plot
+        self.obj = None
+        if plotter == 'pv':
+            self.p = pv.Plotter()
+        elif plotter == 'pvqt':
+            self.p = pvqt.BackgroundPlotter(app=app, show=show)  # main object that keeps the plot
+        else:
+            raise ValueError('Wrong plotter type')
         self.cell_size = cell_size
         self.font = font  # button caption font size
         self.size = button_size  # button size
@@ -123,7 +132,7 @@ class Render:
             cam_pos = [(463.14450307610286, 271.1171723376318, 156.56895424388603),
                        (225.90027381807235, 164.9577775224395, 71.42188811921902),
                        (-0.27787912231751677, -0.1411181984824172, 0.950194110399093)]
-        return self.show(cam_pos=cam_pos)
+        return self.p.camera_position
 
     def show_mc_result(self, grid=None, pe_traj=None, surface_flux=None, se_traj=None, heat_t=None,
                        heat_pe=None, heat_se=None, t=None, sim_time=None, beam=None, cam_pos=None, interactive=True):
@@ -203,7 +212,7 @@ class Render:
         :return: adds PolyData() to Plotter()
         """
 
-        if nan_opacity == None:
+        if nan_opacity is None:
             nan_opacity = opacity
         self.obj = self._render_3Darray(arr=arr, lower_t=lower_t, upper_t=upper_t, exclude_zeros=exclude_zeros,
                                         name=scalar_name, invert=invert)
@@ -252,6 +261,7 @@ class Render:
         # if upper_t is None: upper_t = arr.max()
         # if lower_t is None: lower_t = arr.min()
         grid = numpy_to_vtk(arr, self.cell_size, data_name=name, grid=None)
+        grid.cell_data[vtkDataSetAttributes.GhostArrayName()] = np.zeros_like(arr.ravel, dtype=np.uint8)
         if exclude_zeros:
             grid.remove_cells((arr == 0).flatten())
         if upper_t is not None or lower_t is not None:
@@ -370,8 +380,7 @@ class Render:
             self.p.show_grid()
         if keep_plot:
             p1 = copy.deepcopy(self.p)
-        camera_pos = self.p.show(screenshot=screenshot, interactive_update=interactive_update, cpos=cam_pos,
-                                 return_cpos=True)
+        camera_pos = self.p.show()
         if keep_plot:
             self.p = copy.deepcopy(p1)
         self.y_pos = 5
@@ -429,6 +438,7 @@ def numpy_to_vtk(arr, cell_size, data_name='scalar', grid=None, unstructured=Fal
         grid = pv.UniformGrid()
         grid.dimensions = np.asarray(
             [arr.shape[2], arr.shape[1], arr.shape[0]]) + 1  # creating a grid with the size of the array
+        grid.origin = (0, 0, 0)  # setting the origin
         grid.spacing = (cell_size, cell_size, cell_size)  # assigning dimensions of a cell
         grid_given = False
     else:
@@ -465,7 +475,7 @@ def save_deposited_structure(structure, sim_t=None, t=None, beam_position=None, 
     vtk_obj.field_data['time'] = [str(datetime.timedelta(seconds=int(t)))]
     vtk_obj.field_data['simulation_time'] = [sim_t]
     vtk_obj.field_data['beam_position'] = [beam_position]
-    if filename == None:
+    if filename is None:
         filename = "Structure"
     vtk_obj.save(f'{filename}_{time.strftime("%H.%M.%S", time.localtime())}.vtk')
 

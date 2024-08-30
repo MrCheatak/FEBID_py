@@ -32,7 +32,8 @@ def show_structure(filenames=None, **kwargs):
     if not filenames:
         filenames = ask_filenames()
     result = render_structure(filenames, **kwargs)
-    return result
+    app = QApplication(sys.argv)
+    sys.exit(app.exec_())
 
 
 def render_structure(filenames, solid=True, deposit=True, precursor=True, surface=True, semi_surface=True, ghost=True):
@@ -77,9 +78,10 @@ def render_structure(filenames, solid=True, deposit=True, precursor=True, surfac
             print('ok!')
         t, sim_time, beam_position = read_field_data(vtk_obj)
         render = Render(structure.cell_size)
+        render.p.show_grid()
+        render.p.show_axes()
         cam_pos = render.show_full_structure(structure, True, solid, deposit, precursor, surface, semi_surface, ghost,
                                              t, sim_time, beam_position, cam_pos=cam_pos)
-    return cam_pos
 
 
 if __name__ == '__main__':

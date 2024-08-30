@@ -17,6 +17,8 @@ from febid.Structure import Structure
 from febid.monte_carlo import etraj3d as e3d
 from febid.libraries.vtk_rendering.VTK_Rendering import read_field_data
 
+from febid.ui.process_viz import RenderWindow
+
 
 class SessionHandler:
     """
@@ -186,14 +188,17 @@ class MainPanel(QMainWindow, UI_MainPanel):
     """
     Main control panel window class
     """
-    def __init__(self, config_filename=None, parent=None):
+    def __init__(self, app=None, config_filename=None, parent=None):
         super().__init__(parent)
+        self.app = app
         self.initialized = False
         self.setupUi(self)
         self.setWindowTitle('FEBID Control Panel')
+        self.window_size_febid = self.size().width(), self.size().height()
+        self.window_size_mc = self.size().width(), 530
         self.stop_febid_button.setVisible(False)
         self.show()
-        self.tab_switched(self.tabWidget.currentIndex())
+        # self.tab_switched(self.tabWidget.currentIndex())
         self.__group_interface_elements()
         self.__aggregate_radio_buttons()
         # Parameters
@@ -217,7 +222,23 @@ class MainPanel(QMainWindow, UI_MainPanel):
         self.cam_pos = None
 
         self.load_last_session()
+        self.update_ui()
+
         self.initialized = True
+
+    def update_ui(self):
+        structure_source = self.session_handler.params['structure_source']
+        if structure_source == 'vtk':
+            self.vtk_chosen()
+        elif structure_source == 'geom':
+            self.geom_parameters_chosen()
+        elif structure_source == 'auto':
+            self.auto_chosen()
+        pattern_source = self.session_handler.params['pattern_source']
+        if pattern_source == 'simple':
+            self.simple_pattern_chosen()
+        elif pattern_source == 'stream_file':
+            self.stream_file_chosen()
 
     # Slots
     def change_state_load_last_session(self, param=None):
@@ -497,7 +518,10 @@ class MainPanel(QMainWindow, UI_MainPanel):
 
     def start_febid(self):
         try:
-            self.session_handler.start()
+            return_val = self.session_handler.start(app=self.app)
+            process_obj = return_val[0]
+            self.viz = RenderWindow(process_obj, self.app)
+            self.viz.start()
         except Exception as e:
             self.__exception_handler(e)
         self.start_febid_button.setVisible(False)
@@ -616,7 +640,7 @@ class MainPanel(QMainWindow, UI_MainPanel):
         :return: dictionary with parameters
         """
         mapping = self.ui_to_parameters_mapping()
-        params = dict()
+        params = {}
         for parameter, element in mapping.items():
             if element.__class__ == QtWidgets.QCheckBox:
                 params[parameter] = element.isChecked()
@@ -930,5 +954,5 @@ def start(config_filename=None):
 
 if __name__ == "__main__":
     app = QApplication(sys.argv)
-    win1 = MainPanel()
+    win1 = MainPanel(app)
     sys.exit(app.exec())
