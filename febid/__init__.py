@@ -6,7 +6,7 @@ from . import Structure
 from .libraries.vtk_rendering import VTK_Rendering
 from . import continuum_model_base
 from . import Process
-from . import mcca
+from . import mlcca
 from . import monte_carlo
 from . import febid_core
 from . import start

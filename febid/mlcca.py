@@ -1,5 +1,5 @@
 """
-Mixed Cell Cellular Automata
+Multi-Layerd Continuous Cellular Automata
 """
 import numpy as np
 
@@ -9,11 +9,11 @@ from febid.libraries.vtk_rendering.VTK_Rendering import SetVisibilityCallback
 
 class MixedCellCellularAutomata:
     """
-    Mixed Cell Cellular Automata class.
+    Multi-Layerd Continuous Cellular Automata class.
 
-    A type of Cellular Automata where cells have several attributes.
+    A type of Cellular Automata where cells have several attributes and may take continuous values (0..1).
 
-    This class implements the mixed cell cellular automata algorithm.
+    This class implements the multi-Layerd Continuous cellular automata algorithm.
     The rules are currently embedded in th logic of the get_converged_configuration() method.
     """
     def __init__(self):
@@ -40,6 +40,7 @@ class MixedCellCellularAutomata:
         # semi-surface, ghosts and precursor to describe the surface geometry around the newly filled cell.
         # The approach is cell-centric, which means all the surroundings are processed
         def get_init_slice(cell, shape, size=1):
+            # Prepare some of the views considering cell position and boundaries
             neibs_sides, neibs_edges = self.__neibs_sides, self.__neibs_edges
             neighbs_1st, cell_new = get_3d_slice(cell, shape, size)
             dummy = deposit[neighbs_1st]

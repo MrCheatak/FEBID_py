@@ -12,7 +12,7 @@ from febid.continuum_model_base import BeamSettings, PrecursorParams, ContinuumM
 import febid.diffusion as diffusion
 import febid.heat_transfer as heat_transfer
 from febid.libraries.rolling.roll import surface_temp_av
-from febid.mcca import MixedCellCellularAutomata as MCCA
+from febid.mlcca import MixedCellCellularAutomata as MCCA
 from .slice_trics import get_3d_slice
 from .expressions import cache_numexpr_expressions
 

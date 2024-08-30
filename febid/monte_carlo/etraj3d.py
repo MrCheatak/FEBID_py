@@ -138,7 +138,7 @@ def run_mc_simulation(structure, E0=20, sigma=5, n=1, N=100, pos='center', precu
                      'Z': precursor["average_element_number"],
                      'A': precursor["average_element_mol_mass"], 'rho': precursor["average_density"],
                      'e': precursor["SE_emission_activation_energy"], 'l': precursor["SE_mean_free_path"],}
-    elif precursor in substrates.keys():
+    elif precursor in substrates:
         precursor_config = substrates[precursor]
 
     mc_config = {**mc_config, **precursor_config}

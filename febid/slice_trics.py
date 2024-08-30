@@ -7,7 +7,7 @@ import numpy as np
 
 def get_3d_slice(center, shape, n=1):
     """
-    Get a 3D slice from a 3D array with a specified center encapsulating n-direct neighbors from each side
+    Get a 3D slice from a 3D array with a specified center encapsulating n-direct neighbors from each side.
     :param center: slice center
     :param shape: initial array shape
     :param n: int
