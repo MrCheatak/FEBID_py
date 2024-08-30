@@ -2,8 +2,10 @@ import math
 import os, sys
 import faulthandler
 import traceback
+from threading import Thread
 
 from PyQt5.QtWidgets import QApplication, QMainWindow, QMessageBox, QLineEdit
+from PyQt5.QtCore import QThread
 from PyQt5 import QtWidgets
 
 from febid.ui.main_window import Ui_MainWindow as UI_MainPanel
@@ -14,8 +16,8 @@ from ruamel.yaml import YAML, CommentedMap
 
 from febid.start import Starter
 from febid.Structure import Structure
-from febid.monte_carlo import etraj3d as e3d
 from febid.libraries.vtk_rendering.VTK_Rendering import read_field_data
+from febid.febid_core import success_flag
 
 from febid.ui.process_viz import RenderWindow
 
@@ -220,6 +222,7 @@ class MainPanel(QMainWindow, UI_MainPanel):
         self.save_directory = ''
         self.show_process = False
         self.cam_pos = None
+        self.viz = None
 
         self.load_last_session()
         self.update_ui()
@@ -518,10 +521,12 @@ class MainPanel(QMainWindow, UI_MainPanel):
 
     def start_febid(self):
         try:
-            return_val = self.session_handler.start(app=self.app)
+            return_val = self.session_handler.start()
             process_obj = return_val[0]
-            self.viz = RenderWindow(process_obj, self.app)
-            self.viz.start()
+            if self.session_handler.params.get('show_process', 0):
+                self.viz = RenderWindow(process_obj, self.app)
+                self.viz.start(frame_rate=3)
+                self.reopen_process_visualization.setVisible(True)
         except Exception as e:
             self.__exception_handler(e)
         self.start_febid_button.setVisible(False)
@@ -547,6 +552,12 @@ class MainPanel(QMainWindow, UI_MainPanel):
         params = {'E0': E0, 'Emin': Emin, 'sigma': gauss_dev, 'pos': (x0, y0), 'N': N, 'n': n, 'heating': heating, 'cam_pos': self.cam_pos}
         self.session_handler.start(module='monte_carlo', **params)
         return 1
+
+    def reopen_viz(self):
+        if self.viz.isVisible():
+            return
+        self.viz = RenderWindow(self.session_handler.starter.process_obj, self.app)
+        self.viz.start(frame_rate=3)
 
     # Supporting functions
     def load_last_session(self, filename=''):
@@ -659,6 +670,19 @@ class MainPanel(QMainWindow, UI_MainPanel):
                 params[parameter] = element.getChecked()
         return params
 
+    def on_finish(self):
+        self.start_febid_button.setVisible(True)
+        self.stop_febid_button.setVisible(False)
+        self.reopen_process_visualization.setVisible(False)
+
+    def on_close(self):
+        self.session_handler.stop()
+        if self.viz is not None:
+            self.viz.close()
+
+    def closeEvent(self, event):
+        self.on_close()
+        event.accept()
 
     # Helper interface functions
     def __group_interface_elements(self):
@@ -953,6 +977,4 @@ def start(config_filename=None):
 
 
 if __name__ == "__main__":
-    app = QApplication(sys.argv)
-    win1 = MainPanel(app)
-    sys.exit(app.exec())
+    start()

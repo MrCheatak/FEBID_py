@@ -14,7 +14,7 @@ from PyQt5 import QtCore, QtGui, QtWidgets
 class Ui_MainWindow(object):
     def setupUi(self, MainWindow):
         MainWindow.setObjectName("MainWindow")
-        MainWindow.resize(605, 950)
+        MainWindow.resize(655, 750)
         self.centralwidget = QtWidgets.QWidget(MainWindow)
         self.centralwidget.setObjectName("centralwidget")
         self.verticalLayout = QtWidgets.QVBoxLayout(self.centralwidget)
@@ -474,6 +474,12 @@ class Ui_MainWindow(object):
         self.menuHelp.addAction(self.actionManual)
         self.menubar.addAction(self.menuFile.menuAction())
         self.menubar.addAction(self.menuHelp.menuAction())
+        self.reopen_process_visualization = QtWidgets.QPushButton(self.tab_febid)
+        self.reopen_process_visualization.setEnabled(True)
+        self.reopen_process_visualization.setVisible(False)
+        self.reopen_process_visualization.setGeometry(QtCore.QRect(225, 620, 151, 36))
+        self.reopen_process_visualization.setObjectName("reopen_process_visualization")
+
 
         self.retranslateUi(MainWindow)
         self.tabWidget.setCurrentIndex(0)
@@ -534,6 +540,7 @@ class Ui_MainWindow(object):
         self.actionOpen_session.triggered['bool'].connect(MainWindow.open_new_session) # type: ignore
         self.stop_febid_button.clicked.connect(MainWindow.stop_febid) # type: ignore
         QtCore.QMetaObject.connectSlotsByName(MainWindow)
+        self.reopen_process_visualization.clicked.connect(MainWindow.reopen_viz) # type: ignore
 
     def retranslateUi(self, MainWindow):
         _translate = QtCore.QCoreApplication.translate
@@ -684,3 +691,4 @@ class Ui_MainWindow(object):
         self.actionAbout.setText(_translate("MainWindow", "About"))
         self.actionOpen_session.setText(_translate("MainWindow", "Open session"))
         self.actionManual.setText(_translate("MainWindow", "Manual"))
+        self.reopen_process_visualization.setText(_translate("MainWindow", "Reopen animation"))

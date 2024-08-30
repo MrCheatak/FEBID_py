@@ -6,7 +6,7 @@ import sys
 import time
 import timeit
 from math import floor, log
-from threading import Thread, Condition
+from threading import Thread, Condition, Event
 from dataclasses import dataclass
 
 import numpy as np
@@ -24,6 +24,7 @@ class SynchronizationHelper:
     """
     run_flag: bool
     loop_tick: Condition = Condition() # this allows the thread to pause instead of constantly looping
+    event = Event()
     _current_time: float = 0
 
     @property

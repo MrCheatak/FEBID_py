@@ -35,6 +35,7 @@ from febid.monte_carlo.etraj3d import MC_Simulation
 # Thus concept serves an alternative diffusion channel
 
 flag = SynchronizationHelper(False)
+success_flag = SynchronizationHelper(False)
 x_pos, y_pos = 0., 0.
 warnings.simplefilter('always')
 
