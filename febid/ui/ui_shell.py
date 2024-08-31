@@ -1,6 +1,7 @@
 import math
 import os, sys
 import faulthandler
+import time
 import traceback
 from threading import Thread
 
@@ -74,19 +75,6 @@ class SessionHandler:
         yml = YAML()
         with open(filename, mode='wb') as f:
             yml.dump(self.params, f, )
-
-    def open_vtk_file(self, filename):
-        """
-        Open VTK file and load a structure from it.
-
-        :param filename: full file name
-        :return:
-        """
-        structure = Structure()
-        vtk_obj = pv.read(filename)
-        structure.load_from_vtk(vtk_obj)
-        params = read_field_data(vtk_obj)
-        return structure, params
 
     def set_parameter(self, name, value):
         """
@@ -529,11 +517,13 @@ class MainPanel(QMainWindow, UI_MainPanel):
                 self.reopen_process_visualization.setVisible(True)
         except Exception as e:
             self.__exception_handler(e)
+        time.sleep(0.5)
         self.start_febid_button.setVisible(False)
         self.stop_febid_button.setVisible(True)
 
         def wait_for_success():
             success_flag.event.wait()
+            success_flag.event.clear()
             self.on_finish()
 
         thread = Thread(target=wait_for_success)
@@ -541,8 +531,8 @@ class MainPanel(QMainWindow, UI_MainPanel):
 
     def stop_febid(self):
         self.session_handler.stop()
-        while self.session_handler.starter.printing_thread.is_alive():
-            pass
+        success_flag.event.wait()
+        success_flag.event.clear()
         print('Simulation stopped.')
         self.start_febid_button.setVisible(True)
         self.stop_febid_button.setVisible(False)

@@ -34,6 +34,9 @@ from febid.monte_carlo.etraj3d import MC_Simulation
 # Semi-surface cells are cells that have precursor density but do not have a neighboring deposit cell
 # Thus concept serves an alternative diffusion channel
 
+# The program uses multithreading to run the simulation itself, statistics gathering, structure snapshot dumping
+# and visualization all in parallel to the main thread that is reserved for the UI
+# These flags are used to synchronize the threads and stop them if needed.
 flag = SynchronizationHelper(False)
 success_flag = SynchronizationHelper(False)
 x_pos, y_pos = 0., 0.
@@ -181,6 +184,8 @@ def print_all(path, pr: Process, sim: MC_Simulation):
     """
     global flag, success_flag
     run_flag = flag
+    run_flag.run_flag = False
+    success_flag.run_flag = False
     pr.start_time = datetime.datetime.now()
     pr.x0, pr.y0 = path[0, 0:2]
     start = 0
