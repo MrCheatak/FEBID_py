@@ -31,13 +31,12 @@ def ask_filenames(allowed_extensions=['vtk']):
 def show_structure(filenames=None, **kwargs):
     if not filenames:
         filenames = ask_filenames()
-    result = render_structure(filenames, **kwargs)
+    render_structure(filenames, **kwargs)
     app = QApplication(sys.argv)
     sys.exit(app.exec_())
 
 
 def render_structure(filenames, solid=True, deposit=True, precursor=True, surface=True, semi_surface=True, ghost=True):
-    font_size = 12
     cam_pos = None
     if type(filenames) not in [list, tuple]:
         filenames = [filenames]

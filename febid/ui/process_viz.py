@@ -1,12 +1,10 @@
-import datetime
-import sys
 import time
 import timeit
 import warnings
+import datetime
 from threading import Thread
 
 import numpy as np
-from vtk import vtkDataSetAttributes
 from PyQt5.QtWidgets import QMainWindow
 
 from febid.libraries.vtk_rendering.VTK_Rendering import Render
@@ -14,6 +12,9 @@ from febid.febid_core import success_flag
 
 
 class RenderWindow(QMainWindow):
+    """
+    Class for the visualization of the FEBID process
+    """
     def __init__(self, process_obj, app=None):
         super().__init__()
         self.setWindowTitle("FEBID process")
@@ -24,16 +25,18 @@ class RenderWindow(QMainWindow):
         self.render = Render(app=app, show=True, cell_size=process_obj.structure.cell_size)
 
     def start(self, frame_rate=1):
+        """
+        Start the visualization of the process
+
+        :param frame_rate: rendering speed in frames per second
+        """
         self._visualize_process(frame_rate)
 
     def _visualize_process(self, frame_rate=1):
         """
-        A daemon process function to manage statistics gathering and graphics update.
+        Visualize the process of the core deposition
 
-        :param pr: object of the core deposition process
-        :param run_flag: thread synchronization object, allows to stop visualization when simulation concludes
-        :param frame_rate: redrawing delay
-        :param displayed_data: name of the displayed data. Options: 'precursor', 'deposit', 'temperature', 'surface_temperature'
+        :param frame_rate: rendering speed in frames per second
         :return:
         """
         start_time = timeit.default_timer()
@@ -45,7 +48,6 @@ class RenderWindow(QMainWindow):
         displayed_data = 'precursor'
         # Initializing graphical monitoring
         pr.redraw = True
-        now = timeit.default_timer()
         ### For some reason adding a mesh to the scene in a child thread
         # causes a wglMakeCurrent failed in MakeCurrent() error in VTK.
         # Thus preparing the scene before starting the update loop.
@@ -76,6 +78,14 @@ class RenderWindow(QMainWindow):
         return thread
 
     def _create_scene(self, data, mask, displayed_data='precursor', cmap='inferno'):
+        """
+        Create the initial visual representation of the process state
+
+        :param data: 3D array of the data to visualize
+        :param mask: 3D array of the mask for the data
+        :param displayed_data: name of the displayed data
+        :param cmap: colormap for the data
+        """
         pr = self.process_obj
         rn = self.render
         try:
@@ -85,6 +95,7 @@ class RenderWindow(QMainWindow):
                 rn.p.button_widgets.clear()
             except Exception as e:
                 print('Something went wrong while clearing widgets from the scene...')
+                print(e.args)
             rn.p.clear()
             # Putting an arrow to indicate beam position
             start = np.array([0, 0, 100]).reshape(1, 3)  # position of the center of the arrow
@@ -168,7 +179,13 @@ class RenderWindow(QMainWindow):
                 pr.redraw = True
 
     def isVisible(self):
+        """
+        Check if the plotting window is visible
+        """
         return self.render.p.isVisible()
 
     def close(self):
+        """
+        Close the plotting window
+        """
         self.render.p.close()

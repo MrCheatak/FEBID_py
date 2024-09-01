@@ -382,7 +382,7 @@ class Process:
                                          self.__beam_matrix_surface)  # An increment is calculated through Runge-Kutta method without the diffusion term
         precursor[surface_all] += diffusion_matrix[surface_all]  # finally adding diffusion term
 
-    def equilibrate(self, max_it=10000):
+    def equilibrate(self, max_it=10000, eps=1e-8):
         """
         Bring precursor coverage to a steady state with a given accuracy
 
@@ -393,16 +393,16 @@ class Process:
         """
         start = df()
         for i in range(max_it):
-            # p_prev = self.__precursor_reduced_2d.copy()
+            p_prev = self.__precursor_reduced_2d.copy()
             self.precursor_density()
-            # norm = np.linalg.norm(self.__precursor_reduced_2d - p_prev)/ np.linalg.norm(self.__precursor_reduced_2d)
-            # if norm < eps:
-            #     print(f'Took {i+1} iteration(s) to equilibrate, took {df() - start}')
-            #     return 1
+            norm = np.linalg.norm(self.__precursor_reduced_2d - p_prev)/ np.linalg.norm(self.__precursor_reduced_2d)
+            if norm < eps:
+                print(f'Took {i+1} iteration(s) to equilibrate, took {df() - start}')
+                return 1
         else:
-            # acc = str(norm)[:int(3-math.log10(eps))]
-            # warnings.warn(f'Failed to reach {eps} accuracy in {max_it} iterations in Process.equilibrate. Achieved accuracy: {acc} \n'
-            #               f'Terminating loop.', RuntimeWarning)
+            acc = str(norm)[:int(3-np.log10(eps))]
+            warnings.warn(f'Failed to reach {eps} accuracy in {max_it} iterations in Process.equilibrate. Achieved accuracy: {acc} \n'
+                          f'Terminating loop.', RuntimeWarning)
             print(f'Took {i + 1} iteration(s) to equilibrate, took {df() - start}')
 
     def __rk4(self, precursor, beam_matrix):

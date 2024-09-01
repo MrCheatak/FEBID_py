@@ -9,7 +9,6 @@ import timeit
 
 import numexpr_mod as ne
 import numpy as np
-from numpy.random import default_rng
 
 from febid.libraries.ray_traversal import traversal
 from febid.monte_carlo.mc_base import MC_Sim_Base
@@ -417,6 +416,5 @@ class ETrajMap3d(MC_Sim_Base):
             start = timeit.default_timer()
             self.joule_heating()
             print(f'finished. \t {timeit.default_timer() - start}')
-        a=0
 
         return self.flux, self.heat, self.dEs_all # has to be returned, as every process (when using multiprocessing) gets its own copy of the whole class and thus does not write to the original

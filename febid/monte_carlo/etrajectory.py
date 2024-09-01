@@ -2,11 +2,9 @@
 Primary electron trajectory simulator
 """
 # Default packages
-import os, sys
+import os
 import random as rnd
-import warnings
 from math import *
-import multiprocessing
 
 # Core packages
 import numpy as np
@@ -820,21 +818,21 @@ class ETrajectory(MC_Sim_Base):
                 crossing1 = pn
         return flag, crossing, crossing1
 
-    def save_passes(self, fname, type):
+    def save_passes(self, fname, saving_type):
         """
         Save passes to a text file or by pickling
 
         :param fname: name of the file
-        :param type: saving type: accepts 'pickle' or 'text'
+        :param saving_type: saving type: accepts 'pickle' or 'text'
         :return:
         """
 
-        if type not in ['pickle', 'text']:
-            raise Warning(f"No type option named {type}. Type argument accepts either \'text\' or \'pickle\'")
+        if saving_type not in ['pickle', 'text']:
+            raise Warning(f"No type option named {saving_type}. Type argument accepts either \'text\' or \'pickle\'")
         try:
-            if type == 'pickle':
+            if saving_type == 'pickle':
                 self.__save_passes_obj(fname)
-            if type == 'text':
+            if saving_type == 'text':
                 self.__save_passes_text(fname)
         except Exception as e:
             print(f'Something went wrong, was unable to write the file. Error raised:{e.args}')
@@ -902,13 +900,13 @@ class ETrajectory(MC_Sim_Base):
                 print(f'\033[0;{color_code};48m')
             print(f' {message}')
             print(f'T    S  \t\t\t\t p0 \t\t\t\t\t\t\t\t\t pn')  # trajectory and segment number
-            str = ''
+            string_stub = ''
             for j in range(len(args[0])):
-                str = f'{i}  {index[j]}\t'
+                string_stub = f'{i}  {index[j]}\t'
                 for arg in args:
-                    str += f'{arg}\t'
-                print(str + '\n')
-            if str == '':
+                    string_stub += f'{arg}\t'
+                print(string_stub + '\n')
+            if string_stub == '':
                 print(f'None\n')
 
         for i, traj in enumerate(self.passes):
@@ -954,7 +952,6 @@ class ETrajectory(MC_Sim_Base):
             print_results(message, negative_E, 31, p0[negative_E], pn[negative_E], L[negative_E])
 
             print('\033[0;30;48m ', end='')
-            a = 0
 
     def plot_distribution(self, x, y, func=None):
         """

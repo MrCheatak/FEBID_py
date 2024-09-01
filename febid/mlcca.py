@@ -18,7 +18,6 @@ class MixedCellCellularAutomata:
     """
     def __init__(self):
         self.__get_utils()
-        pass
 
     def get_converged_configuration(self, cell, deposit, surface, semi_surface, ghosts):
         """

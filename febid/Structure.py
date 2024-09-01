@@ -294,7 +294,7 @@ class Structure(BaseSolidStructure):
         shape_new = (self.zdim + d_i, self.ydim + d_j, self.xdim + d_k)
         shape_old = self.shape
         slice_old = np.s_[0:shape_old[0], 0:shape_old[1], 0:shape_old[2]]
-        slice_new = np.s_[0:shape_new[0], 0:shape_new[1], 0:shape_new[2]]
+        # slice_new = np.s_[0:shape_new[0], 0:shape_new[1], 0:shape_new[2]]
 
         def resize_all(ref_check=True):
             if ref_check and sys.getrefcount(self.deposit) - 1 > 0:

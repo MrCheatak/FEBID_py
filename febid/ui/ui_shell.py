@@ -1,12 +1,8 @@
-import math
 import os, sys
-import faulthandler
-import time
 import traceback
 from threading import Thread
 
 from PyQt5.QtWidgets import QApplication, QMainWindow, QMessageBox, QLineEdit
-from PyQt5.QtCore import QThread
 from PyQt5 import QtWidgets
 
 from febid.ui.main_window import Ui_MainWindow as UI_MainPanel
@@ -219,6 +215,9 @@ class MainPanel(QMainWindow, UI_MainPanel):
         self.statusBar().showMessage('Ready')
 
     def update_ui(self):
+        """
+        Update UI appearance based on the current configuration
+        """
         structure_source = self.session_handler.params['structure_source']
         if structure_source == 'vtk':
             self.vtk_chosen()
@@ -400,7 +399,7 @@ class MainPanel(QMainWindow, UI_MainPanel):
                 return
         try:
             with open(file, mode='rb') as f:
-                params = yaml.load(f, Loader=yaml.FullLoader)
+                _ = yaml.load(f, Loader=yaml.FullLoader)
             self.precursor_parameters_filename_display.setText(file)
             self.precursor_parameters_filename_display_mc.setText(file)
             self.precursor_parameters_filename = file
@@ -413,7 +412,7 @@ class MainPanel(QMainWindow, UI_MainPanel):
         self.statusBar().showMessage('Precursor parameters loaded')
 
     def change_state_save_sim_data(self, param=None):
-        switch = True if param else False
+        switch = bool(param)
         self.checkbox_save_simulation_data.setChecked(switch)
         if switch:
             self.ui_sim_data_interval.enable()
@@ -428,7 +427,7 @@ class MainPanel(QMainWindow, UI_MainPanel):
         self.__save_parameter('save_simulation_data', switch)
 
     def change_state_save_snapshots(self, param=None):
-        switch = True if param else False
+        switch = bool(param)
         self.checkbox_save_snapshots.setChecked(switch)
         if switch:
             self.ui_snapshot.enable()
@@ -443,12 +442,12 @@ class MainPanel(QMainWindow, UI_MainPanel):
         self.__save_parameter('save_structure_snapshot', switch)
 
     def change_state_show_process(self, param=None):
-        switch = True if param else False
+        switch = bool(param)
         self.checkbox_show.setChecked(switch)
         self.__save_parameter('show_process', switch)
 
     def change_state_temperature_tracking(self, param):
-        switch = True if param else False
+        switch = bool(param)
         self.checkbox_temperature_tracking.setChecked(switch)
         self.__save_parameter('temperature_tracking', switch)
 
@@ -512,6 +511,9 @@ class MainPanel(QMainWindow, UI_MainPanel):
         self.change_state_load_last_session(True)
 
     def start_febid(self):
+        """
+        Start FEBID simulation
+        """
         try:
             return_val = self.session_handler.start()
             process_obj = return_val[0]
@@ -534,6 +536,9 @@ class MainPanel(QMainWindow, UI_MainPanel):
         self.statusBar().showMessage('Simulation running')
 
     def stop_febid(self):
+        """
+        Stop FEBID simulation
+        """
         self.session_handler.stop()
         success_flag.event.wait()
         success_flag.event.clear()
@@ -543,6 +548,9 @@ class MainPanel(QMainWindow, UI_MainPanel):
         self.statusBar().showMessage('Simulation stopped')
 
     def start_mc(self):
+        """
+        Start Monte Carlo simulation
+        """
         E0 = float(self.beam_energy.text())
         Emin = float(self.energy_cutoff.text())
         gauss_dev = float(self.gauss_dev.text())
@@ -556,6 +564,9 @@ class MainPanel(QMainWindow, UI_MainPanel):
         return 1
 
     def reopen_viz(self):
+        """
+        Reopen process visualization window
+        """
         if self.viz.isVisible():
             return
         self.viz = RenderWindow(self.session_handler.starter.process_obj, self.app)

@@ -8,25 +8,20 @@
 # Default packages
 import datetime
 import math
-import sys
-import time
 import warnings
 import timeit
-from threading import Thread, Event
+from threading import Thread
 
 # Core packages
 import numpy as np
-import pyvista as pv
 
 # Auxiliary packages
-import yaml
 from tqdm import tqdm
 
 from febid.Statistics import Statistics, StructureSaver, SynchronizationHelper
 # Local packages
 from febid.Structure import Structure
 from febid.Process import Process
-from febid.libraries.vtk_rendering import VTK_Rendering as vr
 from febid.monte_carlo.etraj3d import MC_Simulation
 
 # It is assumed, that surface cell is a cell with a fully deposited cell(or substrate) under it and thus able produce deposit under irradiation.
@@ -133,7 +128,6 @@ def run_febid(structure, precursor_params, settings, sim_params, path, temperatu
     equation_values = prepare_equation_values(precursor_params, settings)
     mc_config = prepare_ms_config(precursor_params, settings, structure)
 
-    global flag
     flag.run_flag = False
     process_obj = Process(structure, equation_values, temp_tracking=temperature_tracking)
 
@@ -142,7 +136,6 @@ def run_febid(structure, precursor_params, settings, sim_params, path, temperatu
         np.max([sim.deponat.lambda_escape, sim.substrate.lambda_escape]) / process_obj.cell_size)
     process_obj.structure.define_surface_neighbors(process_obj.max_neib)
     # Actual simulation runs in a second Thread, because visualization of the process
-    # via Pyvista works only from the main Thread
     if saving_params['gather_stats']:
         stats = setup_stats_collection(process_obj, flag, saving_params)
         stats.get_params(precursor_params, 'Precursor parameters')
@@ -172,7 +165,6 @@ def print_all(path, pr: Process, sim: MC_Simulation, stats: Statistics=None, str
     :param run_flag:
     :return:
     """
-    global flag, success_flag
     run_flag = flag
     run_flag.run_flag = False
     success_flag.run_flag = False

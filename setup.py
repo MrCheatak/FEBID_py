@@ -1,4 +1,4 @@
-import os, sys, setuptools
+import sys, setuptools
 
 from Cython.Build import cythonize
 import numpy as np

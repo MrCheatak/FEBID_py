@@ -45,7 +45,7 @@ def write_param(file, param_name, val):
     with open(file, 'r+b') as f:
         params = yml.load(f)
     try:
-        a = params[param_name]
+        _ = params[param_name]
     except KeyError:
         raise KeyError(f'Failed to overwrite parameter. The parameter not present in the file!')
     params[param_name] = val

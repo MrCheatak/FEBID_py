@@ -16,10 +16,11 @@ from febid.libraries.vtk_rendering.VTK_Rendering import Render, read_field_data
 from febid.Structure import Structure
 
 
-def ask_directory(app):
+def ask_directory(app=None):
     os.chdir('../../..')
     init_dir = os.getcwd()
-    # app = QApplication(sys.argv)
+    if app is None:
+        app = QApplication(sys.argv)
     directory = fd.getExistingDirectory(None, 'Select the folder with vtk files', init_dir)
     # app.quit()
     return directory
@@ -61,8 +62,7 @@ def show_animation(directory=None, app=None, **kwargs):
         directory = ask_directory(app)
     if not directory:
         return
-    result = render_animation(directory, **kwargs)
-    return result
+    render_animation(directory, **kwargs)
 
 
 def render_animation(directory, show='precursor'):

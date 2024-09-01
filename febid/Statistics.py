@@ -22,9 +22,9 @@ class SynchronizationHelper:
     True to stop execution, False to continue.
     Also contains timer that counts intrinsic simulation time.
     """
-    run_flag: bool
-    loop_tick: Condition = Condition() # this allows the thread to pause instead of constantly looping
-    event = Event()
+    run_flag: bool  # this flag is used to stop the thread
+    loop_tick: Condition = Condition()  # this allows the thread to pause instead of constantly looping
+    event = Event()  # this is used to signal other threads that the thread has stopped
     _current_time: float = 0
 
     @property
@@ -70,7 +70,6 @@ class MonitoringDaemon(Thread):
         """
         The function that is looped in the run() method. Should be overriden.
         """
-        pass
 
 
 class StructureSaver(MonitoringDaemon):

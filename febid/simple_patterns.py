@@ -115,11 +115,9 @@ def analyze_pattern(file, hfw):
     :param file: path to the stream-file
     :param hfw: target half field width
     """
-    """
-    Parse stream-file and split it into stages
-    """
+    ### Parse stream-file and split it into stages
     unit_pitch = pixel_pitch(hfw)
-    data, shape = open_stream_file(file, hfw=hfw, collapse=True)
+    data, _ = open_stream_file(file, hfw=hfw, collapse=True)
     stages = []
     total_time = data[:, 2].sum()
     delta = data[1:] - data[:-1]
@@ -158,9 +156,7 @@ def analyze_pattern(file, hfw):
     print('Stages: |', end='')
     for stage, d in stages:
         print(f'{stage}, {d:.4f} | ', end='')
-    else:
-        print(' ')
-
+    print(' ')
 
 def generate_pattern(pattern, loops, dwell_time, x, y, params=(1,1), step=1):
     """
