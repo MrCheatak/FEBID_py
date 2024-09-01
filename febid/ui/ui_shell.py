@@ -216,6 +216,7 @@ class MainPanel(QMainWindow, UI_MainPanel):
         self.update_ui()
 
         self.initialized = True
+        self.statusBar().showMessage('Ready')
 
     def update_ui(self):
         structure_source = self.session_handler.params['structure_source']
@@ -343,6 +344,7 @@ class MainPanel(QMainWindow, UI_MainPanel):
                                 'Specified file is not a valid VTK file. Please choose a valid .vtk file.')
             print("Was unable to open .vtk file. Following error occurred:")
             print(e.args)
+        self.statusBar().showMessage('VTK file loaded')
 
     def open_geom_parameters_file(self, file=''):
         if not file:
@@ -389,6 +391,7 @@ class MainPanel(QMainWindow, UI_MainPanel):
                                 'Specified file is not a valid settings file. Please choose a valid .yml file.')
             print("Was unable to open .yaml settings file. Following error occurred:")
             print(e.args)
+        self.statusBar().showMessage('Settings loaded')
 
     def open_precursor_parameters_file(self, file=''):
         if not file:
@@ -407,6 +410,7 @@ class MainPanel(QMainWindow, UI_MainPanel):
                                 'Specified file is not a valid parameters file. Please choose a valid .yml file.')
             print("Was unable to open .yml precursor parameters file. Following error occurred:")
             print(e.args)
+        self.statusBar().showMessage('Precursor parameters loaded')
 
     def change_state_save_sim_data(self, param=None):
         switch = True if param else False
@@ -517,7 +521,6 @@ class MainPanel(QMainWindow, UI_MainPanel):
                 self.reopen_process_visualization.setVisible(True)
         except Exception as e:
             self.__exception_handler(e)
-        time.sleep(0.5)
         self.start_febid_button.setVisible(False)
         self.stop_febid_button.setVisible(True)
 
@@ -528,14 +531,16 @@ class MainPanel(QMainWindow, UI_MainPanel):
 
         thread = Thread(target=wait_for_success)
         thread.start()
+        self.statusBar().showMessage('Simulation running')
 
     def stop_febid(self):
         self.session_handler.stop()
         success_flag.event.wait()
         success_flag.event.clear()
-        print('Simulation stopped.')
+        print('Simulation stopped.\n\n')
         self.start_febid_button.setVisible(True)
         self.stop_febid_button.setVisible(False)
+        self.statusBar().showMessage('Simulation stopped')
 
     def start_mc(self):
         E0 = float(self.beam_energy.text())
@@ -671,6 +676,7 @@ class MainPanel(QMainWindow, UI_MainPanel):
         self.start_febid_button.setVisible(True)
         self.stop_febid_button.setVisible(False)
         self.reopen_process_visualization.setVisible(False)
+        self.statusBar().showMessage('Simulation finished')
 
     def on_close(self):
         self.session_handler.stop()
