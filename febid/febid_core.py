@@ -143,7 +143,6 @@ def run_febid(structure, precursor_params, settings, sim_params, path, temperatu
     process_obj.structure.define_surface_neighbors(process_obj.max_neib)
     # Actual simulation runs in a second Thread, because visualization of the process
     # via Pyvista works only from the main Thread
-    printing = Thread(target=print_all, args=[path, process_obj, sim])
     if saving_params['gather_stats']:
         stats = setup_stats_collection(process_obj, flag, saving_params)
         stats.get_params(precursor_params, 'Precursor parameters')
@@ -152,27 +151,18 @@ def run_febid(structure, precursor_params, settings, sim_params, path, temperatu
         process_obj.stats_frequency = min(saving_params.get('gather_stats_interval', 1),
                                           saving_params.get('save_snapshot_interval', 1),
                                           rendering.get('frame_rate', 1))
-        stats.start()
+    else:
+        stats = None
     if saving_params['save_snapshot']:
         struc = StructureSaver(process_obj, flag, saving_params['save_snapshot_interval'], saving_params['filename'])
-        struc.start()
+    else:
+        struc = None
+    printing = Thread(target=print_all, args=[path, process_obj, sim, stats, struc])
     printing.start()
-    # if rendering['show_process']: # running visualization in the main loop
-    #     visual = Thread(target=visualize_process, args=[process_obj, flag, app, *rendering])
-    #     visual.start()
-        # total_time = visualize_process(process_obj, flag, **rendering)
-    # printing.join()
-    # if saving_params['gather_stats']:
-    #     stats.join()
-    # if saving_params['save_snapshot']:
-    #     struc.join()
-    # print('Finished path.')
-    # if rendering['show_process']:
-    #     visualize_result(process_obj, total_time, **rendering)
     return process_obj, sim, printing
 
 
-def print_all(path, pr: Process, sim: MC_Simulation):
+def print_all(path, pr: Process, sim: MC_Simulation, stats: Statistics=None, struc: StructureSaver=None):
     """
     Main event loop, that iterates through consequent points in a stream-file.
 
@@ -186,6 +176,10 @@ def print_all(path, pr: Process, sim: MC_Simulation):
     run_flag = flag
     run_flag.run_flag = False
     success_flag.run_flag = False
+    if stats:
+        stats.start()
+    if struc:
+        struc.start()
     pr.start_time = datetime.datetime.now()
     pr.x0, pr.y0 = path[0, 0:2]
     start = 0
@@ -207,7 +201,17 @@ def print_all(path, pr: Process, sim: MC_Simulation):
         print_step(y, x, step, pr, sim, t, run_flag)
         if run_flag.run_flag:
             print('Stopping simulation...')
+            if stats or struc is not None:
+                run_flag.loop_tick.acquire()
+                run_flag.loop_tick.notify_all()
+                run_flag.loop_tick.release()
+                if stats:
+                    stats.join()
+                if struc:
+                    struc.join()
             break
+    if not run_flag.run_flag:
+        print('Simulation finished!')
     run_flag.run_flag = True
     success_flag.run_flag = True
     success_flag.event.set()
