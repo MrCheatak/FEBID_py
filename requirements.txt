@@ -1,6 +1,7 @@
 matplotlib
 numpy==1.26.4
 pyvista==0.38.5
+pyvistaqt==0.11.1
 pandas
 ruamel.yaml
 cython

@@ -20,8 +20,8 @@ FEBID Simulation package
     :alt: Documentation Status
 .. |contributors| image:: https://img.shields.io/badge/contributions-welcome-brightgreen.svg?style=flat
     :target: https://github.com/mrchetak/febid_py/issues
-.. |build| image:: https://github.com/MrCheatak/FEBID_py/actions/workflows/build_orig.yml/badge.svg?style=flat
-    :target: https://github.com/MrCheatak/FEBID_py/actions/workflows/build_orig.yml
+.. |build| image:: https://github.com/MrCheatak/FEBID_py/actions/workflows/build.yml/badge.svg?style=flat
+    :target: https://github.com/MrCheatak/FEBID_py/actions/workflows/build.yml
 .. |dependencies| image:: https://img.shields.io/librariesio/github/mrcheatak/FEBID_py
    :target: https://libraries.io/github/mrcheatak/FEBID_py
     :alt: Libraries.io dependency status for FEBID_py repo
