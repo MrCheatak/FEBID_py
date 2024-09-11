@@ -51,6 +51,8 @@ class Starter:
         if self.printing_thread is not None:
             if self.printing_thread.is_alive():
                 febid_core.flag.run_flag = True
+                febid_core.flag.is_stopped = True
+                self.printing_thread.join()
 
     def _create_simulation_volume(self):
         """
@@ -252,11 +254,10 @@ class Starter:
         except AttributeError as e:
             e.errno = 9
             raise e
-        rendering = {'show_process': self._params['show_process'], 'frame_rate': 0.5}
         self.process_obj, self.sim, self.printing_thread = febid_core.run_febid_interface(self.structure,
                                                                     self.precursor_params, self.settings,
                                                                     sim_volume_params, self.printing_path,
-                                                                    temperature_tracking, saving_params, rendering)
+                                                                    temperature_tracking, saving_params)
 
     def _run_mc_interface(self, **kwargs):
         """

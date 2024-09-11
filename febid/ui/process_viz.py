@@ -8,7 +8,7 @@ import numpy as np
 from PyQt5.QtWidgets import QMainWindow
 
 from febid.libraries.vtk_rendering.VTK_Rendering import Render
-from febid.febid_core import success_flag
+from febid.febid_core import flag
 
 
 class RenderWindow(QMainWindow):
@@ -59,7 +59,7 @@ class RenderWindow(QMainWindow):
 
         # Event loop
         def update(data, mask):
-            while self.render.p.isVisible() and not success_flag:
+            while self.render.p.isVisible() and not flag:
                 now = timeit.default_timer()
                 if pr.redraw:
                     mask = pr.structure.surface_bool

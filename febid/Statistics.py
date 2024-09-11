@@ -25,6 +25,8 @@ class SynchronizationHelper:
     run_flag: bool  # this flag is used to stop the thread
     loop_tick: Condition = Condition()  # this allows the thread to pause instead of constantly looping
     event = Event()  # this is used to signal other threads that the thread has stopped
+    is_success: bool = False  # this flag is used to signal the thread has finished successfully
+    is_stopped: bool = False  # this flag is used to signal the thread has stopped
     _current_time: float = 0
 
     @property
@@ -34,6 +36,14 @@ class SynchronizationHelper:
     @timer.setter
     def timer(self, value):
         self._current_time = value
+
+    def reset(self):
+        """
+        Reset the timer and the run flag.
+        """
+        self._current_time = 0
+        self.run_flag = False
+        self.event.clear()
 
     def __repr__(self):
         return str(self.run_flag)
@@ -80,6 +90,7 @@ class StructureSaver(MonitoringDaemon):
         super().__init__(run_flag, refresh_rate, purpose='Structure saver')
         self.observed_obj = observed_obj
         self.filename = filename
+        save_deposited_structure(self.observed_obj.structure, 0, 0, (0, 0), self.filename)
 
     def looped_func(self, end=False):
         pr = self.observed_obj

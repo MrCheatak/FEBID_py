@@ -61,19 +61,23 @@ def open_stream_file(file, hfw, offset=200, collapse=False):
     # 2 – y-position
     try:
         with open(file, mode='r+', encoding='utf-8', errors='ignore') as f:
-                text = f.readline()
-                if text != 's16\n':
-                    raise IOError('Not a valid stream file!')
-                delim = ' '  # delimiter between the columns
-                header = 3  # number of lines to skip in the beginning
-                columns = (0, 1, 2)  # numbers of columns to get
-                print(f'Reading stream-file {file}  ...')
-                data = read_csv(file, dtype=np.float64, comment='#', delimiter=delim, skiprows=header, usecols=columns).to_numpy()
-                print('Done!')
+            text = [f.readline() for _ in range(3)]
+            if text[0] != 's16\n':
+                raise IOError('Not a valid stream file!')
+            n_lines = int(text[2].strip())
+            delim = ' '  # delimiter between the columns
+            header = 3  # number of lines to skip in the beginning
+            columns = (0, 1, 2)  # numbers of columns to get
+            print(f'Reading stream-file {file}  ...')
+            data = read_csv(file, dtype=np.float64, comment='#', delimiter=delim, skiprows=header, nrows=n_lines-1, usecols=columns).to_numpy()
+            print('Done!')
     except UnicodeDecodeError:
         raise FileNotFoundError('Corrupted stream file!')
     except FileNotFoundError:
         raise FileNotFoundError('File not found!')
+    except Exception as e:
+        print(f'Error: {e.args}')
+        raise e
 
     # Converting to simulation units
     unit_pitch = pixel_pitch(hfw)  # nm/pixel

@@ -33,7 +33,6 @@ from febid.monte_carlo.etraj3d import MC_Simulation
 # and visualization all in parallel to the main thread that is reserved for the UI
 # These flags are used to synchronize the threads and stop them if needed.
 flag = SynchronizationHelper(False)
-success_flag = SynchronizationHelper(False)
 x_pos, y_pos = 0., 0.
 warnings.simplefilter('always')
 
@@ -112,7 +111,7 @@ def run_febid_interface(*args, **kwargs):
 
 
 def run_febid(structure, precursor_params, settings, sim_params, path, temperature_tracking,
-              saving_params=None, rendering=None):
+              saving_params=None):
     """
         Create necessary objects and start the FEBID process.
 
@@ -135,15 +134,13 @@ def run_febid(structure, precursor_params, settings, sim_params, path, temperatu
     process_obj.max_neib = math.ceil(
         np.max([sim.deponat.lambda_escape, sim.substrate.lambda_escape]) / process_obj.cell_size)
     process_obj.structure.define_surface_neighbors(process_obj.max_neib)
-    # Actual simulation runs in a second Thread, because visualization of the process
     if saving_params['gather_stats']:
         stats = setup_stats_collection(process_obj, flag, saving_params)
         stats.get_params(precursor_params, 'Precursor parameters')
         stats.get_params(settings, 'Beam parameters and settings')
         stats.get_params(sim_params, 'Simulation volume parameters')
         process_obj.stats_frequency = min(saving_params.get('gather_stats_interval', 1),
-                                          saving_params.get('save_snapshot_interval', 1),
-                                          rendering.get('frame_rate', 1))
+                                          saving_params.get('save_snapshot_interval', 1))
     else:
         stats = None
     if saving_params['save_snapshot']:
@@ -167,7 +164,6 @@ def print_all(path, pr: Process, sim: MC_Simulation, stats: Statistics=None, str
     """
     run_flag = flag
     run_flag.run_flag = False
-    success_flag.run_flag = False
     if stats:
         stats.start()
     if struc:
@@ -202,11 +198,11 @@ def print_all(path, pr: Process, sim: MC_Simulation, stats: Statistics=None, str
                 if struc:
                     struc.join()
             break
-    if not run_flag.run_flag:
+    if not run_flag.is_stopped:
+        run_flag.is_success = True
         print('Simulation finished!')
     run_flag.run_flag = True
-    success_flag.run_flag = True
-    success_flag.event.set()
+    run_flag.event.set()
 
 
 def print_step(y, x, dwell_time, pr: Process, sim: MC_Simulation, t, run_flag: SynchronizationHelper):

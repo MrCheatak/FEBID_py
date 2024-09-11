@@ -14,7 +14,7 @@ from ruamel.yaml import YAML, CommentedMap
 from febid.start import Starter
 from febid.Structure import Structure
 from febid.libraries.vtk_rendering.VTK_Rendering import read_field_data
-from febid.febid_core import success_flag
+from febid.febid_core import flag
 
 from febid.ui.process_viz import RenderWindow
 
@@ -527,9 +527,9 @@ class MainPanel(QMainWindow, UI_MainPanel):
         self.stop_febid_button.setVisible(True)
 
         def wait_for_success():
-            success_flag.event.wait()
-            success_flag.event.clear()
-            self.on_finish()
+            flag.event.wait()
+            if flag.is_success:
+                self.on_finish('Simulation finished')
 
         thread = Thread(target=wait_for_success)
         thread.start()
@@ -540,12 +540,8 @@ class MainPanel(QMainWindow, UI_MainPanel):
         Stop FEBID simulation
         """
         self.session_handler.stop()
-        success_flag.event.wait()
-        success_flag.event.clear()
+        self.on_finish('Simulation stopped')
         print('Simulation stopped.\n\n')
-        self.start_febid_button.setVisible(True)
-        self.stop_febid_button.setVisible(False)
-        self.statusBar().showMessage('Simulation stopped')
 
     def start_mc(self):
         """
@@ -683,11 +679,12 @@ class MainPanel(QMainWindow, UI_MainPanel):
                 params[parameter] = element.getChecked()
         return params
 
-    def on_finish(self):
+    def on_finish(self, message=''):
         self.start_febid_button.setVisible(True)
         self.stop_febid_button.setVisible(False)
         self.reopen_process_visualization.setVisible(False)
-        self.statusBar().showMessage('Simulation finished')
+        flag.reset()
+        self.statusBar().showMessage(message)
 
     def on_close(self):
         self.session_handler.stop()
