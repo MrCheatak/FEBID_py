@@ -407,7 +407,7 @@ def read_field_data(vtk_obj):
     """
     Read run time, simulation time and beam position from vtk-file.
 
-    :param vtk_obj: VTK-object (UniformGrid)
+    :param vtk_obj: VTK-object (ImageData)
     :return:
     """
     t = vtk_obj.field_data.get('time', None)
@@ -424,18 +424,18 @@ def read_field_data(vtk_obj):
 
 def numpy_to_vtk(arr, cell_size, data_name='scalar', grid=None, unstructured=False):
     """
-    Convert numpy array to a VTK-datastructure (UniformGrid or UnstructuredGrid).
+    Convert numpy array to a VTK-datastructure (ImageData or UnstructuredGrid).
     If grid is provided, add new dataset to that grid.
 
     :param arr: numpy array
     :param cell_size: array cell (cubic) edge length
     :param data_name: name of data
-    :param grid: existing UniformGrid
+    :param grid: existing ImageData
     :param unstructured: if True, return an UnstructuredGrid
     :return:
     """
     if not grid:
-        grid = pv.UniformGrid()
+        grid = pv.ImageData()
         grid.dimensions = np.asarray(
             [arr.shape[2], arr.shape[1], arr.shape[0]]) + 1  # creating a grid with the size of the array
         grid.origin = (0, 0, 0)  # setting the origin

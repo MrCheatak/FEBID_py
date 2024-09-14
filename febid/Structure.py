@@ -130,7 +130,7 @@ class Structure(BaseSolidStructure):
         A vtk object can either represent only a single solid structure array or a result of a deposition process
         with the full set of arrays.
 
-            Important requirement: vtk data must be a UniformGrid with 'spacing' attribute.
+            Important requirement: vtk data must be a ImageData with 'spacing' attribute.
 
         :param vtk_obj: a vtk object from file
         :param add_substrate: if a value is specified, a substrate with such height will be created for simple vtk files. 0 or False otherwise. If the value is not a multiple of the 'spacing' attribute, it will be rounded down.
@@ -487,7 +487,7 @@ class Structure(BaseSolidStructure):
 
     def save_to_vtk(self):
         import time
-        grid = pv.UniformGrid()
+        grid = pv.ImageData()
         grid.dimensions = np.asarray([self.deposit.shape[2], self.deposit.shape[1],
                                       self.deposit.shape[0]]) + 1  # creating grid with the size of the array
         grid.spacing = (self.cell_size, self.cell_size, self.cell_size)  # assigning dimensions of a cell

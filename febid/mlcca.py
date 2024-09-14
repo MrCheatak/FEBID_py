@@ -117,10 +117,10 @@ class MixedCellCellularAutomata:
 def visualize_kernel(*arrays):
     import pyvista as pv
 
-    # Step 1: Create a UniformGrid
+    # Step 1: Create a ImageData
     grids = []
     for arr in arrays:
-        grid = pv.UniformGrid()
+        grid = pv.ImageData()
         grid.dimensions = np.array(arr.shape) + 1
         grid.cell_data["values"] = arr.flatten(order="F")  # Flatten the array in Fortran order
         grid1 = grid.threshold(0.000001, method='upper')
