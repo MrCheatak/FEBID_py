@@ -268,10 +268,6 @@ class Ui_MainWindow(object):
         self.save_folder_display.setGeometry(QtCore.QRect(132, 86, 429, 21))
         self.save_folder_display.setReadOnly(True)
         self.save_folder_display.setObjectName("save_folder_display")
-        self.checkbox_show = QtWidgets.QCheckBox(self.tab_febid)
-        self.checkbox_show.setGeometry(QtCore.QRect(405, 575, 133, 20))
-        self.checkbox_show.setChecked(False)
-        self.checkbox_show.setObjectName("checkbox_show")
         self.checkbox_load_last_session = QtWidgets.QCheckBox(self.tab_febid)
         self.checkbox_load_last_session.setGeometry(QtCore.QRect(430, 5, 133, 16))
         self.checkbox_load_last_session.setChecked(False)
@@ -536,7 +532,6 @@ class Ui_MainWindow(object):
         self.input_structure_snapshot_interval.editingFinished.connect(MainWindow.check_input)  # type: ignore
         self.tabWidget.currentChanged['int'].connect(MainWindow.tab_switched)  # type: ignore
         self.open_save_folder_button.clicked.connect(MainWindow.open_save_directory)  # type: ignore
-        self.checkbox_show.stateChanged['int'].connect(MainWindow.change_state_show_process)  # type: ignore
         self.checkbox_load_last_session.stateChanged['int'].connect(
             MainWindow.change_state_load_last_session)  # type: ignore
         self.input_unique_name.editingFinished.connect(MainWindow.unique_name_changed)  # type: ignore
@@ -636,7 +631,6 @@ class Ui_MainWindow(object):
         self.l_unique_name.setText(_translate("MainWindow", "unique name:"))
         self.open_save_folder_button.setText(_translate("MainWindow", "Open folder"))
         self.save_folder_display.setPlaceholderText(_translate("MainWindow", "Select directory..."))
-        self.checkbox_show.setText(_translate("MainWindow", "Show the process"))
         self.checkbox_load_last_session.setText(_translate("MainWindow", "Load last session"))
         self.stop_febid_button.setText(_translate("MainWindow", "Stop"))
         self.tabWidget.setTabText(self.tabWidget.indexOf(self.tab_febid), _translate("MainWindow", "FEBID"))
@@ -701,7 +695,7 @@ class Ui_MainWindow(object):
         self.actionAbout.setText(_translate("MainWindow", "About"))
         self.actionOpen_session.setText(_translate("MainWindow", "Open session"))
         self.actionManual.setText(_translate("MainWindow", "Manual"))
-        self.reopen_process_visualization.setText(_translate("MainWindow", "Reopen animation"))
+        self.reopen_process_visualization.setText(_translate("MainWindow", "Show process"))
 
 
 class UI_Test(QtWidgets.QMainWindow, Ui_MainWindow):

@@ -15,14 +15,14 @@ class RenderWindow(QMainWindow):
     """
     Class for the visualization of the FEBID process
     """
-    def __init__(self, process_obj, app=None):
+    def __init__(self, process_obj, show=False, app=None):
         super().__init__()
         self.setWindowTitle("FEBID process")
         self.app = app
         # The object of the simulation process state
         self.process_obj = process_obj
         # Create a PyVista BackgroundPlotter and add it to the layout
-        self.render = Render(app=app, show=True, cell_size=process_obj.structure.cell_size)
+        self.render = Render(app=app, show=show, cell_size=process_obj.structure.cell_size)
 
     def start(self, frame_rate=1):
         """

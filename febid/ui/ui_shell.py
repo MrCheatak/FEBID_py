@@ -204,7 +204,6 @@ class MainPanel(QMainWindow, UI_MainPanel):
         self.precursor_parameters_filename = ''
         self.temperature_tracking = False
         self.save_directory = ''
-        self.show_process = False
         self.cam_pos = None
         self.viz = None
 
@@ -441,11 +440,6 @@ class MainPanel(QMainWindow, UI_MainPanel):
             self.ui_save_folder.disable()
         self.__save_parameter('save_structure_snapshot', switch)
 
-    def change_state_show_process(self, param=None):
-        switch = bool(param)
-        self.checkbox_show.setChecked(switch)
-        self.__save_parameter('show_process', switch)
-
     def change_state_temperature_tracking(self, param):
         switch = bool(param)
         self.checkbox_temperature_tracking.setChecked(switch)
@@ -516,11 +510,7 @@ class MainPanel(QMainWindow, UI_MainPanel):
         """
         try:
             return_val = self.session_handler.start()
-            process_obj = return_val[0]
-            if self.session_handler.params.get('show_process', 0):
-                self.viz = RenderWindow(process_obj, self.app)
-                self.viz.start(frame_rate=3)
-                self.reopen_process_visualization.setVisible(True)
+            self.reopen_process_visualization.setVisible(True)
         except Exception as e:
             self.__exception_handler(e)
         self.start_febid_button.setVisible(False)
@@ -562,9 +552,10 @@ class MainPanel(QMainWindow, UI_MainPanel):
         """
         Reopen process visualization window
         """
-        if self.viz.isVisible():
-            return
-        self.viz = RenderWindow(self.session_handler.starter.process_obj, self.app)
+        if type(self.viz) is RenderWindow:
+            if self.viz.isVisible():
+                return
+        self.viz = RenderWindow(self.session_handler.starter.process_obj, show=True, app=self.app)
         self.viz.start(frame_rate=3)
 
     # Supporting functions
@@ -626,7 +617,6 @@ class MainPanel(QMainWindow, UI_MainPanel):
             'structure_snapshot_interval': self.input_structure_snapshot_interval,
             'unique_name': self.input_unique_name,
             'save_directory': self.save_folder_display,
-            'show_process': self.checkbox_show
         }
         return mapping_of_interface_elements_to_parameters
 

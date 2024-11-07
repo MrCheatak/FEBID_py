@@ -227,7 +227,7 @@ class Starter:
         save_snapshot = saving_params['save_snapshot'] = self._params['save_structure_snapshot']
         if save_snapshot:
             saving_params['save_snapshot_interval'] = float(self._params['structure_snapshot_interval'])
-        flag1, flag2, flag3 = self._params['save_simulation_data'], self._params['save_structure_snapshot'], self._params['show_process']
+        flag1, flag2 = self._params['save_simulation_data'], self._params['save_structure_snapshot']
         if flag1 or flag2:
             try:
                 if not self._params['unique_name']:
@@ -243,8 +243,8 @@ class Starter:
             except FileExistsError as e:
                 print('Saving directory already exists.')
             saving_params['filename'] = os.path.join(saving_params['filename'], self._params['unique_name'])
-        if not (flag1 or flag2 or flag3):
-            warnings.warn('No simulation information is interfaced. Neither saving statistics, nor snapshots, nor showing process.')
+        if not (flag1 or flag2):
+            warnings.warn('No simulation information is saved. Neither saving statistics, nor snapshots.')
         temperature_tracking = self._params.get('temperature_tracking', False)
         try:
             if not self.check_for_temperature_tracking_consistency():

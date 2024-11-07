@@ -1065,22 +1065,6 @@
          </property>
         </widget>
        </widget>
-       <widget class="QCheckBox" name="checkbox_show">
-        <property name="geometry">
-         <rect>
-          <x>405</x>
-          <y>575</y>
-          <width>133</width>
-          <height>20</height>
-         </rect>
-        </property>
-        <property name="text">
-         <string>Show the process</string>
-        </property>
-        <property name="checked">
-         <bool>false</bool>
-        </property>
-       </widget>
        <widget class="QCheckBox" name="checkbox_load_last_session">
         <property name="geometry">
          <rect>
@@ -2593,22 +2577,6 @@
     <hint type="destinationlabel">
      <x>6</x>
      <y>556</y>
-    </hint>
-   </hints>
-  </connection>
-  <connection>
-   <sender>checkbox_show</sender>
-   <signal>stateChanged(int)</signal>
-   <receiver>MainWindow</receiver>
-   <slot>change_state_show_process(int)</slot>
-   <hints>
-    <hint type="sourcelabel">
-     <x>478</x>
-     <y>648</y>
-    </hint>
-    <hint type="destinationlabel">
-     <x>604</x>
-     <y>571</y>
     </hint>
    </hints>
   </connection>
