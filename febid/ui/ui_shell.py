@@ -541,7 +541,6 @@ class MainPanel(QMainWindow, UI_MainPanel):
         """
         self.session_handler.stop()
         self.on_finish('Simulation stopped')
-        print('Simulation stopped.\n\n')
 
     def start_mc(self):
         """

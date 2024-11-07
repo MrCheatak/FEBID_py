@@ -187,21 +187,24 @@ def print_all(path, pr: Process, sim: MC_Simulation, stats: Statistics=None, str
             pr.heat_transfer(sim.beam_heating)
             pr.request_temp_recalc = False
         print_step(y, x, step, pr, sim, t, run_flag)
-        if run_flag.run_flag:
+        if run_flag.is_stopped:
             print('Stopping simulation...')
-            if stats or struc is not None:
-                run_flag.loop_tick.acquire()
-                run_flag.loop_tick.notify_all()
-                run_flag.loop_tick.release()
-                if stats:
-                    stats.join()
-                if struc:
-                    struc.join()
             break
     if not run_flag.is_stopped:
         run_flag.is_success = True
-        print('Simulation finished!')
+        message = 'Simulation finished!'
+    else:
+        message = 'Simulation stopped!'
     run_flag.run_flag = True
+    if stats or struc is not None:
+        run_flag.loop_tick.acquire()
+        run_flag.loop_tick.notify_all()
+        run_flag.loop_tick.release()
+        if stats:
+            stats.join()
+        if struc:
+            struc.join()
+    print(message)
     run_flag.event.set()
 
 
@@ -254,7 +257,13 @@ def print_step(y, x, dwell_time, pr: Process, sim: MC_Simulation, t, run_flag: S
         pr.t += pr.dt * pr.deposition_scaling
         time_passed += pr.dt
         run_flag.timer = pr.t
-        t.update(pr.dt * pr.deposition_scaling * 1e6)
+        # Advancing the progress bar
+        # Making sure the last iteration does not overflow the counter
+        d_it = pr.dt * pr.deposition_scaling * 1e6
+        if t.n + d_it > t.total:
+            d_it = t.total - t.n
+        t.update(d_it)
+        # Collecting prcess stats
         if time_passed % pr.stats_frequency < pr.dt * 1.5:
             pr.min_precursor_coverage = pr.precursor_min
             pr.dep_vol = pr.deposited_vol

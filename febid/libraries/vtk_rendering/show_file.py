@@ -31,12 +31,12 @@ def ask_filenames(allowed_extensions=['vtk']):
 def show_structure(filenames=None, **kwargs):
     if not filenames:
         filenames = ask_filenames()
-    render_structure(filenames, **kwargs)
     app = QApplication(sys.argv)
+    render_structure(filenames, app=app, **kwargs)
     sys.exit(app.exec_())
 
 
-def render_structure(filenames, solid=True, deposit=True, precursor=True, surface=True, semi_surface=True, ghost=True):
+def render_structure(filenames, solid=True, deposit=True, precursor=True, surface=True, semi_surface=True, ghost=True, app=None):
     cam_pos = None
     if type(filenames) not in [list, tuple]:
         filenames = [filenames]
@@ -76,7 +76,7 @@ def render_structure(filenames, solid=True, deposit=True, precursor=True, surfac
         else:
             print('ok!')
         t, sim_time, beam_position = read_field_data(vtk_obj)
-        render = Render(structure.cell_size)
+        render = Render(structure.cell_size, app=app)
         render.p.show_grid()
         render.p.show_axes()
         cam_pos = render.show_full_structure(structure, True, solid, deposit, precursor, surface, semi_surface, ghost,
