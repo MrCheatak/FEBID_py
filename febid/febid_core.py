@@ -111,7 +111,7 @@ def run_febid_interface(*args, **kwargs):
 
 
 def run_febid(structure, precursor_params, settings, sim_params, path, temperature_tracking,
-              saving_params=None):
+              saving_params=None, device=None):
     """
         Create necessary objects and start the FEBID process.
 
