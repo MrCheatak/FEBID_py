@@ -276,6 +276,9 @@ class Ui_MainWindow(object):
         self.stop_febid_button.setEnabled(True)
         self.stop_febid_button.setGeometry(QtCore.QRect(225, 570, 151, 36))
         self.stop_febid_button.setObjectName("stop_febid_button")
+        self.checkbox_gpu = QtWidgets.QCheckBox(self.tab_febid)
+        self.checkbox_gpu.setGeometry(QtCore.QRect(445, 580, 131, 20))
+        self.checkbox_gpu.setObjectName("checkbox_gpu")
         self.tabWidget.addTab(self.tab_febid, "")
         self.tab_mc = QtWidgets.QWidget()
         self.tab_mc.setObjectName("tab_mc")
@@ -546,6 +549,7 @@ class Ui_MainWindow(object):
         self.stop_febid_button.clicked.connect(MainWindow.stop_febid)  # type: ignore
         QtCore.QMetaObject.connectSlotsByName(MainWindow)
         self.reopen_process_visualization.clicked.connect(MainWindow.reopen_viz)  # type: ignore
+        self.checkbox_gpu.stateChanged['int'].connect(MainWindow.change_state_gpu) # type: ignore
 
     def retranslateUi(self, MainWindow):
         _translate = QtCore.QCoreApplication.translate
@@ -633,6 +637,7 @@ class Ui_MainWindow(object):
         self.save_folder_display.setPlaceholderText(_translate("MainWindow", "Select directory..."))
         self.checkbox_load_last_session.setText(_translate("MainWindow", "Load last session"))
         self.stop_febid_button.setText(_translate("MainWindow", "Stop"))
+        self.checkbox_gpu.setText(_translate("MainWindow", "GPU(experimental)"))
         self.tabWidget.setTabText(self.tabWidget.indexOf(self.tab_febid), _translate("MainWindow", "FEBID"))
         self.groupBox_3.setTitle(_translate("MainWindow", "Simulation volume"))
         self.choice_geom_parameters_file_mc.setText(_translate("MainWindow", "Parameters"))

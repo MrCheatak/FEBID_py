@@ -1097,6 +1097,19 @@
          <string>Stop</string>
         </property>
        </widget>
+       <widget class="QCheckBox" name="checkbox_gpu">
+        <property name="geometry">
+         <rect>
+          <x>445</x>
+          <y>580</y>
+          <width>131</width>
+          <height>20</height>
+         </rect>
+        </property>
+        <property name="text">
+         <string>GPU(experimental)</string>
+        </property>
+       </widget>
       </widget>
       <widget class="QWidget" name="tab_mc">
        <attribute name="title">
@@ -2724,6 +2737,22 @@
     </hint>
    </hints>
   </connection>
+  <connection>
+   <sender>checkbox_gpu</sender>
+   <signal>stateChanged(int)</signal>
+   <receiver>MainWindow</receiver>
+   <slot>change_state_gpu(int)</slot>
+   <hints>
+    <hint type="sourcelabel">
+     <x>463</x>
+     <y>653</y>
+    </hint>
+    <hint type="destinationlabel">
+     <x>473</x>
+     <y>717</y>
+    </hint>
+   </hints>
+  </connection>
  </connections>
  <designerdata>
   <property name="gridDeltaX">
@@ -2772,5 +2801,6 @@
   <slot>change_state_temperature_tracking(int)</slot>
   <slot>open_new_session(bool)</slot>
   <slot>stop_febid()</slot>
+  <slot>change_state_gpu(int)</slot>
  </slots>
 </ui>

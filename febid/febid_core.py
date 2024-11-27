@@ -171,6 +171,7 @@ def print_all(path, pr: Process, sim: MC_Simulation, stats: Statistics=None, str
     pr.start_time = datetime.datetime.now()
     pr.x0, pr.y0 = path[0, 0:2]
     start = 0
+    first_it = True
     total_time = int(path[:, 2].sum() * pr.deposition_scaling * 1e6)
     bar_format = "{desc}: {percentage:.1f}%|{bar}| {n:.0f}/{total_fmt} [{elapsed}<{remaining}, {rate_fmt}{postfix}]"
     t = tqdm(total=total_time, desc='Patterning', position=0, unit='µs',
@@ -186,7 +187,20 @@ def print_all(path, pr: Process, sim: MC_Simulation, stats: Statistics=None, str
         if pr.temperature_tracking:
             pr.heat_transfer(sim.beam_heating)
             pr.request_temp_recalc = False
-        print_step(y, x, step, pr, sim, t, run_flag)
+        if pr.device:
+            if first_it:
+                try:
+                    pr.load_kernel()
+                    first_it = False
+                except Exception as e:
+                    print('Could not load the kernel!')
+                    print(e)
+                    run_flag.run_flag = True
+            else:
+                pr.knl.update_beam_matrix(beam_matrix)
+            print_step_GPU(y, x, step, pr, sim, t, run_flag)
+        else:
+            print_step(y, x, step, pr, sim, t, run_flag)
         if run_flag.is_stopped:
             print('Stopping simulation...')
             break
@@ -271,6 +285,123 @@ def print_step(y, x, dwell_time, pr: Process, sim: MC_Simulation, t, run_flag: S
         run_flag.loop_tick.acquire()
         run_flag.loop_tick.notify_all()
         run_flag.loop_tick.release()
+
+
+def print_step_GPU(y, x, dwell_time, pr: Process, sim, t, run_flag: SynchronizationHelper):
+    """
+    Run deposition on a single spot
+
+    :param x: spot x-coordinate
+    :param y: spot y-coordinate
+    :param dwell_time: time of the exposure
+    :param pr: Process object
+    :param sim: MC simulation object
+    :return:
+    """
+    if dwell_time < pr.dt:
+        warnings.warn('Dwell time is smaller that the time step!')
+        pr.dt = dwell_time
+    time_passed = 0
+    flag_dt = True
+    cell_count = 0
+    full = pr.deposition_gpu()
+    cell_count += full
+    if full:
+        full_cell_ops(y, x, pr, sim)
+    while flag_dt and not run_flag.run_flag:
+        if time_passed + pr.dt > dwell_time:  # stepping only for remaining dwell time to avoid accumulating of excess deposit
+            pr.dt = dwell_time - time_passed
+            flag_dt = False
+        full = pr.deposition_gpu()
+        cell_count += full
+        if full:
+            full_cell_ops(y, x, pr, sim)
+        pr.precur_density_gpu()
+        pr.t += pr.dt * pr.deposition_scaling
+        time_passed += pr.dt
+        run_flag.timer = pr.t
+        # Advancing the progress bar
+        # Making sure the last iteration does not overflow the counter
+        d_it = pr.dt * pr.deposition_scaling * 1e6
+        if t.n + d_it > t.total:
+            d_it = t.total - t.n
+        t.update(d_it)
+        # Collecting prcess stats
+        if time_passed % pr.stats_frequency < pr.dt * 1.5:
+            pr.min_precursor_coverage = pr.precursor_min
+            pr.dep_vol = pr.deposited_vol
+        pr.reset_dt()
+        # Allow only one tick of the loop for daemons per one tick of simulation
+        run_flag.loop_tick.acquire()
+        run_flag.loop_tick.notify_all()
+        run_flag.loop_tick.release()
+
+
+def full_cell_ops(y, x, pr: Process, sim):
+    load_count = 0
+    flag = pr.update_surface_GPU()  # updating surface on a selected area
+    pr.offload_from_gpu()
+    if flag: # look into what Monte Carlo reads!!!
+        sim.pe_sim.grid = sim.se_sim.grid = pr.structure.deposit
+        sim.pe_sim.surface = sim.se_sim.surface = pr.structure.surface_bool
+        sim.se_sim.s_neighb = pr.structure.surface_neighbors_bool
+    else:
+        # start = timeit.default_timer()
+        sim.pe_sim.grid = sim.se_sim.grid = pr.structure.deposit
+        sim.pe_sim.surface = sim.se_sim.surface = pr.structure.surface_bool
+        sim.se_sim.s_neighb = pr.structure.surface_neighbors_bool
+        # load_count += timeit.default_timer() - start
+    start = timeit.default_timer()
+    # beam_matrix = sim.run_simulation(y, x, pr.request_temp_recalc)  # run MC sim. and retrieve SE surface flux
+    beam_matrix = sample_beam_matrix(sim.pe_sim.sigma, pr.structure)
+    print(f'Finished MC in {timeit.default_timer() - start} s')
+    if beam_matrix.max() <= 1:
+        warnings.warn('No surface flux!', RuntimeWarning)
+        beam_matrix = 1
+    # mont_time = timeit.default_timer() - start
+    # pr.get_dt(beam_matrix)
+    # pr.update_helper_arrays()
+    if flag:
+        try:
+            # start = timeit.default_timer()
+            zero_dim = pr._irradiated_area_2D[0]
+            irr_ind_2D = (zero_dim.start, zero_dim.stop)
+            pr.structure.onload_all(pr.knl, beam_matrix, irr_ind_2D)
+            # load_count += timeit.default_timer() - start
+        except Exception as e:
+            print("Error during structure resizing: " + repr(e))
+            return False
+        print("Resize successfull")
+    else:
+        # start = timeit.default_timer()
+        pr.knl.update_beam_matrix(beam_matrix)
+        # load_count += timeit.default_timer() - start
+    # return mont_time, load_count
+
+
+def sample_beam_matrix(a, structure, f0=1e6):
+    """
+    Sample a gaussian beam matrix for testing purposes
+
+    :param a: Gaussian standard deviation
+    :param structure: structure object of the simulation
+    :return: sampled array
+    """
+    _, ydim, xdim = structure.shape
+    _, ydim_abs, xdim_abs = structure.shape_abs
+    x = np.linspace(0, xdim_abs, xdim) - xdim_abs / 2
+    y = np.linspace(0, ydim_abs, ydim) - ydim_abs / 2
+    x, y = np.meshgrid(x, y)
+    d = np.sqrt(x * x + y * y)
+    gaussian_2d = np.exp(-(d ** 2 / (2 * a ** 2)))
+    beam_matrix = np.zeros(structure.shape)
+    for i in range(ydim):
+        for j in range(xdim):
+            index = structure.surface_bool[:, i, j]
+            beam_matrix_view = beam_matrix[:, i, j]
+            beam_matrix_view[index] = gaussian_2d[i, j]
+    beam_matrix *= f0
+    return beam_matrix.astype(np.int32)
 
 
 if __name__ == '__main__':

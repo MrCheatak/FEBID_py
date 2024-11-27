@@ -82,6 +82,12 @@ class BaseSolidStructure:
         """
         return self.shape_abs[0]
 
+    def size(self):
+        """
+        Returns the size of the deposit array.
+        """
+        return self.deposit.size
+
 
 class Structure(BaseSolidStructure):
     """
@@ -511,3 +517,21 @@ class Structure(BaseSolidStructure):
     @property
     def substrate_height_abs(self):
         return self.substrate_height * self.cell_size
+
+    def offload_all(self, kernel):
+        try:
+            surface_bool, semi_surface_bool, deposit, precursor, ghosts_bool, _ = kernel.get_updated_structure()
+            self.surface_bool[...] = surface_bool
+            self.semi_surface_bool[...] = semi_surface_bool
+            self.deposit[...] = deposit
+            self.precursor[...] = precursor
+            self.ghosts_bool[...] = ghosts_bool
+        except:
+            raise MemoryError('Failed to load structure from the GPU memory.')
+
+    def onload_all(self, kernel, flux_mat, irr_ind):
+        try:
+            kernel.set_updated_structure(self.precursor, self.deposit, self.surface_bool, self.semi_surface_bool, flux_mat,
+                                         irr_ind, self.ghosts_bool)
+        except Exception as e:
+            raise MemoryError('Failed to load structure to the GPU memory.')

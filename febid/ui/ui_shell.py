@@ -448,6 +448,11 @@ class MainPanel(QMainWindow, UI_MainPanel):
     def unique_name_changed(self):
         self.__save_parameter('unique_name', self.input_unique_name.text())
 
+    def change_state_gpu(self, param):
+        switch = bool(param)
+        self.checkbox_gpu.setChecked(switch)
+        self.__save_parameter('gpu', switch)
+
     def open_save_directory(self, directory=''):
         if not directory:
             directory = QtWidgets.QFileDialog.getExistingDirectory()
@@ -617,6 +622,7 @@ class MainPanel(QMainWindow, UI_MainPanel):
             'structure_snapshot_interval': self.input_structure_snapshot_interval,
             'unique_name': self.input_unique_name,
             'save_directory': self.save_folder_display,
+            'gpu': self.checkbox_gpu
         }
         return mapping_of_interface_elements_to_parameters
 

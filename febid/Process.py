@@ -15,6 +15,7 @@ from febid.libraries.rolling.roll import surface_temp_av, beam_matrix_semi_surfa
 from febid.mlcca import MultiLayerdCellCellularAutomata as MLCCA
 from .slice_trics import get_3d_slice
 from .expressions import cache_numexpr_expressions
+from .kernel_modules import GPU
 
 from timeit import default_timer as df
 
@@ -43,7 +44,7 @@ class Process:
     # The deposited volume is though calculated and stored as a fraction of the cell's volume.
     # Thus, the precursor density has to be multiplied by the cell's base area divided by the cell volume.
 
-    def __init__(self, structure: Structure, equation_values, deposition_scaling=1, temp_tracking=True,
+    def __init__(self, structure: Structure, equation_values, deposition_scaling=1, temp_tracking=True, device=None,
                  name=None):
         super().__init__()
         if not name:
@@ -148,6 +149,11 @@ class Process:
             self._residence_time_profile()
             self._diffusion_coefficient_profile()
         self.__expressions()
+
+        self.device = device
+        if device:
+            self.knl = GPU(device)
+
 
     # Initialization methods
     def __set_structure(self, structure: Structure):
@@ -398,6 +404,145 @@ class Process:
             warnings.warn(f'Failed to reach {eps} accuracy in {max_it} iterations in Process.equilibrate. Achieved accuracy: {acc} \n'
                           f'Terminating loop.', RuntimeWarning)
             print(f'Took {i + 1} iteration(s) to equilibrate, took {df() - start}')
+
+    # GPU methods
+    def load_kernel(self):
+        """
+        values are transfered to compute device
+        """
+        zero_dim = self._irradiated_area_2D[0]
+        irr_ind_2D = (zero_dim.start,zero_dim.stop)
+        self.knl.load_vals(self.structure.precursor, self._surface_all, self._beam_matrix,
+                           self.structure.deposit, self.structure.surface_bool, irr_ind_2D,
+                           self.structure.semi_surface_bool, self.structure.ghosts_bool)
+
+    def precur_density_gpu(self):
+        """
+        precursor density, deposition and check cells filled are calculated on compute device at once
+        """
+        dt = self.dt
+        D = self.precursor.D
+        cell_size = self.cell_size
+        F = self.precursor.F
+        n0 = self.precursor.n0
+        tau = self._get_tau()
+        sigma = self.precursor.sigma
+        V = self.precursor.V
+        out = self.knl.precur_den(0, dt * D / (cell_size ** 2), F * dt,
+                                  (F * dt * tau + n0 * dt) / (tau * n0),
+                                  sigma * dt)
+
+
+    def deposition_gpu(self):
+        """
+        precursor density, deposition and check cells filled are calculated on compute device at once
+        """
+        dt = self.dt
+        D = self.precursor.D
+        cell_size = self.cell_size
+        F = self.precursor.F
+        n0 = self.precursor.n0
+        tau = self._get_tau()
+        sigma = self.precursor.sigma
+        V = self.precursor.V
+        const = (sigma * V * dt * 1e6 * self.deposition_scaling / self.cell_V * cell_size ** 2)
+        out = self.knl.deposition(const)
+        return out
+
+    def update_surface_GPU(self):
+        """
+        Updates all data arrays on compute device
+
+        :return:
+        """
+        # Here we use the beam matrix as an indicator for filled cells to avoid unnecessary data transfer.
+        # Conventionally, the deposit array is used for this purpose, but it is float32 that takes longer to copy back, while the beam matrix is int32.
+        # The cells are filled in the kernel, so the filled cells are marked with -1 in the beam matrix there.
+        beam_matrix = self.knl.return_beam_matrix()
+        full_cells = np.argwhere(beam_matrix < 0)
+        self.knl.update_surface(full_cells)
+        # self.redraw = True
+
+        for cell in full_cells[0]:
+            z_coord = cell // (self.knl.ydim * self.knl.xdim)
+            y_coord = (cell - z_coord * self.knl.ydim * self.knl.xdim) // self.knl.xdim
+            x_coord = cell - (z_coord * self.knl.ydim * self.knl.xdim) - (y_coord * self.knl.xdim)
+
+            if z_coord + 4 > self.max_z:
+                self.max_z = z_coord + 4
+                self.knl.zdim_max = z_coord + 4
+                self.knl.len_lap = (z_coord + 4 - self.knl.zdim_min) * self.knl.xdim * self.knl.ydim
+
+            self.irradiated_area_2D = np.s_[self.structure.substrate_height - 1:self.max_z, :, :]
+
+            if z_coord - 3 < 0:
+                z_min = 0
+            else:
+                z_min = z_coord - 3
+            if z_coord + 4 > self.knl.zdim:
+                z_max = self.knl.zdim
+            else:
+                z_max = z_coord + 4
+            if y_coord - 3 < 0:
+                y_min = 0
+            else:
+                y_min = y_coord - 3
+            if y_coord + 4 > self.knl.ydim:
+                y_max = self.knl.ydim
+            else:
+                y_max = y_coord + 4
+            if x_coord - 3 < 0:
+                x_min = 0
+            else:
+                x_min = x_coord - 3
+            if x_coord + 4 > self.knl.xdim:
+                x_max = self.knl.xdim
+            else:
+                x_max = x_coord + 4
+            n_3d = np.s_[z_min:z_max, y_min:y_max, x_min:x_max]
+            ind_arr = [[], [], []]
+            for z in range(z_min, z_max, 1):
+                for y in range(y_min, y_max, 1):
+                    for x in range(x_min, x_max, 1):
+                        ind_arr[0].append(z)
+                        ind_arr[1].append(y)
+                        ind_arr[2].append(x)
+            arr_size = len(ind_arr[0])
+            ind_arr = np.array(ind_arr).reshape(-1).astype(np.int32)
+            # start = timeit.default_timer()
+            deposit, surface = self.knl.return_slice(ind_arr, arr_size)
+            # out = timeit.default_timer() - start
+            deposit = deposit.reshape(z_max - z_min, y_max - y_min, x_max - x_min)
+            surface = surface.reshape(z_max - z_min, y_max - y_min, x_max - x_min)
+            self.structure.define_surface_neighbors(self.max_neib,
+                                                    deposit,
+                                                    surface,
+                                                    self.structure.surface_neighbors_bool[n_3d])
+
+        if self.max_z + 5 > self.structure.shape[0]:
+            # Here the Structure is extended in height
+            # and all the references to the data arrays are renewed
+            print("Structure resize is needed")
+            self.structure.offload_all(self.knl)
+            shape_old = self.structure.shape
+            self.structure.resize_structure(200)
+            self.structure.define_surface_neighbors(self.max_neib)
+            beam_matrix = self._beam_matrix  # taking care of the beam_matrix, because __set_structure creates it empty
+            self.__set_structure(self.structure)
+            self._beam_matrix[:shape_old[0], :shape_old[1], :shape_old[2]] = beam_matrix
+            self.redraw = True
+            # Basically, none of the slices have to be updated, because they use indexes, not references.
+            return True
+
+        return False
+
+    def offload_from_gpu(self):
+        """
+        Offloads all data from compute device
+        """
+        self.structure.offload_all(self.knl)
+
+    ###
 
     def __rk4(self, precursor, beam_matrix):
         """
