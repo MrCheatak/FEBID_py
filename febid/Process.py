@@ -460,6 +460,7 @@ class Process:
         # The cells are filled in the kernel, so the filled cells are marked with -1 in the beam matrix there.
         beam_matrix = self.knl.return_beam_matrix()
         full_cells = np.argwhere(beam_matrix < 0)
+        self.full_cells = np.argwhere(beam_matrix.reshape(self.structure.shape) < 0)
         self.knl.update_surface(full_cells)
         # self.redraw = True
 

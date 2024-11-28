@@ -178,7 +178,8 @@ def print_all(path, pr: Process, sim: MC_Simulation, stats: Statistics=None, str
              bar_format=bar_format)  # the execution speed is shown in µs of simulation time per s of real time
     for x, y, step in path[start:]:
         pr.x0, pr.y0 = x, y
-        beam_matrix = sim.run_simulation(y, x, pr.request_temp_recalc)
+        # beam_matrix = sim.run_simulation(y, x, pr.request_temp_recalc)
+        beam_matrix = sample_beam_matrix(sim.pe_sim.sigma, pr.structure)
         if beam_matrix.max() <= 1:
             warnings.warn('No surface flux!', RuntimeWarning)
             pr.set_beam_matrix(1)
@@ -242,6 +243,7 @@ def print_step(y, x, dwell_time, pr: Process, sim: MC_Simulation, t, run_flag: S
     time_passed = 0
     flag_dt = True
     flag_resize = True
+    cell_count = 0
     # THE core loop.
     # Any changes to the events sequence are defined by or stem from this loop.
     # The FEBID process is 'constructed' here by arranging events like deposition(dissociated volume calculation),
@@ -253,11 +255,13 @@ def print_step(y, x, dwell_time, pr: Process, sim: MC_Simulation, t, run_flag: S
             flag_dt = False
         pr.deposition()  # depositing on a selected area
         if pr.check_cells_filled():
+            cell_count += (pr.structure.deposit > 1).nonzero()[0].size
             flag_resize = pr.cell_filled_routine()  # updating surface on a selected area
             if flag_resize:  # update references if the allocated simulation volume was increased
                 sim.update_structure(pr.structure)
             start = timeit.default_timer()
-            beam_matrix = sim.run_simulation(y, x, pr.request_temp_recalc)  # run MC sim. and retrieve SE surface flux
+            # beam_matrix = sim.run_simulation(y, x, pr.request_temp_recalc)  # run MC sim. and retrieve SE surface flux
+            beam_matrix = sample_beam_matrix(sim.pe_sim.sigma, pr.structure)
             print(f'Finished MC in {timeit.default_timer() - start} s')
             if beam_matrix.max() <= 1:
                 warnings.warn('No surface flux!', RuntimeWarning)
@@ -353,7 +357,15 @@ def full_cell_ops(y, x, pr: Process, sim):
         # load_count += timeit.default_timer() - start
     start = timeit.default_timer()
     # beam_matrix = sim.run_simulation(y, x, pr.request_temp_recalc)  # run MC sim. and retrieve SE surface flux
-    beam_matrix = sample_beam_matrix(sim.pe_sim.sigma, pr.structure)
+    if flag:
+        beam_matrix_buff = None
+        filled_cells_init = None
+    else:
+        beam_matrix_buff = pr.knl.flux_matrix.reshape(pr.structure.shape)
+        filled_cells_init = pr.full_cells
+    beam_matrix = sample_beam_matrix(sim.pe_sim.sigma, pr.structure,
+                                     beam_matrix_buff=beam_matrix_buff,
+                                     filled_cells_init=filled_cells_init)
     print(f'Finished MC in {timeit.default_timer() - start} s')
     if beam_matrix.max() <= 1:
         warnings.warn('No surface flux!', RuntimeWarning)
@@ -379,28 +391,54 @@ def full_cell_ops(y, x, pr: Process, sim):
     # return mont_time, load_count
 
 
-def sample_beam_matrix(a, structure, f0=1e6):
+def sample_beam_matrix(a, structure, f0=1e6, beam_matrix_buff=None, filled_cells_init=None):
     """
-    Sample a gaussian beam matrix for testing purposes
+    Sample a gaussian beam matrix for testing purposes. Optimized for quick updates based on filled cells and irradiated area slice.
 
     :param a: Gaussian standard deviation
     :param structure: structure object of the simulation
+    :param f0: Gaussian peak value
+    :param beam_matrix_buff: buffer for the beam matrix
+    :param filled_cells_init: filled cells, must be an array of tripples
+    :param irrad_area_2d: irradiated area slice
     :return: sampled array
     """
+    # Generate a 2D Gaussian PDF matrix
     _, ydim, xdim = structure.shape
     _, ydim_abs, xdim_abs = structure.shape_abs
     x = np.linspace(0, xdim_abs, xdim) - xdim_abs / 2
     y = np.linspace(0, ydim_abs, ydim) - ydim_abs / 2
     x, y = np.meshgrid(x, y)
     d = np.sqrt(x * x + y * y)
-    gaussian_2d = np.exp(-(d ** 2 / (2 * a ** 2)))
-    beam_matrix = np.zeros(structure.shape)
-    for i in range(ydim):
+    gaussian_2d = (np.exp(-(d ** 2 / (2 * a ** 2))) * f0).astype(np.int32)
+    # Create a new array if the buffer is not provided
+    if beam_matrix_buff is not None:
+        beam_matrix = beam_matrix_buff
+    else:
+        beam_matrix = np.zeros(structure.shape, dtype=np.int32)
+    # Clear filled cells and project the values from the 2D Gaussian onto the 3D structure using surface_bool
+    if filled_cells_init is not None:
+        beam_matrix[filled_cells_init] = 0
+        for n in range(len(filled_cells_init)):
+            filled_cells_T = filled_cells_init.T
+            slice_3d = np.s_[filled_cells_T[0,n] - 1:filled_cells_T[0,n] + 2,
+                       filled_cells_T[1,n] - 1:filled_cells_T[1,n] + 2,
+                       filled_cells_T[2,n] - 1:filled_cells_T[2,n] + 2]
+            slice_2d = np.s_[filled_cells_T[1,n] - 1:filled_cells_T[1,n] + 2,
+                       filled_cells_T[2,n] - 1:filled_cells_T[2,n] + 2]
+            beam_matrix_view = beam_matrix[slice_3d]
+            index = structure.surface_bool[slice_3d]
+            gaussian_2d_view = gaussian_2d[slice_2d]
+            for i in range(index.shape[1]):
+                for j in range(index.shape[2]):
+                    beam_matrix_view[index] = gaussian_2d_view[i, j]
+    for n in range(ydim):
         for j in range(xdim):
-            index = structure.surface_bool[:, i, j]
-            beam_matrix_view = beam_matrix[:, i, j]
-            beam_matrix_view[index] = gaussian_2d[i, j]
-    beam_matrix *= f0
+            if gaussian_2d[n, j] < 10:
+                continue
+            index = structure.surface_bool[:, n, j]
+            beam_matrix_view = beam_matrix[:, n, j]
+            beam_matrix_view[index] = gaussian_2d[n, j]
     return beam_matrix.astype(np.int32)
 
 
