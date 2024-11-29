@@ -129,7 +129,7 @@ class Process:
         self.growth_rate = 0  # average growth rate
         self.dep_vol = 0  # deposited volume
         self.max_T = 0
-        self._stats_frequency = 1e-2  # s
+        self._stats_frequency = 1e-3  # s, default calculation of stats and offloading from GPU for visualisation
         self.min_precursor_coverage = 0
         self.x0 = 0
         self.y0 = 0

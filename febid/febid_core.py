@@ -334,6 +334,8 @@ def print_step_GPU(y, x, dwell_time, pr: Process, sim, t, run_flag: Synchronizat
         if time_passed % pr.stats_frequency < pr.dt * 1.5:
             pr.min_precursor_coverage = pr.precursor_min
             pr.dep_vol = pr.deposited_vol
+            pr.structure.offload_partial(pr.knl, 'precursor')
+            # pr.structure.offload_partial(pr.knl, 'surface_bool')
         pr.reset_dt()
         # Allow only one tick of the loop for daemons per one tick of simulation
         run_flag.loop_tick.acquire()
