@@ -308,10 +308,6 @@ def print_step_GPU(y, x, dwell_time, pr: Process, sim, t, run_flag: Synchronizat
     time_passed = 0
     flag_dt = True
     cell_count = 0
-    full = pr.deposition_gpu()
-    cell_count += full
-    if full:
-        full_cell_ops(y, x, pr, sim)
     while flag_dt and not run_flag.run_flag:
         if time_passed + pr.dt > dwell_time:  # stepping only for remaining dwell time to avoid accumulating of excess deposit
             pr.dt = dwell_time - time_passed
@@ -344,19 +340,15 @@ def print_step_GPU(y, x, dwell_time, pr: Process, sim, t, run_flag: Synchronizat
 
 
 def full_cell_ops(y, x, pr: Process, sim):
-    load_count = 0
     flag = pr.update_surface_GPU()  # updating surface on a selected area
-    pr.offload_from_gpu()
-    if flag: # look into what Monte Carlo reads!!!
-        sim.pe_sim.grid = sim.se_sim.grid = pr.structure.deposit
-        sim.pe_sim.surface = sim.se_sim.surface = pr.structure.surface_bool
-        sim.se_sim.s_neighb = pr.structure.surface_neighbors_bool
-    else:
-        # start = timeit.default_timer()
-        sim.pe_sim.grid = sim.se_sim.grid = pr.structure.deposit
-        sim.pe_sim.surface = sim.se_sim.surface = pr.structure.surface_bool
-        sim.se_sim.s_neighb = pr.structure.surface_neighbors_bool
-        # load_count += timeit.default_timer() - start
+    # pr.structure.offload_partial(pr.knl, 'precursor')
+    # pr.structure.offload_partial(pr.knl, 'surface_bool')
+    # If the structure was resized, the actual data is already in local memory
+    # But if it was not, the actual data is on the GPU and needs to be offloaded for MC simulation
+    if not flag:
+        pr.structure.offload_partial(pr.knl, 'deposit')
+        pr.structure.offload_partial(pr.knl, 'surface_bool')
+    sim.update_structure(pr.structure)
     start = timeit.default_timer()
     # beam_matrix = sim.run_simulation(y, x, pr.request_temp_recalc)  # run MC sim. and retrieve SE surface flux
     if flag:
@@ -372,25 +364,17 @@ def full_cell_ops(y, x, pr: Process, sim):
     if beam_matrix.max() <= 1:
         warnings.warn('No surface flux!', RuntimeWarning)
         beam_matrix = 1
-    # mont_time = timeit.default_timer() - start
-    # pr.get_dt(beam_matrix)
-    # pr.update_helper_arrays()
     if flag:
         try:
-            # start = timeit.default_timer()
             zero_dim = pr._irradiated_area_2D[0]
             irr_ind_2D = (zero_dim.start, zero_dim.stop)
             pr.structure.onload_all(pr.knl, beam_matrix, irr_ind_2D)
-            # load_count += timeit.default_timer() - start
         except Exception as e:
             print("Error during structure resizing: " + repr(e))
             return False
         print("Resize successfull")
     else:
-        # start = timeit.default_timer()
         pr.knl.update_beam_matrix(beam_matrix)
-        # load_count += timeit.default_timer() - start
-    # return mont_time, load_count
 
 
 def sample_beam_matrix(a, structure, f0=1e6, beam_matrix_buff=None, filled_cells_init=None):

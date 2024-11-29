@@ -427,7 +427,6 @@ class Process:
         n0 = self.precursor.n0
         tau = self._get_tau()
         sigma = self.precursor.sigma
-        V = self.precursor.V
         out = self.knl.precur_den(0, dt * D / (cell_size ** 2), F * dt,
                                   (F * dt * tau + n0 * dt) / (tau * n0),
                                   sigma * dt)
@@ -438,11 +437,7 @@ class Process:
         precursor density, deposition and check cells filled are calculated on compute device at once
         """
         dt = self.dt
-        D = self.precursor.D
         cell_size = self.cell_size
-        F = self.precursor.F
-        n0 = self.precursor.n0
-        tau = self._get_tau()
         sigma = self.precursor.sigma
         V = self.precursor.V
         const = (sigma * V * dt * 1e6 * self.deposition_scaling / self.cell_V * cell_size ** 2)
@@ -465,9 +460,10 @@ class Process:
         # self.redraw = True
 
         for cell in full_cells[0]:
-            z_coord = cell // (self.knl.ydim * self.knl.xdim)
-            y_coord = (cell - z_coord * self.knl.ydim * self.knl.xdim) // self.knl.xdim
-            x_coord = cell - (z_coord * self.knl.ydim * self.knl.xdim) - (y_coord * self.knl.xdim)
+            # z_coord = cell // (self.knl.ydim * self.knl.xdim)
+            # y_coord = (cell - z_coord * self.knl.ydim * self.knl.xdim) // self.knl.xdim
+            # x_coord = cell - (z_coord * self.knl.ydim * self.knl.xdim) - (y_coord * self.knl.xdim)
+            z_coord, y_coord, x_coord = self.knl.index_1d_to_3d(cell)
 
             if z_coord + 4 > self.max_z:
                 self.max_z = z_coord + 4
@@ -523,17 +519,12 @@ class Process:
         if self.max_z + 5 > self.structure.shape[0]:
             # Here the Structure is extended in height
             # and all the references to the data arrays are renewed
-            print("Structure resize is needed")
             self.structure.offload_all(self.knl)
-            shape_old = self.structure.shape
-            self.structure.resize_structure(200)
-            self.structure.define_surface_neighbors(self.max_neib)
-            beam_matrix = self._beam_matrix  # taking care of the beam_matrix, because __set_structure creates it empty
-            self.__set_structure(self.structure)
-            self._beam_matrix[:shape_old[0], :shape_old[1], :shape_old[2]] = beam_matrix
-            self.redraw = True
+            flag = self.extend_structure()
+            zero_dim = self._irradiated_area_2D[0]
+            irr_ind_2D = (zero_dim.start, zero_dim.stop)
             # Basically, none of the slices have to be updated, because they use indexes, not references.
-            return True
+            return flag
 
         return False
 

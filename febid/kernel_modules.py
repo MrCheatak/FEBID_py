@@ -1,8 +1,8 @@
 import numpy as np
 import pyopencl as cl
-import warnings
+# import warnings
 import os
-from pynvml import *
+# from pynvml import *
 os.environ['PYOPENCL_COMPILER_OUTPUT'] = '1'
 
 class GPU:
@@ -49,6 +49,7 @@ class GPU:
         self.knl_ret_slice_b = prg_ret_slice_b.ret  # create shortcut to main function of kernel
 
         self.dt = None
+        self.buffers = {}
 
 
     def load_vals(self, precursor, surface_all, flux_matrix, deposit, surf_bool,
@@ -65,16 +66,16 @@ class GPU:
         self.len_lap = (surface_ind_lap[1] - surface_ind_lap[0]) * self.xdim * self.ydim
         self.offset = surface_ind_lap[0] * self.xdim * self.ydim
         self.surface_all = surface_all.reshape(-1).astype(np.bool_)
-        self.surface = surf_bool.reshape(-1).astype(np.bool_)
-        self.semi_surface = semi_surface.reshape(-1).astype(np.bool_)
+        self.surface_bool = surf_bool.reshape(-1).astype(np.bool_)
+        self.semi_surface_bool = semi_surface.reshape(-1).astype(np.bool_)
         self.precursor = precursor.reshape(-1).astype(np.double)
         self.flux_matrix = flux_matrix.reshape(-1).astype(np.int32)
         self.deposit = deposit.reshape(-1).astype(np.double)
-        self.ghost = ghost.reshape(-1).astype(np.bool_)
+        self.ghosts_bool = ghost.reshape(-1).astype(np.bool_)
 
         # calculate if storage size is sufficient
         self.req_space = self.precursor.size * self.precursor.itemsize * 2 + self.deposit.size * self.deposit.itemsize
-        + self.surface.size * self.surface.itemsize * 4 + self.flux_matrix.size *  self.flux_matrix.itemsize + 32
+        + self.surface_bool.size * self.surface_bool.itemsize * 4 + self.flux_matrix.size * self.flux_matrix.itemsize + 32
 
         """
         # remove surface all!!!
@@ -89,13 +90,22 @@ class GPU:
         self.surface_all_buf = cl.Buffer(self.ctx, mf.READ_WRITE | mf.COPY_HOST_PTR, hostbuf=self.surface_all)
         self.deposit_buf = cl.Buffer(self.ctx, mf.READ_WRITE | mf.COPY_HOST_PTR, hostbuf=self.deposit)
         self.flux_mat_buf = cl.Buffer(self.ctx, mf.READ_WRITE | mf.COPY_HOST_PTR, hostbuf=self.flux_matrix)
-        self.surf_buf = cl.Buffer(self.ctx, mf.READ_WRITE | mf.COPY_HOST_PTR, hostbuf=self.surface)
-        self.semi_surf_buf = cl.Buffer(self.ctx, mf.READ_WRITE | mf.COPY_HOST_PTR, hostbuf=self.semi_surface)
-        self.ghost_buf = cl.Buffer(self.ctx, mf.READ_WRITE | mf.COPY_HOST_PTR, hostbuf=self.ghost)
+        self.surf_buf = cl.Buffer(self.ctx, mf.READ_WRITE | mf.COPY_HOST_PTR, hostbuf=self.surface_bool)
+        self.semi_surf_buf = cl.Buffer(self.ctx, mf.READ_WRITE | mf.COPY_HOST_PTR, hostbuf=self.semi_surface_bool)
+        self.ghost_buf = cl.Buffer(self.ctx, mf.READ_WRITE | mf.COPY_HOST_PTR, hostbuf=self.ghosts_bool)
         self.flag = np.array([0])  # flag determining if at least one cell is full
         self.flag_buf = cl.Buffer(self.ctx, mf.READ_WRITE | mf.COPY_HOST_PTR, hostbuf=self.flag)
 
         self.queue.finish()
+        self.buffers = {
+            'surface_bool': (self.surface_bool, self.surf_buf),
+            'deposit': (self.deposit, self.deposit_buf),
+            'precursor': (self.precursor, self.cur_prec),
+            'ghosts_bool': (self.ghosts_bool, self.ghost_buf),
+            'semi_surface_bool': (self.semi_surface_bool, self.semi_surf_buf),
+            'surface_all': (self.surface_all, self.surface_all_buf),
+            'beam_matrix': (self.flux_matrix, self.flux_mat_buf)
+        }
 
 
     def set_updated_structure(self, precursor, deposit, surface, semi_surface, flux_matrix, irr_ind, ghost):
@@ -119,20 +129,33 @@ class GPU:
 
     def get_updated_structure(self):
         """
-        return necessary arrays for structure monitoring and dumping
+        Get all data arrays from the GPU
+
+        :return: dictionary with all arrays with restored shape
         """
         self.queue.finish()
-        try:
-            cl.enqueue_copy(self.queue, self.surface, self.surf_buf)
-            cl.enqueue_copy(self.queue, self.semi_surface, self.semi_surf_buf)
-            cl.enqueue_copy(self.queue, self.deposit, self.deposit_buf)
-            cl.enqueue_copy(self.queue, self.precursor, self.cur_prec)
-            cl.enqueue_copy(self.queue, self.ghost, self.ghost_buf)
-        except:
-            return None
+        names_all = self.buffers.keys()
+        retrieved = {}
+        for name in names_all:
+            arr = self.get_structure_partial(name).reshape(self.zdim, self.ydim, self.xdim)
+            retrieved[name] = arr
 
-        return self.surface.reshape(self.zdim, self.ydim, self.xdim), self.semi_surface.reshape(self.zdim, self.ydim, self.xdim), self.deposit.reshape(self.zdim, self.ydim, self.xdim), self.precursor.reshape(self.zdim, self.ydim, self.xdim), self.ghost.reshape(self.zdim, self.ydim, self.xdim), self.zdim_max
+        return retrieved
 
+    def get_structure_partial(self, name):
+        """
+        Get a buffer of the array by its name.
+
+        :param name: name of the array
+        :return: array with restored shape
+        """
+        self.queue.finish()
+        if name in self.buffers:
+            array, buffer = self.buffers[name]
+            cl.enqueue_copy(self.queue, array, buffer)
+            return array
+        else:
+            raise ValueError(f"Array with name {name} not found")
     
     def return_slice(self, index, index_shape):
         """
@@ -156,7 +179,6 @@ class GPU:
         surf_buf.release
 
         return deposit, surface
-
 
     def precur_den(self, add, a, F_dt, F_dt_n0_1_tau_dt, sigma_dt):
         """
@@ -205,16 +227,6 @@ class GPU:
         event.wait()
         full_cell_buf.release()
 
-    
-    def get_updated_structure_partial(self):
-        """
-        return necessary arrays for Monte Carlo calcuations 
-        """
-        self.queue.finish()
-        cl.enqueue_copy(self.queue, self.surface, self.surf_buf)
-        cl.enqueue_copy(self.queue, self.deposit, self.deposit_buf)
-
-        return self.surface.reshape(self.zdim, self.ydim, self.xdim), self.deposit.reshape(self.zdim, self.ydim, self.xdim)
 
 
     def return_beam_matrix(self):
@@ -222,8 +234,8 @@ class GPU:
         return beam_matrix, including negative values for fully deposited cells
         """
         self.queue.finish()
-        cl.enqueue_copy(self.queue, self.flux_matrix, self.flux_mat_buf)
-        return self.flux_matrix
+        beam_matrix = self.get_structure_partial('beam_matrix') #.reshape(self.zdim, self.ydim, self.xdim)
+        return beam_matrix
 
     
     def update_beam_matrix(self, beam_matrix):
@@ -233,6 +245,24 @@ class GPU:
         self.queue.finish()
         self.flux_matrix = beam_matrix.reshape(-1)
         cl.enqueue_copy(self.queue, self.flux_mat_buf, self.flux_matrix)
+
+    def index_1d_to_3d(self, index):
+        """
+        Convert 1D index to 3D index based on array shape
+
+        :param index: 1D index
+
+        """
+        x = index % self.xdim
+        y = (index // self.xdim) % self.ydim
+        z = index // (self.xdim * self.ydim)
+        return z, y, x
+
+    def index_3d_to_1d(self, z, y, x):
+        """
+        convert 3D index to 1D index
+        """
+        return z * self.xdim * self.ydim + y * self.xdim + x
 
 
 if __name__ == "__main__":
