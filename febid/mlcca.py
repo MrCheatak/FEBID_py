@@ -7,7 +7,7 @@ from febid.slice_trics import get_3d_slice, get_boundary_indices
 from febid.libraries.vtk_rendering.VTK_Rendering import SetVisibilityCallback
 
 
-class MixedCellCellularAutomata:
+class MultiLayerdCellCellularAutomata:
     """
     Multi-Layerd Continuous Cellular Automata class.
 
@@ -91,6 +91,32 @@ class MixedCellCellularAutomata:
         # surface[cell] = False  # deposited cell is no longer a surface cell
 
         return neighbors_2nd, surface_view, semi_surface_view, ghosts_view
+
+    def check_neighbors(self, arr1, arr2):
+        from scipy.ndimage import binary_dilation
+
+        # Define a connectivity structure (3x3x3 cube around each cell)
+        struct = np.array([[[0, 0, 0],
+                            [0, 1, 0],
+                            [0, 0, 0]],
+                           [[0, 1, 0],
+                            [1, 1, 1],
+                            [0, 1, 0]],
+                           [[0, 0, 0],
+                            [0, 1, 0],
+                            [0, 0, 0]]], dtype=bool)
+
+        # Dilate array arr1 to find its neighborhood
+        arr1_dilated = binary_dilation(arr1, structure=struct)
+
+        # Identify the cells in b that do not have a neighboring True cell in a
+        no_neighbors = arr2 & ~arr1_dilated
+
+        if no_neighbors.any():
+            print("Indices in array b with no True neighbor in array a:")
+            print(no_neighbors)
+            return True
+        return False
 
     def __get_utils(self):
         # Kernels for choosing cells

@@ -23,6 +23,8 @@ class RenderWindow(QMainWindow):
         self.process_obj = process_obj
         # Create a PyVista BackgroundPlotter and add it to the layout
         self.render = Render(app=app, show=show, cell_size=process_obj.structure.cell_size)
+        self.scalar_bar_timer = 0 # timer for the scale bar update
+        self.scalar_bar_framerate = 2 # update rate for the scalar bar
 
     def start(self, frame_rate=1):
         """
@@ -59,6 +61,7 @@ class RenderWindow(QMainWindow):
 
         # Event loop
         def update(data, mask):
+            self.scalar_bar_timer = timeit.default_timer()
             while self.render.p.isVisible() and not flag:
                 now = timeit.default_timer()
                 if pr.redraw:
@@ -165,11 +168,14 @@ class RenderWindow(QMainWindow):
             rn.p.actors['stats'].SetText(3, stats_text)
             # Updating scene
             rn.update_mask(mask)
-            try:
-                _min = data[data > 0.00001].min()
-            except ValueError:
-                _min = 1e-8
-            rn.p.update_scalar_bar_range(clim=[_min, data.max()])
+            if timeit.default_timer() > self.scalar_bar_timer:
+                try:
+                    data_flat = data.reshape(-1)
+                    _min = data_flat[data_flat != 0].min()
+                except ValueError:
+                    _min = 1e-8
+                rn.p.update_scalar_bar_range(clim=[_min, data.max()])
+                self.scalar_bar_timer += self.scalar_bar_framerate
         except Exception as e:
             if not rn.p.isVisible():
                 print('The scene window was closed.')

@@ -43,6 +43,8 @@ class SynchronizationHelper:
         """
         self._current_time = 0
         self.run_flag = False
+        self.is_success = False
+        self.is_stopped = False
         self.event.clear()
 
     def __repr__(self):

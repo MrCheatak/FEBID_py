@@ -26,6 +26,12 @@ cpdef int surface_temp_av(double[:,:,:] surface_temp, double[:,:,:] temp, int[:]
         traceback.print_exc()
         raise ex
 
+cpdef int beam_matrix_semi_surface_av(long[:,:,:] beam_matrix_source, long[:,:,:] beam_matrix_output, int[:] z, int[:] y, int[:] x) except -1:
+    try:
+        beam_matrix_av_cy(beam_matrix_output, beam_matrix_source, z, y, x)
+    except Exception as ex:
+        traceback.print_exc()
+        raise ex
 
 cpdef int stencil_sor(double[:,:,::1] grid, double[:,:,:] s, double w, int[:] z, int[:] y, int[:] x) except -1:
     """
@@ -297,6 +303,151 @@ cdef int stencil_base(double* sum, double[:,:,:] grid, int x, int xdim, int y, i
         int cond = 0
         int zero_count = 0
         double cum_sum = 0
+    if z<zdim-1 and z>0:
+        cond += 1
+        if y<ydim-1 and y>0:
+            cond += 1
+            if x<xdim-1 and x>0:
+                cond += 1
+    if cond == 3:
+        # Z - axis
+        if grid[z + 1, y, x] != 0:
+            cum_sum += grid[z + 1, y, x]
+        else:
+            zero_count += 1
+        if grid[z - 1, y, x] != 0:
+            cum_sum += grid[z - 1, y, x]
+        else:
+            zero_count += 1
+        # Y - axis
+        if grid[z, y + 1, x] != 0:
+            cum_sum += grid[z, y + 1, x]
+        else:
+            zero_count += 1
+        if grid[z, y - 1, x] != 0:
+            cum_sum += grid[z, y - 1, x]
+        else:
+            zero_count += 1
+        # X - axis
+        if grid[z, y, x + 1] != 0:
+            cum_sum += grid[z, y, x + 1]
+        else:
+            zero_count += 1
+        if grid[z, y, x - 1] != 0:
+            cum_sum += grid[z, y, x - 1]
+        else:
+            zero_count += 1
+    else:
+        # Z - axis
+        if z > zdim - 2:
+            zero_count += 1
+        else:
+            if grid[z + 1, y, x] != 0:
+                cum_sum += grid[z + 1, y, x]
+            else:
+                zero_count += 1
+        if z < 1:
+            zero_count += 1
+        else:
+            if grid[z - 1, y, x] != 0:
+                cum_sum += grid[z - 1, y, x]
+            else:
+                zero_count += 1
+        # Y - axis
+        if y > ydim - 2:
+            zero_count += 1
+        else:
+            if grid[z, y + 1, x] != 0:
+                cum_sum += grid[z, y + 1, x]
+            else:
+                zero_count += 1
+        if y < 1:
+            zero_count += 1
+        else:
+            if grid[z, y - 1, x] != 0:
+                cum_sum += grid[z, y - 1, x]
+            else:
+                zero_count += 1
+        # X - axis
+        if x > xdim - 2:
+            zero_count += 1
+        else:
+            if grid[z, y, x + 1] != 0:
+                cum_sum += grid[z, y, x + 1]
+            else:
+                zero_count += 1
+        if x < 1:
+            zero_count += 1
+        else:
+            if grid[z, y, x - 1] != 0:
+                cum_sum += grid[z, y, x - 1]
+            else:
+                zero_count += 1
+    sum[0] = cum_sum
+    return zero_count
+
+
+@cython.initializedcheck(False) # turn off initialization check for memoryviews
+@cython.boundscheck(False) # turn off bounds-checking for entire function
+@cython.wraparound(False)  # turn off negative index wrapping for entire function
+cdef int beam_matrix_av_cy(long[:,:,:] grid_out, long[:,:,:] grid, int[:] z_index, int[:] y_index, int[:] x_index) nogil except -1:
+    """
+    Define temperature of the surface cells by averaging temperature of the neighboring solid cells 
+
+    :param surface_temp: surface temperature array
+    :param temp: solid temperature array
+    :param z: first array index
+    :param y: second array index
+    :param x: third array index 
+    :return: 
+    """
+    cdef int i, z, y, x, xdim, ydim, zdim, zero_count=0
+    cdef long average = 0
+    xdim = grid.shape[2]
+    ydim = grid.shape[1]
+    zdim = grid.shape[0]
+    l = z_index.shape[0]
+
+    # Assumptions taken for optimization:
+    #   1. Most cells are inside the array, thus bounds check should be quick. Cells on the boundary are processed separately.
+    #   2. There are at least 3 non-zero neighbors, but usually 4, therefore the first condition is !=0
+    for i in range(l):
+        z = z_index[i]
+        y = y_index[i]
+        x = x_index[i]
+        zero_count = 0
+        average = 0
+        if z == 0:
+            continue
+        zero_count = stencil_base_long(&average, grid, x, xdim, y, ydim, z, zdim)
+        # with gil: # show actual calculation for debugging
+        #     print(f'{z, y, x}:  {grid_out[z, y, x]}  =  {average}  /  {6 - zero_count}')
+        if zero_count < 6:
+            grid_out[z, y, x] = <long>(average / (6 - zero_count))
+
+
+@cython.initializedcheck(False) # turn off initialization check for memoryviews
+@cython.boundscheck(False) # turn off bounds-checking for entire function
+@cython.wraparound(False)  # turn off negative index wrapping for entire function
+cdef int stencil_base_long(long* sum, long[:,:,:] grid, int x, int xdim, int y, int ydim, int z, int zdim) nogil except -1:
+    """
+    Stencil operator. Sums all the neighbors of the current cell. 
+    If a neighbor is 0 or out of the bounds, then increase skipped cell counter.
+
+    :param cum_sum: returned sum
+    :param grid: source array
+    :param x: third dimension index
+    :param xdim: third dimension length
+    :param y: second dimension index
+    :param ydim: second dimension length
+    :param z: first dimension index
+    :param zdim: first dimension length
+    :return: number of skipped cells
+    """
+    cdef:
+        int cond = 0
+        int zero_count = 0
+        long cum_sum = 0
     if z<zdim-1 and z>0:
         cond += 1
         if y<ydim-1 and y>0:

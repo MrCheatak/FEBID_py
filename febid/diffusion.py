@@ -40,15 +40,15 @@ def diffusion_ftcs(grid, surface, D, dt, cell_size, surface_index=None, flat=Tru
     :param cell_size: grid space step, nm
     :param surface_index: a tuple of indices of surface cells for the 3 dimensions
     :param flat: if True, returns a flat array of surface cells. Otherwise, returns a 3d array with the same shape as grid.
-    :param add: Runge-Kutta intermediate member
+    :param add: Runge-Kutta intermediate member, 1D array with the length of surface_index
     :return: 3d or 1d ndarray
     """
     if surface_index is None:
         surface_index = prepare_surface_index(surface)
-    grid += add
+    grid[surface] += add
     grid_out = laplace_term_stencil(grid, surface_index)
     # stencil_debug(grid_out, grid, *surface_index)
-    grid -= add
+    grid[surface] -= add
     if type(D) in [int, float]:
         a = dt * D / (cell_size * cell_size)
     else:

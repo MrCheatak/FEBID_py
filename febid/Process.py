@@ -11,8 +11,8 @@ from febid.Structure import Structure
 from febid.continuum_model_base import BeamSettings, PrecursorParams, ContinuumModel
 import febid.diffusion as diffusion
 import febid.heat_transfer as heat_transfer
-from febid.libraries.rolling.roll import surface_temp_av
-from febid.mlcca import MixedCellCellularAutomata as MCCA
+from febid.libraries.rolling.roll import surface_temp_av, beam_matrix_semi_surface_av
+from febid.mlcca import MultiLayerdCellCellularAutomata as MLCCA
 from .slice_trics import get_3d_slice
 from .expressions import cache_numexpr_expressions
 
@@ -68,7 +68,7 @@ class Process:
         self.surface_temp = None
 
         # Cellular automata engine
-        self._local_mcca = MCCA()
+        self._local_mcca = MLCCA()
 
         # Working arrays
         self.__deposit_reduced_3d = None
@@ -273,7 +273,7 @@ class Process:
         self.__semi_surface_reduced_3d[cell] = False  # deposited cell is not a semi-surface cell
         # Getting new converged configuration
         updated_slice, surface_bool, semi_s_bool, ghosts_bool = self._local_mcca.get_converged_configuration(
-            cell, self.__deposit_reduced_3d.astype(bool),
+            cell, self.__deposit_reduced_3d < 0,
             self.__surface_reduced_3d,
             self.__semi_surface_reduced_3d,
             self.__ghosts_reduced_3d)
@@ -372,15 +372,9 @@ class Process:
         :return:
         """
         # Here, surface_all represents surface+semi_surface cells.
-        # It is only used in diffusion calculation, because semi_surface cells cannot take part in deposition process
         precursor = self.__precursor_reduced_2d
         surface_all = self.__surface_all_reduced_2d
-        surface = self.__surface_reduced_2d
-        diffusion_matrix = self.__rk4_diffusion(precursor,
-                                                surface_all)  # Diffusion term is calculated separately and added in the end
-        precursor[surface] += self.__rk4(precursor[surface],
-                                         self.__beam_matrix_surface)  # An increment is calculated through Runge-Kutta method without the diffusion term
-        precursor[surface_all] += diffusion_matrix[surface_all]  # finally adding diffusion term
+        precursor[surface_all] += self.__rk4_with_ftcs(self.__beam_matrix_surface)
 
     def equilibrate(self, max_it=10000, eps=1e-8):
         """
@@ -390,6 +384,7 @@ class Process:
         density value for newly acquired cells
 
         :param max_it: number of iterations
+        :param eps: desired accuracy
         """
         start = df()
         for i in range(max_it):
@@ -418,26 +413,25 @@ class Process:
         k2 = self.__precursor_density_increment(precursor, beam_matrix, self.dt / 2, k1 / 2)
         k3 = self.__precursor_density_increment(precursor, beam_matrix, self.dt / 2, k2 / 2)
         k4 = self.__precursor_density_increment(precursor, beam_matrix, self.dt, k3)
-        return ne.re_evaluate("rk4", casting='same_kind')
+        return ne.re_evaluate("rk4", casting='same_kind', local_dict={'k1': k1, 'k2': k2, 'k3': k3, 'k4': k4})
 
-    def __rk4_diffusion(self, grid, surface):
-        """
-        Apply Runge-Kutta 4 method to the calculation of the diffusion term.
+    def __rk4_with_ftcs(self, beam_matrix):
+        surface_all = self.__surface_all_reduced_2d
+        precursor = self.__precursor_reduced_2d
+        diff_flat = self._diffusion(precursor, surface_all, flat=True) # 3D
+        prec_flat = precursor[surface_all]
+        k1 = self.__precursor_density_increment(prec_flat, beam_matrix, self.dt, diff_flat)
+        k1_div = k1 / 2
+        diff_flat = self._diffusion(precursor, surface_all, add=k1_div, flat=True)
+        k2 = self.__precursor_density_increment(prec_flat, beam_matrix, self.dt / 2, diff_flat, k1_div)
+        k2_div = k2 / 2
+        diff_flat = self._diffusion(precursor, surface_all, add=k2_div, flat=True)
+        k3 = self.__precursor_density_increment(prec_flat, beam_matrix, self.dt / 2, diff_flat, k2_div)
+        diff_flat = self._diffusion(precursor, surface_all, add=k3, flat=True)
+        k4 = self.__precursor_density_increment(prec_flat, beam_matrix, self.dt, diff_flat, k3)
+        return ne.re_evaluate("rk4", casting='same_kind', local_dict={'k1': k1, 'k2': k2, 'k3': k3, 'k4': k4})
 
-        :param grid: precursor coverage array
-        :param surface: surface boolean array
-        :return:
-        """
-        dt = self.dt
-        k1 = self._diffusion(grid, surface, dt, flat=False)
-        k1[surface] /= 2
-        k2 = self._diffusion(grid, surface, dt / 2, add=k1, flat=False)
-        k2[surface] /= 2
-        k3 = self._diffusion(grid, surface, dt / 2, add=k2, flat=False)
-        k4 = self._diffusion(grid, surface, dt, add=k3, flat=False)
-        return ne.re_evaluate("rk4", casting='same_kind')
-
-    def __precursor_density_increment(self, precursor, beam_matrix, dt, addon=0.0):
+    def __precursor_density_increment(self, precursor, beam_matrix, dt, diffusion_matrix=0, addon=0.0):
         """
         Calculates increment of the precursor density without a diffusion term
 
@@ -448,10 +442,11 @@ class Process:
         :return:
         """
         tau = self._get_tau()
-        return ne.re_evaluate('precursor_temp',
+        n_d = diffusion_matrix
+        return ne.re_evaluate('rde_temp',
                               local_dict={'F': self.precursor.F, 'dt': dt, 'n0': self.precursor.n0,
                                           'sigma': self.precursor.sigma, 'n': precursor + addon, 'tau': tau,
-                                          'se_flux': beam_matrix}, casting='same_kind')
+                                          'se_flux': beam_matrix, 'n_d' : n_d}, casting='same_kind')
 
     def _diffusion(self, grid, surface, dt=0.0, add=0, flat=False):
         """
@@ -526,6 +521,9 @@ class Process:
             beam_matrix = np.array(beam_matrix)
         else:
             self.beam.f0 = beam_matrix.max()
+        index = self.structure.semi_surface_bool[:self.max_z+1].nonzero()
+        index = (np.intc(index[0]), np.intc(index[1]), np.intc(index[2]))
+        beam_matrix_semi_surface_av(self._beam_matrix, self._beam_matrix, *index)
         self._update_helper_arrays()
 
     # Data maintenance methods
@@ -625,7 +623,7 @@ class Process:
 
         :return:
         """
-        self.__beam_matrix_surface = self.__beam_matrix_reduced_2d[self.__surface_reduced_2d]
+        self.__beam_matrix_surface = self.__beam_matrix_reduced_2d[self.__surface_all_reduced_2d]
 
     def _get_solid_index(self):
         index = self.structure.deposit[self.__irradiated_area_2D_no_sub]
