@@ -127,7 +127,7 @@ def run_febid(structure, precursor_params, settings, sim_params, path, temperatu
     equation_values = prepare_equation_values(precursor_params, settings)
     mc_config = prepare_ms_config(precursor_params, settings, structure)
 
-    flag.run_flag = False
+    flag.reset()
     process_obj = Process(structure, equation_values, temp_tracking=temperature_tracking)
 
     sim = MC_Simulation(structure, mc_config)
