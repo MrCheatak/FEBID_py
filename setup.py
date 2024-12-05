@@ -60,7 +60,7 @@ with open('requirements.txt') as f:
     requirements = f.read().splitlines()
 setuptools.setup(
     name='febid',
-    version='0.9.4',
+    version='0.9.5',
     author='Alexander Kuprava, Michael Huth',
     author_email='sandro1742@gmail.com',
     description='FEBID process simulator',
