@@ -8,5 +8,5 @@ beam_current: 150.0e-12  #  A
 precursor_flux: 1700  #  1/(nm^2*s)
 #dwell_time: 0.000001  #  s
 substrate_element: 'Au' # material of the substrate
-deposition_scaling: 4 # multiplier for deposited volume for artificial speed up of the simulation
+deposition_scaling: 1 # multiplier for deposited volume for artificial speed up of the simulation
 emission_fraction: 0.6 # fraction of the total energy lost by primary electrons that is converted to secondary electron emission

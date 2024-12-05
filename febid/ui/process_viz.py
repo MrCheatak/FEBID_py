@@ -138,22 +138,20 @@ class RenderWindow(QMainWindow):
             if z_pos != z or pr.y0 != y or pr.x0 != x:
                 rn.arrow.SetPosition(pr.x0, pr.y0, z_pos + 30)  # relative to the initial position
             # Calculating values to indicate
-            pr.n_filled_cells.append(pr.filled_cells)
-            i = len(pr.n_filled_cells) - 1
             time_real = str(datetime.timedelta(seconds=int(time_spent)))
             speed = pr.t / time_spent
             height = (pr.max_z - pr.substrate_height) * pr.structure.cell_size
             total_V = int(pr.dep_vol)
-            delta_t = pr.t - pr.t_prev
-            delta_V = total_V - pr.vol_prev
+            delta_t = pr.t - pr._t_prev
+            delta_V = total_V - pr._vol_prev
             if delta_t == 0 or delta_V == 0:
                 growth_rate = pr.growth_rate
             else:
                 growth_rate = delta_V / delta_t
                 growth_rate = int(growth_rate)
                 pr.growth_rate = growth_rate
-            pr.t_prev += delta_t
-            pr.vol_prev = total_V
+            pr._t_prev += delta_t
+            pr._vol_prev = total_V
             max_T = pr.structure.temperature.max()
             # Updating displayed text
             time_text = (f'Time: {time_real} \n'  # showing real time passed
@@ -161,7 +159,7 @@ class RenderWindow(QMainWindow):
                          f'Speed: {speed:.8f} \n'
                          f'Av. growth rate: {growth_rate} nm^3/s \n'
                          f'Max. temperature: {max_T:.1f} K')
-            stats_text = (f'Cells: {pr.n_filled_cells[i]} \n'  # showing total number of deposited cells
+            stats_text = (f'Cells: {pr.filled_cells} \n'  # showing total number of deposited cells
                           f'Height: {height} nm \n'
                           f'Volume: {total_V:.0f} nm^3')
             rn.p.actors['time'].SetText(2, time_text)

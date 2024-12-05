@@ -109,8 +109,8 @@ class Process:
         # Utility variables
         self.deposition_scaling = deposition_scaling  # multiplier of the deposit increment; used to speed up the process
         self.redraw = True  # flag for external functions saying that surface has been updated
-        self.t_prev = 0
-        self.vol_prev = 0
+        self._t_prev = 0
+        self._vol_prev = 0
         self.growth_rate = 0
         self.temperature_tracking = temp_tracking
         self.request_temp_recalc = temp_tracking
@@ -125,8 +125,7 @@ class Process:
         self.max_z = 0  # maximum height of the deposited structure, cells
         self.max_z_prev = 0
         self.filled_cells = 0  # current number of filled cells
-        self.n_filled_cells = []
-        self.growth_rate = []
+        self.growth_rate = 0  # average growth rate
         self.dep_vol = 0  # deposited volume
         self.max_T = 0
         self._stats_frequency = 1e-2  # s
@@ -666,7 +665,7 @@ class Process:
         return self.__surface_temp_reduced_2d.max()
 
     @property
-    def deposited_vol(self):
+    def _deposited_vol(self):
         """
         Get total deposited volume.
 
@@ -681,7 +680,7 @@ class Process:
 
         :return:
         """
-        return self.__precursor_reduced_2d[self.__surface_reduced_2d].min()
+        return self.__precursor_reduced_3d[self.__surface_reduced_3d].min()
 
     def _get_tau(self):
         """
@@ -771,6 +770,16 @@ class Process:
     @stats_frequency.setter
     def stats_frequency(self, val):
         self._stats_frequency = val
+
+    def _gather_stats(self):
+        """
+        Collect statistics of the process
+
+        :return:
+        """
+        self.growth_rate = (self.filled_cells - self._vol_prev) / (self.t - self._t_prev)
+        self.dep_vol = self._deposited_vol
+        self.min_precursor_coverage = self.precursor_min
 
     @property
     def _irradiated_area_2D(self):
