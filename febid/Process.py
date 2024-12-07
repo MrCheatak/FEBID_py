@@ -417,8 +417,10 @@ class Process:
     def __rk4_with_ftcs(self, beam_matrix):
         surface_all = self.__surface_all_reduced_2d
         precursor = self.__precursor_reduced_2d
-        diff_flat = self._diffusion(precursor, surface_all, flat=True) # 3D
         prec_flat = precursor[surface_all]
+        if self._get_D() == 0:
+            return self.__rk4(prec_flat, beam_matrix)
+        diff_flat = self._diffusion(precursor, surface_all, flat=True) # 3D
         k1 = self.__precursor_density_increment(prec_flat, beam_matrix, self.dt, diff_flat)
         k1_div = k1 / 2
         diff_flat = self._diffusion(precursor, surface_all, add=k1_div, flat=True)
