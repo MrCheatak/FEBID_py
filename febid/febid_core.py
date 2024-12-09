@@ -128,7 +128,7 @@ def run_febid(structure, precursor_params, settings, sim_params, path, temperatu
     mc_config = prepare_ms_config(precursor_params, settings, structure)
 
     flag.reset()
-    process_obj = Process(structure, equation_values, temp_tracking=temperature_tracking)
+    process_obj = Process(structure, equation_values, temp_tracking=temperature_tracking, device=device)
 
     sim = MC_Simulation(structure, mc_config)
     process_obj.max_neib = math.ceil(
@@ -171,15 +171,13 @@ def print_all(path, pr: Process, sim: MC_Simulation, stats: Statistics=None, str
     pr.start_time = datetime.datetime.now()
     pr.x0, pr.y0 = path[0, 0:2]
     start = 0
-    first_it = True
     total_time = int(path[:, 2].sum() * pr.deposition_scaling * 1e6)
     bar_format = "{desc}: {percentage:.1f}%|{bar}| {n:.0f}/{total_fmt} [{elapsed}<{remaining}, {rate_fmt}{postfix}]"
     t = tqdm(total=total_time, desc='Patterning', position=0, unit='µs',
              bar_format=bar_format)  # the execution speed is shown in µs of simulation time per s of real time
     for x, y, step in path[start:]:
         pr.x0, pr.y0 = x, y
-        # beam_matrix = sim.run_simulation(y, x, pr.request_temp_recalc)
-        beam_matrix = sample_beam_matrix(sim.pe_sim.sigma, pr.structure)
+        beam_matrix = sim.run_simulation(y, x, pr.request_temp_recalc)
         if beam_matrix.max() <= 1:
             warnings.warn('No surface flux!', RuntimeWarning)
             pr.set_beam_matrix(1)
@@ -189,16 +187,7 @@ def print_all(path, pr: Process, sim: MC_Simulation, stats: Statistics=None, str
             pr.heat_transfer(sim.beam_heating)
             pr.request_temp_recalc = False
         if pr.device:
-            if first_it:
-                try:
-                    pr.load_kernel()
-                    first_it = False
-                except Exception as e:
-                    print('Could not load the kernel!')
-                    print(e)
-                    run_flag.run_flag = True
-            else:
-                pr.knl.update_beam_matrix(beam_matrix)
+            pr.knl.load_beam_matrix(beam_matrix, blocking=False)
             print_step_GPU(y, x, step, pr, sim, t, run_flag)
         else:
             print_step(y, x, step, pr, sim, t, run_flag)
@@ -243,7 +232,6 @@ def print_step(y, x, dwell_time, pr: Process, sim: MC_Simulation, t, run_flag: S
     time_passed = 0
     flag_dt = True
     flag_resize = True
-    cell_count = 0
     # THE core loop.
     # Any changes to the events sequence are defined by or stem from this loop.
     # The FEBID process is 'constructed' here by arranging events like deposition(dissociated volume calculation),
@@ -255,13 +243,11 @@ def print_step(y, x, dwell_time, pr: Process, sim: MC_Simulation, t, run_flag: S
             flag_dt = False
         pr.deposition()  # depositing on a selected area
         if pr.check_cells_filled():
-            cell_count += (pr.structure.deposit > 1).nonzero()[0].size
             flag_resize = pr.cell_filled_routine()  # updating surface on a selected area
             if flag_resize:  # update references if the allocated simulation volume was increased
                 sim.update_structure(pr.structure)
             start = timeit.default_timer()
-            # beam_matrix = sim.run_simulation(y, x, pr.request_temp_recalc)  # run MC sim. and retrieve SE surface flux
-            beam_matrix = sample_beam_matrix(sim.pe_sim.sigma, pr.structure)
+            beam_matrix = sim.run_simulation(y, x, pr.request_temp_recalc)  # run MC sim. and retrieve SE surface flux
             print(f'Finished MC in {timeit.default_timer() - start} s')
             if beam_matrix.max() <= 1:
                 warnings.warn('No surface flux!', RuntimeWarning)
@@ -291,15 +277,17 @@ def print_step(y, x, dwell_time, pr: Process, sim: MC_Simulation, t, run_flag: S
         run_flag.loop_tick.release()
 
 
-def print_step_GPU(y, x, dwell_time, pr: Process, sim, t, run_flag: SynchronizationHelper):
+def print_step_GPU(y, x, dwell_time, pr: Process, sim: MC_Simulation, t, run_flag: SynchronizationHelper):
     """
-    Run deposition on a single spot
+    Run deposition on a single spot using GPU.
 
     :param x: spot x-coordinate
     :param y: spot y-coordinate
     :param dwell_time: time of the exposure
     :param pr: Process object
     :param sim: MC simulation object
+    :param t: tqdm progress bar
+    :param run_flag: Thread synchronization object
     :return:
     """
     if dwell_time < pr.dt:
@@ -307,16 +295,16 @@ def print_step_GPU(y, x, dwell_time, pr: Process, sim, t, run_flag: Synchronizat
         pr.dt = dwell_time
     time_passed = 0
     flag_dt = True
-    cell_count = 0
     while flag_dt and not run_flag.run_flag:
         if time_passed + pr.dt > dwell_time:  # stepping only for remaining dwell time to avoid accumulating of excess deposit
             pr.dt = dwell_time - time_passed
             flag_dt = False
-        full = pr.deposition_gpu()
-        cell_count += full
+        pr.knl.queue.finish() # acts as a memory barrier that the precursor coverage operation is done
+        full = pr.deposition_gpu(blocking=True)  # depositing on a selected area
         if full:
-            full_cell_ops(y, x, pr, sim)
-        pr.precur_density_gpu()
+            # cell_filling_routine_GPU(y, x, pr, sim) # cell configuration update done on on GPU
+            cell_filling_routine_CPU(y, x, pr, sim)  # cell configuration update done on CPU
+        pr.precursor_density_gpu(blocking=False)
         pr.t += pr.dt * pr.deposition_scaling
         time_passed += pr.dt
         run_flag.timer = pr.t
@@ -328,9 +316,8 @@ def print_step_GPU(y, x, dwell_time, pr: Process, sim, t, run_flag: Synchronizat
         t.update(d_it)
         # Collecting prcess stats
         if time_passed % pr.stats_frequency < pr.dt * 1.5:
-            pr.min_precursor_coverage = pr.precursor_min
-            pr.dep_vol = pr.deposited_vol
-            pr.structure.offload_partial(pr.knl, 'precursor')
+            pr._gather_stats()
+            pr.offload_from_gpu_partial('precursor')
             # pr.structure.offload_partial(pr.knl, 'surface_bool')
         pr.reset_dt()
         # Allow only one tick of the loop for daemons per one tick of simulation
@@ -339,93 +326,75 @@ def print_step_GPU(y, x, dwell_time, pr: Process, sim, t, run_flag: Synchronizat
         run_flag.loop_tick.release()
 
 
-def full_cell_ops(y, x, pr: Process, sim):
+def cell_filling_routine_GPU(y, x, pr: Process, sim: MC_Simulation):
+    """
+    Run the full set of operations on a filled cell event.
+    Cell configuration update is performed on the GPU.
+
+    :param y: spot y-coordinate
+    :param x: spot x-coordinate
+    :param pr: Process object
+    :param sim: MC simulation object
+    """
     flag = pr.update_surface_GPU()  # updating surface on a selected area
-    # pr.structure.offload_partial(pr.knl, 'precursor')
-    # pr.structure.offload_partial(pr.knl, 'surface_bool')
     # If the structure was resized, the actual data is already in local memory
     # But if it was not, the actual data is on the GPU and needs to be offloaded for MC simulation
     if not flag:
-        pr.structure.offload_partial(pr.knl, 'deposit')
-        pr.structure.offload_partial(pr.knl, 'surface_bool')
+        pr.offload_from_gpu_partial('deposit')
+        pr.offload_from_gpu_partial('surface_bool')
     sim.update_structure(pr.structure)
     start = timeit.default_timer()
-    # beam_matrix = sim.run_simulation(y, x, pr.request_temp_recalc)  # run MC sim. and retrieve SE surface flux
-    if flag:
-        beam_matrix_buff = None
-        filled_cells_init = None
-    else:
-        beam_matrix_buff = pr.knl.flux_matrix.reshape(pr.structure.shape)
-        filled_cells_init = pr.full_cells
-    beam_matrix = sample_beam_matrix(sim.pe_sim.sigma, pr.structure,
-                                     beam_matrix_buff=beam_matrix_buff,
-                                     filled_cells_init=filled_cells_init)
+    beam_matrix = sim.run_simulation(y, x, pr.request_temp_recalc) # run MC sim. and retrieve SE surface flux
+    pr.set_beam_matrix(beam_matrix)
     print(f'Finished MC in {timeit.default_timer() - start} s')
     if beam_matrix.max() <= 1:
         warnings.warn('No surface flux!', RuntimeWarning)
         beam_matrix = 1
     if flag:
         try:
-            zero_dim = pr._irradiated_area_2D[0]
-            irr_ind_2D = (zero_dim.start, zero_dim.stop)
-            pr.structure.onload_all(pr.knl, beam_matrix, irr_ind_2D)
+            pr.onload_structure_to_gpu(beam_matrix)
         except Exception as e:
             print("Error during structure resizing: " + repr(e))
             return False
         print("Resize successfull")
     else:
         pr.knl.update_beam_matrix(beam_matrix)
+    if pr.temperature_tracking:
+        pr.heat_transfer(sim.beam_heating)
+        pr.request_temp_recalc = False
 
 
-def sample_beam_matrix(a, structure, f0=1e6, beam_matrix_buff=None, filled_cells_init=None):
+def cell_filling_routine_CPU(y, x, pr: Process, sim: MC_Simulation):
     """
-    Sample a gaussian beam matrix for testing purposes. Optimized for quick updates based on filled cells and irradiated area slice.
+    Run the full set of operations on a filled cell event.
+    Cell configuration update is performed on the CPU.
 
-    :param a: Gaussian standard deviation
-    :param structure: structure object of the simulation
-    :param f0: Gaussian peak value
-    :param beam_matrix_buff: buffer for the beam matrix
-    :param filled_cells_init: filled cells, must be an array of tripples
-    :param irrad_area_2d: irradiated area slice
-    :return: sampled array
+    :param y: spot y-coordinate
+    :param x: spot x-coordinate
+    :param pr: Process object
+    :param sim: MC simulation object
     """
-    # Generate a 2D Gaussian PDF matrix
-    _, ydim, xdim = structure.shape
-    _, ydim_abs, xdim_abs = structure.shape_abs
-    x = np.linspace(0, xdim_abs, xdim) - xdim_abs / 2
-    y = np.linspace(0, ydim_abs, ydim) - ydim_abs / 2
-    x, y = np.meshgrid(x, y)
-    d = np.sqrt(x * x + y * y)
-    gaussian_2d = (np.exp(-(d ** 2 / (2 * a ** 2))) * f0).astype(np.int32)
-    # Create a new array if the buffer is not provided
-    if beam_matrix_buff is not None:
-        beam_matrix = beam_matrix_buff
+    pr.offload_from_gpu_partial('deposit', blocking=False)
+    pr.offload_from_gpu_partial('precursor', blocking=True)
+    flag_resize = pr.cell_filled_routine()  # updating surface on a selected area
+    # pr.onload_structure_to_gpu(blocking=False)
+    pr.update_structure_to_gpu(blocking=True)
+    sim.update_structure(pr.structure)
+    start = timeit.default_timer()
+    beam_matrix = sim.run_simulation(y, x, pr.request_temp_recalc)  # run MC sim. and retrieve SE surface flux
+    if flag_resize:
+        pr.knl.reload_beam_matrix(beam_matrix, blocking=False)
     else:
-        beam_matrix = np.zeros(structure.shape, dtype=np.int32)
-    # Clear filled cells and project the values from the 2D Gaussian onto the 3D structure using surface_bool
-    if filled_cells_init is not None:
-        beam_matrix[filled_cells_init] = 0
-        for n in range(len(filled_cells_init)):
-            filled_cells_T = filled_cells_init.T
-            slice_3d = np.s_[filled_cells_T[0,n] - 1:filled_cells_T[0,n] + 2,
-                       filled_cells_T[1,n] - 1:filled_cells_T[1,n] + 2,
-                       filled_cells_T[2,n] - 1:filled_cells_T[2,n] + 2]
-            slice_2d = np.s_[filled_cells_T[1,n] - 1:filled_cells_T[1,n] + 2,
-                       filled_cells_T[2,n] - 1:filled_cells_T[2,n] + 2]
-            beam_matrix_view = beam_matrix[slice_3d]
-            index = structure.surface_bool[slice_3d]
-            gaussian_2d_view = gaussian_2d[slice_2d]
-            for i in range(index.shape[1]):
-                for j in range(index.shape[2]):
-                    beam_matrix_view[index] = gaussian_2d_view[i, j]
-    for n in range(ydim):
-        for j in range(xdim):
-            if gaussian_2d[n, j] < 10:
-                continue
-            index = structure.surface_bool[:, n, j]
-            beam_matrix_view = beam_matrix[:, n, j]
-            beam_matrix_view[index] = gaussian_2d[n, j]
-    return beam_matrix.astype(np.int32)
+        pr.knl.update_beam_matrix(beam_matrix, blocking=False)
+    print(f'Finished MC in {timeit.default_timer() - start} s')
+    if beam_matrix.max() <= 1:
+        warnings.warn('No surface flux!', RuntimeWarning)
+        pr.set_beam_matrix(1)
+    else:
+        pr.set_beam_matrix(beam_matrix)
+    if pr.temperature_tracking:
+        pr.heat_transfer(sim.beam_heating)
+        pr.request_temp_recalc = False
 
 
 if __name__ == '__main__':

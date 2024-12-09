@@ -135,6 +135,10 @@ class Process:
         self.y0 = 0
 
         self.lock = Lock()
+        self.device = device
+        if device:
+            self.knl = GPU(device)
+            self.full_cells = None # indices of the last filled cells
 
         # Initialization sequence
         self.__set_structure(structure)
@@ -150,9 +154,7 @@ class Process:
             self._diffusion_coefficient_profile()
         self.__expressions()
 
-        self.device = device
-        if device:
-            self.knl = GPU(device)
+
 
 
     # Initialization methods
@@ -168,6 +170,8 @@ class Process:
         self.__set_max_z()
         self.substrate_height = structure.substrate_height
         self.n_substrate_cells = self.structure.deposit[:structure.substrate_height].size
+        if self.device:
+            self.load_kernel()
 
     def __set_constants(self, params):
         self.kb = 0.00008617
@@ -236,6 +240,7 @@ class Process:
 
         nd = (self.__deposit_reduced_3d >= 1).nonzero()
         new_deposits = [(nd[0][i], nd[1][i], nd[2][i]) for i in range(nd[0].shape[0])]
+        self.full_cells = np.array(new_deposits)
         self.filled_cells += len(new_deposits)
         for cell in new_deposits:
             self._update_cell_config(cell)
@@ -410,13 +415,11 @@ class Process:
         """
         values are transfered to compute device
         """
-        zero_dim = self._irradiated_area_2D[0]
-        irr_ind_2D = (zero_dim.start,zero_dim.stop)
-        self.knl.load_vals(self.structure.precursor, self._surface_all, self._beam_matrix,
-                           self.structure.deposit, self.structure.surface_bool, irr_ind_2D,
-                           self.structure.semi_surface_bool, self.structure.ghosts_bool)
+        self.knl.load_structure(self.structure.precursor, self._surface_all, self.structure.deposit,
+                                self.structure.surface_bool, self._irr_ind_2D, self.structure.semi_surface_bool,
+                                self.structure.ghosts_bool)
 
-    def precur_density_gpu(self):
+    def precursor_density_gpu(self, blocking=True):
         """
         precursor density, deposition and check cells filled are calculated on compute device at once
         """
@@ -427,12 +430,10 @@ class Process:
         n0 = self.precursor.n0
         tau = self._get_tau()
         sigma = self.precursor.sigma
-        out = self.knl.precur_den(0, dt * D / (cell_size ** 2), F * dt,
-                                  (F * dt * tau + n0 * dt) / (tau * n0),
-                                  sigma * dt)
+        out = self.knl.precur_den_gpu(0, dt * D / (cell_size ** 2), F * dt, (F * dt * tau + n0 * dt) / (tau * n0),
+                                      sigma * dt, blocking)
 
-
-    def deposition_gpu(self):
+    def deposition_gpu(self, blocking=True):
         """
         precursor density, deposition and check cells filled are calculated on compute device at once
         """
@@ -441,7 +442,7 @@ class Process:
         sigma = self.precursor.sigma
         V = self.precursor.V
         const = (sigma * V * dt * 1e6 * self.deposition_scaling / self.cell_V * cell_size ** 2)
-        out = self.knl.deposition(const)
+        out = self.knl.deposit_gpu(const, blocking)
         return out
 
     def update_surface_GPU(self):
@@ -455,6 +456,7 @@ class Process:
         # The cells are filled in the kernel, so the filled cells are marked with -1 in the beam matrix there.
         beam_matrix = self.knl.return_beam_matrix()
         full_cells = np.argwhere(beam_matrix < 0)
+        self.filled_cells += full_cells.size
         self.full_cells = np.argwhere(beam_matrix.reshape(self.structure.shape) < 0)
         self.knl.update_surface(full_cells)
         # self.redraw = True
@@ -521,18 +523,44 @@ class Process:
             # and all the references to the data arrays are renewed
             self.structure.offload_all(self.knl)
             flag = self.extend_structure()
-            zero_dim = self._irradiated_area_2D[0]
-            irr_ind_2D = (zero_dim.start, zero_dim.stop)
             # Basically, none of the slices have to be updated, because they use indexes, not references.
             return flag
 
         return False
 
-    def offload_from_gpu(self):
+    def offload_structure_from_gpu_all(self, blocking=True):
         """
         Offloads all data from compute device
+
+        :param blocking: wait until the operation is finished
         """
-        self.structure.offload_all(self.knl)
+        self.structure.offload_all(self.knl, blocking)
+
+    def offload_from_gpu_partial(self, data_name, blocking=True):
+        """
+        Offloads data from compute device
+
+        :param data_name: name of the data to be offloaded
+        :param blocking: wait until the operation is finished
+        """
+        self.structure.offload_partial(self.knl, data_name, blocking)
+
+    def onload_structure_to_gpu(self, blocking=True):
+        """
+        Loads structure data to the GPU
+
+        :param blocking: wait until the operation is finished
+
+        """
+        self.structure.onload_all(self.knl, self._irr_ind_2D, blocking)
+
+    def update_structure_to_gpu(self, blocking=True):
+        """
+        Updates structure data on the GPU
+
+        :param blocking: wait until the operation is finished
+        """
+        self.structure.update_all(self.knl, self._irr_ind_2D, blocking)
 
     ###
 
@@ -944,6 +972,14 @@ class Process:
         Returns a slice encapsulating the whole surface without the substrate
         """
         return np.s_[self.substrate_height + 1:self.max_z, :, :]
+
+    @property
+    def _irr_ind_2D(self):
+        """
+        Returns the indices of the irradiated area along z-dimension.
+        """
+        zero_dim = self._irradiated_area_2D[0]
+        return (zero_dim.start, zero_dim.stop)
 
 
 if __name__ == '__main__':

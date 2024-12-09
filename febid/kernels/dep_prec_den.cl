@@ -118,10 +118,11 @@ __kernel void deposition(__global double *precur, __global int *beam_matrix,
  int offset, double val, __global double *deposit, __global int *flag)
  {
     int ind = get_global_id(0) + offset;
+    double* deposit_cell = &deposit[ind];
 
     if (beam_matrix[ind] > 0) {
-        deposit[ind] += precur[ind] * beam_matrix[ind] * val / 1000000;
-        if (deposit[ind] >= 1){
+        *deposit_cell += precur[ind] * beam_matrix[ind] * val / 1000000;
+        if (*deposit_cell >= 1){
             flag[0] += 1;
             beam_matrix[ind] = -1;
         }

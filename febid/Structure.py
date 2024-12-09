@@ -525,8 +525,8 @@ class Structure(BaseSolidStructure):
     def substrate_height_abs(self):
         return self.substrate_height * self.cell_size
 
-    def offload_all(self, kernel):
-        retrieved = kernel.get_updated_structure()
+    def offload_all(self, kernel, blocking=True):
+        retrieved = kernel.get_updated_structure(blocking)
         names_retrieved  = set(retrieved.keys())
         names_local= set(self.data_dict.keys())
         names = set.intersection(names_retrieved, names_local)
@@ -539,15 +539,19 @@ class Structure(BaseSolidStructure):
                 print('Got an unknown array name in Structure from GPU kernel.')
                 raise e
 
-    def offload_partial(self, kernel:GPU, array_name):
+    def offload_partial(self, kernel:GPU, array_name, blocking=True):
         if array_name in self.data_dict:
-            array = kernel.get_structure_partial(array_name).reshape(self.shape)
+            array = kernel.get_structure_partial(array_name, blocking).reshape(self.shape)
             self.data_dict[array_name][...] = array
         else:
             raise ValueError('Got an array name that is not present in Structure.')
 
-    def onload_all(self, kernel, flux_mat, irr_ind):
-        kernel.set_updated_structure(self.precursor, self.deposit, self.surface_bool, self.semi_surface_bool, flux_mat,
-                                     irr_ind, self.ghosts_bool)
+    def onload_all(self, kernel, irr_ind_2d, blocking=True):
+        kernel.set_updated_structure(self.precursor, self.deposit, self.surface_bool, self.semi_surface_bool,
+                                     irr_ind_2d, self.ghosts_bool, blocking)
         # except Exception as e:
         #     raise MemoryError('Failed to load structure to the GPU memory.')
+
+    def update_all(self, kernel, irr_ind_2d, blocking=True):
+        kernel.update_structure(self.precursor, self.deposit, self.surface_bool, self.semi_surface_bool, irr_ind_2d,
+                                self.ghosts_bool, blocking)
