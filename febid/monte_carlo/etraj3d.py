@@ -42,8 +42,6 @@ class MC_Simulation(MC_Sim_Base):
         self.pe_sim.grid = self.se_sim.grid = structure.deposit
         self.pe_sim.surface = self.se_sim.surface = structure.surface_bool
         self.se_sim.s_neighb = structure.surface_neighbors_bool
-        self.se_surface_flux = np.zeros(structure.shape, dtype=np.int32)
-        self.beam_heating = np.zeros(structure.shape)
 
     def run_simulation(self, y0, x0, heat, N=None):
         """

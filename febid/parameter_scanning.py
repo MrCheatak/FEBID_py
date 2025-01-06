@@ -3,11 +3,15 @@ A Collection of utils for launching series of simulations
 """
 import os
 import re
+from copy import deepcopy
+from time import sleep
 
 import numpy as np
 from ruamel.yaml import YAML
+from loky import ProcessPoolExecutor
 
 from febid.__main__ import start_no_ui
+from febid.ui.ui_shell import SessionHandler
 
 
 def extr_number(text):
@@ -70,11 +74,19 @@ def read_param(file, param_name):
         raise KeyError(f'Failed to read parameter. The parameter not present in the file!')
 
 
-def scan_stream_files(session_file, directory):
+def runner_func(session: SessionHandler):
     """
-    Launch a series of simulations using multiple patterning files
+    Run a simulation with blocking.
+    """
+    session.start()
+    session.starter.printing_thread.join()
 
-    The files are named after the patterning file
+
+def scan_stream_files(session_file, directory, n_parallel=1):
+    """
+    Launch a series of simulations using multiple patterning files.
+
+    The files are named after the patterning file.
     :param session_file: YAML file with session configuration
     :param directory: folder with stream files
     :return:
@@ -84,18 +96,26 @@ def scan_stream_files(session_file, directory):
     files = [os.path.join(directory, f) for f in files_orig]
     init_stream = read_param(session_file, 'stream_file_filename')
     init_name = read_param(session_file, 'unique_name')
-    for stream_file, name in zip(files, files_orig):
-        write_param(session_file, 'stream_file_filename', stream_file)
-        write_param(session_file, 'unique_name', name)
-        start_no_ui(session_file)
+    session = SessionHandler()
+    session.load_session(session_file)
+    futures = []
+    with ProcessPoolExecutor(max_workers=n_parallel) as executor:
+        for stream_file, name in zip(files, files_orig):
+            session_i = deepcopy(session)
+            session_i.set_parameter('stream_file_filename', stream_file)
+            session_i.set_parameter('unique_name', name)
+            futures.append((executor.submit(runner_func,session_i), name))
+            sleep(1)
     write_param(session_file, 'stream_file_filename', init_stream)
     write_param(session_file, 'unique_name', init_name)
+    for future, name in futures:
+        print(f'Simulation with the {name} stream file has finished.')
     print(f'Successfully finished {len(files)} simulations with all {len(files_orig)} pattering files in {directory}')
 
 
 def scan_settings(session_file, param_name, scan, base_name=''):
     """
-    Launch a series of simulations by changing a single parameter
+    Launch a series of simulations by changing a single parameter.
 
     :param session_file: YAML file with session configuration
     :param param_name: the name of the parameter, refer to settings and precursor parameters

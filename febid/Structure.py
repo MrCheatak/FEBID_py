@@ -3,6 +3,8 @@ import sys
 import numpy as np
 import pyvista as pv
 
+from febid.kernel_modules import GPU
+
 
 ### Structure class contains all necessary main (deposit, precursor, surface) and axillary (ghost_cells, semi_surface) arrays
 ### as well as methods, that are needed, if necessary, to generate the latter.
@@ -82,6 +84,12 @@ class BaseSolidStructure:
         """
         return self.shape_abs[0]
 
+    def size(self):
+        """
+        Returns the size of the deposit array.
+        """
+        return self.deposit.size
+
 
 class Structure(BaseSolidStructure):
     """
@@ -122,6 +130,11 @@ class Structure(BaseSolidStructure):
 
         self.initialized = False
 
+    @property
+    def data_dict(self):
+        return {'deposit': self.deposit, 'precursor': self.precursor, 'surface_bool': self.surface_bool,
+                          'semi_surface_bool': self.semi_surface_bool, 'surface_neighbors_bool': self.surface_neighbors_bool,
+                          'ghosts_bool': self.ghosts_bool, 'temperature': self.temperature}
     def load_from_vtk(self, vtk_obj: pv.DataSet, add_substrate=4):
         """
         Frame initializer. Load structure from a .vtk file.
@@ -511,3 +524,34 @@ class Structure(BaseSolidStructure):
     @property
     def substrate_height_abs(self):
         return self.substrate_height * self.cell_size
+
+    def offload_all(self, kernel, blocking=True):
+        retrieved = kernel.get_updated_structure(blocking)
+        names_retrieved  = set(retrieved.keys())
+        names_local= set(self.data_dict.keys())
+        names = set.intersection(names_retrieved, names_local)
+        if len(names) == 0:
+            raise ValueError('Got no common arrays to offload!')
+        for name in names:
+            try:
+                self.data_dict[name][...] = retrieved[name]
+            except KeyError as e:
+                print('Got an unknown array name in Structure from GPU kernel.')
+                raise e
+
+    def offload_partial(self, kernel:GPU, array_name, blocking=True):
+        if array_name in self.data_dict:
+            array = kernel.get_structure_partial(array_name, blocking).reshape(self.shape)
+            self.data_dict[array_name][...] = array
+        else:
+            raise ValueError('Got an array name that is not present in Structure.')
+
+    def onload_all(self, kernel, irr_ind_2d, blocking=True):
+        kernel.set_updated_structure(self.precursor, self.deposit, self.surface_bool, self.semi_surface_bool,
+                                     irr_ind_2d, self.ghosts_bool, blocking)
+        # except Exception as e:
+        #     raise MemoryError('Failed to load structure to the GPU memory.')
+
+    def update_all(self, kernel, irr_ind_2d, blocking=True):
+        kernel.update_structure(self.precursor, self.deposit, self.surface_bool, self.semi_surface_bool, irr_ind_2d,
+                                self.ghosts_bool, blocking)

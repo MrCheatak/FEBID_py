@@ -254,10 +254,12 @@ class Starter:
         except AttributeError as e:
             e.errno = 9
             raise e
+        gpu_param = self._params.get('gpu', False)
+        gpu_flag = (4,0) if gpu_param else False
         self.process_obj, self.sim, self.printing_thread = febid_core.run_febid_interface(self.structure,
                                                                     self.precursor_params, self.settings,
                                                                     sim_volume_params, self.printing_path,
-                                                                    temperature_tracking, saving_params)
+                                                                    temperature_tracking, saving_params, gpu_flag)
 
     def _run_mc_interface(self, **kwargs):
         """
