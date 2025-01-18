@@ -159,6 +159,8 @@ def print_all(path, pr: Process, sim: MC_Simulation, stats: Statistics=None, str
     :param path: patterning path from a stream file
     :param pr: Process class instance
     :param sim: Monte Carlo simulation object
+    :param stats: Statistics object, responsible for recording process statistics
+    :param struc: StructureSaver object, responsible for saving structure snapshots
     :param run_flag:
     :return:
     """

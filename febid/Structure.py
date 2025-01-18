@@ -404,7 +404,7 @@ class Structure(BaseSolidStructure):
         Determining semi-surface of the initial structure
 
         Semi-surface cell is a concept that enables diffusion on the steps of the structure.
-        These cells take part neither in the deposition process, nor in adsorption/desorption.
+        These cells do not take part in the deposition process.
 
         If semi-surface cell turns into a regular surface cell, the precursor density in it is preserved.
        :return:

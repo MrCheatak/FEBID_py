@@ -27,14 +27,21 @@ filename = ''
 class SetVisibilityCallback:
     """
     Helper callback to keep a reference to the actor being modified.
-    This helps button show and hide plot elements
+    This helps button show and hide plot elements.
     """
 
-    def __init__(self, actor):
+    def __init__(self, plotter:pvqt.BackgroundPlotter, actor):
+        self.plotter = plotter
         self.actor = actor
+        self.scalar_bar = True if actor.mapper.array_name else False
 
     def __call__(self, state):
         self.actor.SetVisibility(state)
+        if self.scalar_bar:
+            if state:
+                self.plotter.add_scalar_bar(title=self.actor.mapper.array_name, mapper=self.actor.mapper)
+            else:
+                self.plotter.remove_scalar_bar(self.actor.mapper.array_name)
 
 
 class Render:
@@ -83,7 +90,7 @@ class Render:
         if struct:
             self.add_3Darray(structure.deposit, structure.deposit.min(), -0.01, False, opacity=1, clim=[-2, -1],
                              below_color='red', show_edges=False, scalar_name='Structure', button_name='Structure',
-                             cmap='binary', n_colors=1, show_scalar_bar=False)
+                             color='white', n_colors=1, show_scalar_bar=False)
         if deposit:
             self.add_3Darray(structure.deposit, 0.00001, 1, False, opacity=1, clim=[0.00001, 1], below_color='red',
                              above_color='red', show_edges=True, scalar_name='Surface deposit', button_name='Deposit',
@@ -92,15 +99,15 @@ class Render:
             self.add_3Darray(structure.precursor, 0.00001, 1, False, opacity=1, show_edges=True,
                              scalar_name="Surface precursor density", button_name='Precursor', cmap='plasma')
         if surface:
-            self.add_3Darray(structure.surface_bool, 1, 1, False, opacity=0.7, show_edges=True,
+            self.add_3Darray(structure.surface_bool, 1, 1, False, opacity=1, show_edges=True,
                              scalar_name="Semi surface prec. density", button_name='Surface', color='red',
                              show_scalar_bar=False)
         if semi_surface:
-            self.add_3Darray(structure.semi_surface_bool, 1, 1, False, opacity=0.7, show_edges=True,
+            self.add_3Darray(structure.semi_surface_bool, 1, 1, False, opacity=1, show_edges=True,
                              scalar_name="Semi surface prec. density", button_name='Semi-surface', color='green',
                              show_scalar_bar=False)
         if ghosts:
-            self.add_3Darray(structure.ghosts_bool, 1, 1, False, opacity=0.7, show_edges=True, scalar_name='ghosts',
+            self.add_3Darray(structure.ghosts_bool, 1, 1, False, opacity=1, show_edges=True, scalar_name='ghosts',
                              button_name="Ghosts", color='brown', show_scalar_bar=False)
         if temperature:
             self.add_3Darray(structure.temperature, 1, opacity=1, scalar_name='temperature',
@@ -243,7 +250,7 @@ class Render:
                 return
         self.p.add_text(name, font_size=self.font, position=(self.x_pos + 5, self.y_pos),
                         name=name + '_caption')  # captioning button
-        obj_aa = SetVisibilityCallback(obj_a)
+        obj_aa = SetVisibilityCallback(self.p, obj_a)
         self.p.add_checkbox_button_widget(obj_aa, value=True, position=(5, self.y_pos), size=self.size,
                                           color_on='blue')  # adding button
         self.y_pos += self.size

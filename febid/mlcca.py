@@ -175,7 +175,7 @@ def visualize_kernel(*arrays):
     for grid in grids:
         color = colors[i]
         colors.remove(color)
-        mesh = plotter.add_mesh(grid, show_edges=True, opacity=0.8, color=color, label=f'Array {i}')
+        mesh = plotter.add_mesh(grid, show_edges=True, opacity=1, color=color, label=f'Array {i}')
         i += 1
         meshes.append(mesh)
 

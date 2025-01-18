@@ -82,13 +82,15 @@ def runner_func(session: SessionHandler):
     session.starter.printing_thread.join()
 
 
-def scan_stream_files(session_file, directory, n_parallel=1):
+def scan_stream_files(session_file, directory, add_name='', n_parallel=1):
     """
     Launch a series of simulations using multiple patterning files.
 
     The files are named after the patterning file.
     :param session_file: YAML file with session configuration
     :param directory: folder with stream files
+    :param add_name: a string to add to the simulation name
+    :param n_parallel: number of parallel simulations
     :return:
     """
     files_orig = os.listdir(directory)
@@ -98,9 +100,12 @@ def scan_stream_files(session_file, directory, n_parallel=1):
     init_name = read_param(session_file, 'unique_name')
     session = SessionHandler()
     session.load_session(session_file)
+    session.set_parameter('structure_source', 'auto')
+    session.set_parameter('pattern_source', 'stream_file')
     futures = []
     with ProcessPoolExecutor(max_workers=n_parallel) as executor:
         for stream_file, name in zip(files, files_orig):
+            name = name + '_' + add_name
             session_i = deepcopy(session)
             session_i.set_parameter('stream_file_filename', stream_file)
             session_i.set_parameter('unique_name', name)

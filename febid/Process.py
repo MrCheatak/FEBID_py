@@ -154,9 +154,6 @@ class Process:
             self._diffusion_coefficient_profile()
         self.__expressions()
 
-
-
-
     # Initialization methods
     def __set_structure(self, structure: Structure):
         self.structure = structure
