@@ -126,7 +126,7 @@ class Starter:
                 raise AttributeError('Not allowed to choose \'simple  pattern\' together with \'auto\'.')
             pattern = self._params['pattern']
             p1 = float(self._params['param1'])
-            p2 = float(self._params['param1']) if pattern in ['Point', 'Rectangle', 'Square'] else 0
+            p2 = float(self._params['param2']) if pattern in ['Point', 'Rectangle', 'Square'] else 0
             dwell_time = float(self._params['dwell_time']) * self.dwell_time_units
             pitch = float(self._params['pitch'])
             repeats = int(float(self._params['repeats']))

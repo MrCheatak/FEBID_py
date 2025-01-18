@@ -259,6 +259,7 @@ def print_step(y, x, dwell_time, pr: Process, sim: MC_Simulation, t, run_flag: S
             if pr.temperature_tracking:
                 pr.heat_transfer(sim.beam_heating)
                 pr.request_temp_recalc = False
+            cell_filling_routine(y, x, pr, sim)  # cell configuration update
         pr.precursor_density()  # recalculate precursor coverage
         pr.t += pr.dt * pr.deposition_scaling
         time_passed += pr.dt
@@ -277,6 +278,30 @@ def print_step(y, x, dwell_time, pr: Process, sim: MC_Simulation, t, run_flag: S
         run_flag.loop_tick.acquire()
         run_flag.loop_tick.notify_all()
         run_flag.loop_tick.release()
+
+def cell_filling_routine(y, x, pr: Process, sim: MC_Simulation):
+    """
+    Run the full set of operations on a filled cell event.
+
+    :param y: spot y-coordinate
+    :param x: spot x-coordinate
+    :param pr: Process object
+    :param sim: MC simulation object
+    """
+    flag_resize = pr.cell_filled_routine()  # updating surface on a selected area
+    if flag_resize:  # update references if the allocated simulation volume was increased
+        sim.update_structure(pr.structure)
+    start = timeit.default_timer()
+    beam_matrix = sim.run_simulation(y, x, pr.request_temp_recalc)  # run MC sim. and retrieve SE surface flux
+    print(f'Finished MC in {timeit.default_timer() - start} s')
+    if beam_matrix.max() <= 1:
+        warnings.warn('No surface flux!', RuntimeWarning)
+        pr.set_beam_matrix(1)
+    else:
+        pr.set_beam_matrix(beam_matrix)
+    if pr.temperature_tracking:
+        pr.heat_transfer(sim.beam_heating)
+        pr.request_temp_recalc = False
 
 
 def print_step_GPU(y, x, dwell_time, pr: Process, sim: MC_Simulation, t, run_flag: SynchronizationHelper):

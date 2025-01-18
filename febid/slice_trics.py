@@ -3,6 +3,17 @@ A collection of utility functions for manipulating Python slices
 """
 
 import numpy as np
+import operator
+
+
+operator_dict = {
+    '==': operator.eq,
+    '!=': operator.ne,
+    '>': operator.gt,
+    '<': operator.lt,
+    '>=': operator.ge,
+    '<=': operator.le
+}
 
 
 def get_3d_slice(center, shape, n=1):
@@ -67,87 +78,166 @@ def get_boundary_indices(cell, shape, size=1):
     return result_slice
 
 
-def get_slice_into_parent(slc1, slc2):
-    def to_zero(var):
-        if var is None:
-            return 0
-        return var
-
-    def get_start(st1, st2):
-        if st1 is None and st2 is None:
-            return None
-        if st1 is None and st2 is not None:
-            return 0
-        if st1 is not None and st2 is None:
-            return st1
-        return st1 + st2
-
-    def get_stop(st1, st2, st3, st4):
-        """
-        :param st1: stop of slc1
-        :param st2: stop of slc2
-        :param st3: length of slc1
-        :param st4: calculated stop
-        """
-        if st1 is None and st2 is None:
-            return None
-        if st1 is None and st2 is not None:
-            return st2
-        if st1 is not None and st2 is None:
-            return st3 + st4
-        return st3 + st4
-
-    if len(slc1) != len(slc2):
-        raise IndexError("Slice has different number of dimensions")
-    result_slice = []
-    for i, item in enumerate(slc1):
-        if all([s is None for s in item]):
-            result_slice.append(slc2[i])
-        elif all([s is None for s in item]):
-            result_slice.append(item)
-        slc_start = get_start(item.start, slc2[i].start)
-        slc_stop = get_stop(item.stop, slc2[i].stop, to_zero(item.stop) - to_zero(item.start), slc_start)
-        slc = slice[slc_start: slc_stop]
-        result_slice.append(slc[0])
-    return tuple(result_slice)
-
-
-def calculate_absolute_slice(slice1, slice2):
+def transformSliceToOriginal(slc1, slc2):
     """
-    Calculate the absolute slice from two slices
-    :param slice1: first slice
-    :param slice2: second slice
-    :return: absolute slice
+    Transform a slice object to operate on the original array.
+
+    An array arr is sliced with slc1 to create a view arr_view1. Then, the slice object slc2 is applied to arr_view to
+    create a view arr_view2. This function transforms slc2 to create the view arr_view2 directly from the array arr.
+
+    :param slc1: The slice object applied to the original array
+    :param slc2: The slice object applied to the view array
+
+    :return: The transformed slice object to extract view specified by slc2 from the original array
     """
-    # Create a dummy array to infer the original shape
-    dummy_array = np.zeros((1,) * len(slice1))
-
-    # Convert slices to numpy slice objects
-    slice1_np = np.s_[slice1]
-    slice2_np = np.s_[slice2]
-
-    # Combine slices before applying them
-    combined_slices = tuple(slice2_np[i] if s == slice(None) else s for i, s in enumerate(slice1_np))
-
-    # Create the combined absolute slice
-    combined_absolute_slice = np.s_[combined_slices]
-
-    return combined_absolute_slice
+    transformed_slicer = tuple(
+        slice(
+            slc1[i].start + slc2[i].start,
+            slc1[i].start + slc2[i].stop,
+            slc2[i].step,
+        )
+        for i in range(len(slc2))
+    )
+    return transformed_slicer
 
 
-def get_center_view(array, n=1):
-    shape = np.array(array.shape)
-    # if np.any(shape < n*2+1):
-    #     raise ValueError("The larger array must be larger than the view size")
+def slice_3d_to_1d_index(slicer, shape):
+    """
+    Convert a 3D slice into a 1D index for a flattened array.
+    The idex is to be used to extract the same cells, but from a flattened array.
 
-    center_index = shape.max() // 2
+    :param shape: The original 3D array shape
+    :param slicer: The 3D slice object
 
-    view_slice = []
-    for i in range(shape.size):
-        start = center_index - n
-        end = center_index + n + 1
-        view_slice.append(slice(start if start >= 0 else None,
-                                end if end < shape[i] else None))
-    view_slice = tuple(view_slice)
-    center_view = array[view_slice]
-    return center_view
+    :return: The 1D index corresponding to the 3D slice
+    """
+    x_indices = np.arange(*slicer[0].indices(shape[0]))
+    y_indices = np.arange(*slicer[1].indices(shape[1]))
+    z_indices = np.arange(*slicer[2].indices(shape[2]))
+    x, y, z = np.meshgrid(x_indices, y_indices, z_indices, indexing='ij')
+    flat_indices = np.ravel_multi_index((x.ravel(), y.ravel(), z.ravel()), shape)
+    return flat_indices
+
+
+def get_index_in_parent(index, slicer):
+    """
+    Get the index in the parent array from the index in the view array.
+
+    :param index: The index in the view array, must be array of tuples, like the result of np.argwhere()
+    :param slicer: The slice object applied to the parent array
+
+    :return: The index in the parent array
+    """
+    if len(index) != len(slicer):
+        raise IndexError("Index has different number of dimensions")
+    result_index = []
+    for i, item in enumerate(index):
+        if slicer[i].start is None:
+            result_index.append(item)
+        else:
+            result_index.append(item + slicer[i].start)
+    return tuple(result_index)
+
+
+def find_bounding_slice(array):
+    """
+    Find a slice that contains all nonzero elements of a 3D array.
+
+    :param array: The 3D array to find the bounding slice for
+    :return: a tuple of slice objects
+    """
+    shape = array.shape
+    min_bounds = [shape[0], shape[1], shape[2]]
+    max_bounds = [-1, -1, -1]
+
+    # Scan along each axis independently
+    for axis in range(3):
+        for start in range(shape[axis]):
+            # Create slices to scan along this axis
+            selector = [slice(None)] * 3
+            selector[axis] = slice(start, start + 1)
+            if np.any(array[tuple(selector)] != 0):
+                min_bounds[axis] = start
+                break
+
+        for end in range(shape[axis] - 1, -1, -1):
+            selector = [slice(None)] * 3
+            selector[axis] = slice(end, end + 1)
+            if np.any(array[tuple(selector)] != 0):
+                max_bounds[axis] = end
+                break
+
+    # Check if no nonzero elements were found
+    if max_bounds[0] == -1:
+        return None
+
+    # Construct slices
+    slicer = tuple(slice(min_bounds[axis], max_bounds[axis] + 1) for axis in range(3))
+    return slicer
+
+
+def index_where(array, condition='!=', value=0):
+    """
+    Find the indices of elements in an array that satisfy a condition. Condition is a string that would conventionally be
+    used in a comparison operation, i.e. '!=0' or '>'.
+
+    By default, the function finds the indices of nonzero elements in the array and would be equal to np.nonzero(array),
+    however up to 4x faster.
+    It is recommended to use contiguous arrays as the function uses np.ravel() to flatten the array.
+
+    :param array: The array to search
+    :param condition: The condition to satisfy
+    :param value: The value to compare against
+    :return: A tuple of indices
+    """
+    array_flat = array.ravel()
+    operator_func = operator_dict[condition]
+    index_1d = np.where(operator_func(array_flat, value))[0]
+    index = np.unravel_index(index_1d, array.shape)
+    return index
+
+
+def any_where(array, condition='!=0', value=0, reverse=False, chunk_size=1024*32):
+    """
+    Check if any element in the array satisfies a condition. Condition is a string that would conventionally be
+    used in a comparison operation.
+
+    By default, the function returns True on the first nonzero element. The search is chunked to improve performance (up to 4x faster).
+    It is recommended to use contiguous arrays as the function uses np.ravel() to flatten the array.
+
+    :param array: The array to search
+    :param condition: The condition to satisfy
+    :param value: The value to compare against
+    :param reverse: Whether to search in reverse
+    :param chunk_size: The chunk size for the search
+    :return: True if any element satisfies the condition, False otherwise
+    """
+    array_flat = array.ravel()
+    operator_func = operator_dict[condition]
+    # But going in reverse is even faster
+    if reverse:
+        for start in range(array_flat.size - 1, -1, -chunk_size):
+            chunk = array_flat[max(0, start - chunk_size - 1):start + 1]
+            if chunk.max() >= value:
+                return True
+    else:
+        for start in range(0, array_flat.size, chunk_size):
+            chunk = array_flat[start:min(array_flat.size, start + chunk_size)]
+            if chunk.max() >= value:
+                return True
+    return False
+
+
+def concat_index(arr1, arr2):
+    """
+    Concatenate two sets of indices represented as tuple of arrays(np.nonzero-like).
+
+    :param arr1: The first set of indices
+    :param arr2: The second set of indices
+    :return: tuple of concatenated indices
+    """
+    if arr1 is None:
+        return arr2
+    if arr2 is None:
+        return arr1
+    return tuple(np.concatenate((arr1[i], arr2[i])) for i in range(len(arr1)))
