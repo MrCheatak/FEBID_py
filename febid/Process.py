@@ -134,12 +134,12 @@ class Process:
         self.min_precursor_coverage = 0
         self.x0 = 0
         self.y0 = 0
+        self.last_full_cells = [] # indices of the last filled cells
 
         self.lock = Lock()
         self.device = device
         if device:
             self.knl = GPU(device)
-            self.full_cells = None # indices of the last filled cells
 
         # Initialization sequence
         self.__set_structure(structure)
@@ -241,7 +241,7 @@ class Process:
         nd = self.__deposition_index_3d[0][nd], self.__deposition_index_3d[1][nd], self.__deposition_index_3d[2][nd]
         new_deposits = [(nd[0][i], nd[1][i], nd[2][i]) for i in range(nd[0].shape[0])]
         cells_abs = [get_index_in_parent(cell, self._irradiated_area_3d) for cell in new_deposits] # cell's absolute position in array
-        self.full_cells = np.array(new_deposits)
+        self.last_full_cells = np.array(cells_abs)
         self.filled_cells += len(new_deposits)
         for cell in new_deposits:
             self._update_cell_config(cell)
@@ -418,9 +418,9 @@ class Process:
         """
         values are transfered to compute device
         """
-        self.knl.load_structure(self.structure.precursor, self._surface_all, self.structure.deposit,
-                                self.structure.surface_bool, self._irr_ind_2D, self.structure.semi_surface_bool,
-                                self.structure.ghosts_bool)
+        self.knl.load_structure(self.structure.precursor, self.structure.deposit, self._surface_all,
+                                self.structure.surface_bool, self.structure.semi_surface_bool,
+                                self.structure.ghosts_bool, self._irr_ind_2D)
 
     def precursor_density_gpu(self, blocking=True):
         """
@@ -460,7 +460,7 @@ class Process:
         beam_matrix = self.knl.return_beam_matrix()
         full_cells = np.argwhere(beam_matrix < 0)
         self.filled_cells += full_cells.size
-        self.full_cells = np.argwhere(beam_matrix.reshape(self.structure.shape) < 0)
+        self.last_full_cells = np.argwhere(beam_matrix.reshape(self.structure.shape) < 0)
         self.knl.update_surface(full_cells)
         # self.redraw = True
 
@@ -524,7 +524,7 @@ class Process:
         if self.max_z + 5 > self.structure.shape[0]:
             # Here the Structure is extended in height
             # and all the references to the data arrays are renewed
-            self.structure.offload_all(self.knl)
+            self.offload_structure_from_gpu_all()
             flag = self.extend_structure()
             # Basically, none of the slices have to be updated, because they use indexes, not references.
             return flag
@@ -537,7 +537,20 @@ class Process:
 
         :param blocking: wait until the operation is finished
         """
-        self.structure.offload_all(self.knl, blocking)
+        data_dict = self.structure.data_dict
+        retrieved = self.knl.get_updated_structure(blocking)
+        names_retrieved  = set(retrieved.keys())
+        names_local= set(data_dict.keys())
+        names = set.intersection(names_retrieved, names_local)
+        if len(names) == 0:
+            raise ValueError('Got no common arrays to offload!')
+        for name in names:
+            try:
+                data_dict[name][...] = retrieved[name]
+            except KeyError as e:
+                print('Got an unknown array name in Structure from GPU kernel.')
+                raise e
+
 
     def offload_from_gpu_partial(self, data_name, blocking=True):
         """
@@ -546,7 +559,12 @@ class Process:
         :param data_name: name of the data to be offloaded
         :param blocking: wait until the operation is finished
         """
-        self.structure.offload_partial(self.knl, data_name, blocking)
+        data_dict = self.structure.data_dict
+        if data_name in data_dict:
+            array = self.knl.get_structure_partial(data_name, blocking).reshape(self.structure.shape)
+            data_dict[data_name][...] = array
+        else:
+            raise ValueError('Got an array name that is not present in Structure.')
 
     def onload_structure_to_gpu(self, blocking=True):
         """
@@ -555,7 +573,9 @@ class Process:
         :param blocking: wait until the operation is finished
 
         """
-        self.structure.onload_all(self.knl, self._irr_ind_2D, blocking)
+        self.knl.update_structure(self.structure.precursor, self.structure.deposit, self._surface_all,
+                                self.structure.surface_bool, self.structure.semi_surface_bool,
+                                self.structure.ghosts_bool, self._irr_ind_2D, blocking=blocking)
 
     def update_structure_to_gpu(self, blocking=True):
         """
@@ -563,7 +583,9 @@ class Process:
 
         :param blocking: wait until the operation is finished
         """
-        self.structure.update_all(self.knl, self._irr_ind_2D, blocking)
+        self.knl.update_structure(self.structure.precursor, self.structure.deposit, self._surface_all,
+                                self.structure.surface_bool, self.structure.semi_surface_bool,
+                                self.structure.ghosts_bool, self._irr_ind_2D, cells=self.last_full_cells, blocking=blocking)
 
     ###
 
