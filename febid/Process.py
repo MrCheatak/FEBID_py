@@ -141,6 +141,9 @@ class Process:
             self.knl = GPU(device)
             self.full_cells = None # indices of the last filled cells
 
+        self.displayed_data = None
+        self.stats_gathering = None
+
         # Initialization sequence
         self.__set_structure(structure)
         self.__set_constants(equation_values)
@@ -564,6 +567,19 @@ class Process:
         :param blocking: wait until the operation is finished
         """
         self.structure.update_all(self.knl, self._irr_ind_2D, blocking)
+
+    def get_data(self):
+        """
+        Offload data necessary for visualization and statistics from compute device.
+        """
+        necessary_data = []
+        if self.stats_gathering:
+            necessary_data += ['precursor', 'deposit']
+        if self.displayed_data is not None:
+            necessary_data += [self.displayed_data]
+        necessary_data = set(necessary_data)  # removing duplicates
+        if necessary_data:
+            [self.offload_from_gpu_partial(data) for data in necessary_data]
 
     ###
 

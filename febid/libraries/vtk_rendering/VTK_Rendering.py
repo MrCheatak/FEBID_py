@@ -219,8 +219,9 @@ class Render:
         :return: adds PolyData() to Plotter()
         """
 
-        if nan_opacity is None:
-            nan_opacity = opacity
+        # For some reason using nan_opacity = 1 makes non-NaN cells transparent
+        # if nan_opacity is None:
+        #     nan_opacity = opacity
         self.obj = self._render_3Darray(arr=arr, lower_t=lower_t, upper_t=upper_t, exclude_zeros=exclude_zeros,
                                         name=scalar_name, invert=invert)
         self.__prepare_obj(self.obj, button_name, cmap, color, show_scalar_bar, clim, below_color, above_color,
@@ -243,7 +244,8 @@ class Render:
                                             nan_opacity=nan_opacity, clim=clim, below_color=below_color,
                                             above_color=above_color, name=name, label='Structure', log_scale=log_scale,
                                             show_scalar_bar=show_scalar_bar, cmap=cmap, n_colors=n_colors,
-                                            lighting=True, show_edges=show_edges, texture=texture, render=False)
+                                            lighting=True, show_edges=show_edges, texture=texture, render=False
+                                            )
                     break
             except Exception as e:
                 print(f'Error:{e.args}')

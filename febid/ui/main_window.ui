@@ -6,8 +6,8 @@
    <rect>
     <x>0</x>
     <y>0</y>
-    <width>655</width>
-    <height>750</height>
+    <width>649</width>
+    <height>827</height>
    </rect>
   </property>
   <property name="windowTitle">
@@ -17,6 +17,9 @@
    <layout class="QVBoxLayout" name="verticalLayout">
     <item>
      <widget class="QTabWidget" name="tabWidget">
+      <property name="enabled">
+       <bool>true</bool>
+      </property>
       <property name="currentIndex">
        <number>0</number>
       </property>
@@ -480,7 +483,7 @@
           <string>x:</string>
          </property>
          <property name="alignment">
-          <set>Qt::AlignRight|Qt::AlignTrailing|Qt::AlignVCenter</set>
+          <set>Qt::AlignmentFlag::AlignRight|Qt::AlignmentFlag::AlignTrailing|Qt::AlignmentFlag::AlignVCenter</set>
          </property>
         </widget>
         <widget class="QLineEdit" name="input_param1">
@@ -512,7 +515,7 @@
           </rect>
          </property>
          <property name="layoutDirection">
-          <enum>Qt::LeftToRight</enum>
+          <enum>Qt::LayoutDirection::LeftToRight</enum>
          </property>
          <property name="autoFillBackground">
           <bool>false</bool>
@@ -521,7 +524,7 @@
           <string>y:</string>
          </property>
          <property name="alignment">
-          <set>Qt::AlignRight|Qt::AlignTrailing|Qt::AlignVCenter</set>
+          <set>Qt::AlignmentFlag::AlignRight|Qt::AlignmentFlag::AlignTrailing|Qt::AlignmentFlag::AlignVCenter</set>
          </property>
         </widget>
         <widget class="QLineEdit" name="stream_file_filename_display">
@@ -1109,6 +1112,142 @@
         <property name="text">
          <string>GPU(experimental)</string>
         </property>
+       </widget>
+       <widget class="QGroupBox" name="groupBox_visualization">
+        <property name="enabled">
+         <bool>true</bool>
+        </property>
+        <property name="geometry">
+         <rect>
+          <x>40</x>
+          <y>625</y>
+          <width>556</width>
+          <height>86</height>
+         </rect>
+        </property>
+        <property name="layoutDirection">
+         <enum>Qt::LayoutDirection::LeftToRight</enum>
+        </property>
+        <property name="title">
+         <string>Visualization</string>
+        </property>
+        <property name="alignment">
+         <set>Qt::AlignmentFlag::AlignCenter</set>
+        </property>
+        <property name="flat">
+         <bool>false</bool>
+        </property>
+        <property name="checkable">
+         <bool>false</bool>
+        </property>
+        <widget class="QPushButton" name="reopen_process_visualization">
+         <property name="geometry">
+          <rect>
+           <x>15</x>
+           <y>30</y>
+           <width>151</width>
+           <height>36</height>
+          </rect>
+         </property>
+         <property name="text">
+          <string>Show process</string>
+         </property>
+        </widget>
+        <widget class="QRadioButton" name="choice_precursor_coverage_viz">
+         <property name="geometry">
+          <rect>
+           <x>185</x>
+           <y>25</y>
+           <width>191</width>
+           <height>24</height>
+          </rect>
+         </property>
+         <property name="text">
+          <string>Precursor coverage</string>
+         </property>
+         <property name="checked">
+          <bool>true</bool>
+         </property>
+        </widget>
+        <widget class="QRadioButton" name="choice_surface_deposit_viz">
+         <property name="geometry">
+          <rect>
+           <x>185</x>
+           <y>50</y>
+           <width>161</width>
+           <height>24</height>
+          </rect>
+         </property>
+         <property name="text">
+          <string>Surface deposit</string>
+         </property>
+        </widget>
+        <widget class="QSlider" name="horizontalSlider_frame_rate">
+         <property name="geometry">
+          <rect>
+           <x>355</x>
+           <y>50</y>
+           <width>146</width>
+           <height>22</height>
+          </rect>
+         </property>
+         <property name="minimum">
+          <number>1</number>
+         </property>
+         <property name="maximum">
+          <number>200</number>
+         </property>
+         <property name="singleStep">
+          <number>1</number>
+         </property>
+         <property name="pageStep">
+          <number>3</number>
+         </property>
+         <property name="value">
+          <number>10</number>
+         </property>
+         <property name="tracking">
+          <bool>true</bool>
+         </property>
+         <property name="orientation">
+          <enum>Qt::Orientation::Horizontal</enum>
+         </property>
+         <property name="tickPosition">
+          <enum>QSlider::TickPosition::TicksBelow</enum>
+         </property>
+         <property name="tickInterval">
+          <number>20</number>
+         </property>
+        </widget>
+        <widget class="QLabel" name="l_frame_rate">
+         <property name="geometry">
+          <rect>
+           <x>375</x>
+           <y>25</y>
+           <width>116</width>
+           <height>20</height>
+          </rect>
+         </property>
+         <property name="text">
+          <string>Frame rate</string>
+         </property>
+         <property name="alignment">
+          <set>Qt::AlignmentFlag::AlignCenter</set>
+         </property>
+        </widget>
+        <widget class="QLabel" name="display_frame_rate">
+         <property name="geometry">
+          <rect>
+           <x>510</x>
+           <y>45</y>
+           <width>36</width>
+           <height>20</height>
+          </rect>
+         </property>
+         <property name="text">
+          <string>1</string>
+         </property>
+        </widget>
        </widget>
       </widget>
       <widget class="QWidget" name="tab_mc">
@@ -1834,8 +1973,8 @@
     <rect>
      <x>0</x>
      <y>0</y>
-     <width>605</width>
-     <height>30</height>
+     <width>649</width>
+     <height>26</height>
     </rect>
    </property>
    <widget class="QMenu" name="menuFile">
@@ -2008,8 +2147,8 @@
    <slot>open_precursor_parameters_file()</slot>
    <hints>
     <hint type="sourcelabel">
-     <x>287</x>
-     <y>464</y>
+     <x>289</x>
+     <y>458</y>
     </hint>
     <hint type="destinationlabel">
      <x>604</x>
@@ -2024,8 +2163,8 @@
    <slot>open_vtk_file()</slot>
    <hints>
     <hint type="sourcelabel">
-     <x>226</x>
-     <y>130</y>
+     <x>239</x>
+     <y>124</y>
     </hint>
     <hint type="destinationlabel">
      <x>134</x>
@@ -2072,8 +2211,8 @@
    <slot>open_settings_file()</slot>
    <hints>
     <hint type="sourcelabel">
-     <x>77</x>
-     <y>267</y>
+     <x>90</x>
+     <y>261</y>
     </hint>
     <hint type="destinationlabel">
      <x>8</x>
@@ -2104,8 +2243,8 @@
    <slot>open_geom_parameters_file()</slot>
    <hints>
     <hint type="sourcelabel">
-     <x>261</x>
-     <y>164</y>
+     <x>269</x>
+     <y>158</y>
     </hint>
     <hint type="destinationlabel">
      <x>403</x>
@@ -2168,8 +2307,8 @@
    <slot>check_input()</slot>
    <hints>
     <hint type="sourcelabel">
-     <x>359</x>
-     <y>155</y>
+     <x>361</x>
+     <y>149</y>
     </hint>
     <hint type="destinationlabel">
      <x>424</x>
@@ -2184,8 +2323,8 @@
    <slot>check_input()</slot>
    <hints>
     <hint type="sourcelabel">
-     <x>553</x>
-     <y>155</y>
+     <x>555</x>
+     <y>149</y>
     </hint>
     <hint type="destinationlabel">
      <x>527</x>
@@ -2200,8 +2339,8 @@
    <slot>check_input()</slot>
    <hints>
     <hint type="sourcelabel">
-     <x>457</x>
-     <y>155</y>
+     <x>459</x>
+     <y>149</y>
     </hint>
     <hint type="destinationlabel">
      <x>604</x>
@@ -2248,8 +2387,8 @@
    <slot>check_input()</slot>
    <hints>
     <hint type="sourcelabel">
-     <x>501</x>
-     <y>259</y>
+     <x>503</x>
+     <y>253</y>
     </hint>
     <hint type="destinationlabel">
      <x>604</x>
@@ -2264,8 +2403,8 @@
    <slot>check_input()</slot>
    <hints>
     <hint type="sourcelabel">
-     <x>379</x>
-     <y>259</y>
+     <x>381</x>
+     <y>253</y>
     </hint>
     <hint type="destinationlabel">
      <x>604</x>
@@ -2280,8 +2419,8 @@
    <slot>check_input()</slot>
    <hints>
     <hint type="sourcelabel">
-     <x>359</x>
-     <y>155</y>
+     <x>361</x>
+     <y>149</y>
     </hint>
     <hint type="destinationlabel">
      <x>604</x>
@@ -2360,8 +2499,8 @@
    <slot>check_input()</slot>
    <hints>
     <hint type="sourcelabel">
-     <x>118</x>
-     <y>297</y>
+     <x>121</x>
+     <y>291</y>
     </hint>
     <hint type="destinationlabel">
      <x>9</x>
@@ -2456,8 +2595,8 @@
    <slot>check_input()</slot>
    <hints>
     <hint type="sourcelabel">
-     <x>153</x>
-     <y>291</y>
+     <x>155</x>
+     <y>285</y>
     </hint>
     <hint type="destinationlabel">
      <x>0</x>
@@ -2472,8 +2611,8 @@
    <slot>check_input()</slot>
    <hints>
     <hint type="sourcelabel">
-     <x>275</x>
-     <y>291</y>
+     <x>277</x>
+     <y>285</y>
     </hint>
     <hint type="destinationlabel">
      <x>3</x>
@@ -2536,8 +2675,8 @@
    <slot>check_input()</slot>
    <hints>
     <hint type="sourcelabel">
-     <x>299</x>
-     <y>552</y>
+     <x>301</x>
+     <y>546</y>
     </hint>
     <hint type="destinationlabel">
      <x>30</x>
@@ -2552,8 +2691,8 @@
    <slot>check_input()</slot>
    <hints>
     <hint type="sourcelabel">
-     <x>299</x>
-     <y>580</y>
+     <x>301</x>
+     <y>574</y>
     </hint>
     <hint type="destinationlabel">
      <x>108</x>
@@ -2584,8 +2723,8 @@
    <slot>open_save_directory()</slot>
    <hints>
     <hint type="sourcelabel">
-     <x>120</x>
-     <y>617</y>
+     <x>133</x>
+     <y>611</y>
     </hint>
     <hint type="destinationlabel">
      <x>6</x>
@@ -2632,8 +2771,8 @@
    <slot>open_settings_file()</slot>
    <hints>
     <hint type="sourcelabel">
-     <x>232</x>
-     <y>430</y>
+     <x>245</x>
+     <y>424</y>
     </hint>
     <hint type="destinationlabel">
      <x>7</x>
@@ -2680,8 +2819,8 @@
    <slot>change_state_temperature_tracking(int)</slot>
    <hints>
     <hint type="sourcelabel">
-     <x>438</x>
-     <y>333</y>
+     <x>451</x>
+     <y>353</y>
     </hint>
     <hint type="destinationlabel">
      <x>599</x>
@@ -2696,8 +2835,8 @@
    <slot>check_input()</slot>
    <hints>
     <hint type="sourcelabel">
-     <x>499</x>
-     <y>359</y>
+     <x>512</x>
+     <y>353</y>
     </hint>
     <hint type="destinationlabel">
      <x>600</x>
@@ -2753,6 +2892,70 @@
     </hint>
    </hints>
   </connection>
+  <connection>
+   <sender>reopen_process_visualization</sender>
+   <signal>clicked()</signal>
+   <receiver>MainWindow</receiver>
+   <slot>reopen_viz()</slot>
+   <hints>
+    <hint type="sourcelabel">
+     <x>218</x>
+     <y>756</y>
+    </hint>
+    <hint type="destinationlabel">
+     <x>271</x>
+     <y>778</y>
+    </hint>
+   </hints>
+  </connection>
+  <connection>
+   <sender>choice_precursor_coverage_viz</sender>
+   <signal>clicked()</signal>
+   <receiver>MainWindow</receiver>
+   <slot>precursor_coverage_viz_chosen()</slot>
+   <hints>
+    <hint type="sourcelabel">
+     <x>369</x>
+     <y>739</y>
+    </hint>
+    <hint type="destinationlabel">
+     <x>412</x>
+     <y>777</y>
+    </hint>
+   </hints>
+  </connection>
+  <connection>
+   <sender>choice_surface_deposit_viz</sender>
+   <signal>clicked()</signal>
+   <receiver>MainWindow</receiver>
+   <slot>surface_deposit_viz_chosen()</slot>
+   <hints>
+    <hint type="sourcelabel">
+     <x>383</x>
+     <y>764</y>
+    </hint>
+    <hint type="destinationlabel">
+     <x>475</x>
+     <y>777</y>
+    </hint>
+   </hints>
+  </connection>
+  <connection>
+   <sender>horizontalSlider_frame_rate</sender>
+   <signal>sliderMoved(int)</signal>
+   <receiver>MainWindow</receiver>
+   <slot>frame_rate_slider_moved(int)</slot>
+   <hints>
+    <hint type="sourcelabel">
+     <x>478</x>
+     <y>748</y>
+    </hint>
+    <hint type="destinationlabel">
+     <x>511</x>
+     <y>795</y>
+    </hint>
+   </hints>
+  </connection>
  </connections>
  <designerdata>
   <property name="gridDeltaX">
@@ -2802,5 +3005,9 @@
   <slot>open_new_session(bool)</slot>
   <slot>stop_febid()</slot>
   <slot>change_state_gpu(int)</slot>
+  <slot>reopen_viz()</slot>
+  <slot>precursor_coverage_viz_chosen()</slot>
+  <slot>surface_deposit_viz_chosen()</slot>
+  <slot>frame_rate_slider_moved(int)</slot>
  </slots>
 </ui>

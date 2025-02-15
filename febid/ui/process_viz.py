@@ -15,16 +15,18 @@ class RenderWindow(QMainWindow):
     """
     Class for the visualization of the FEBID process
     """
-    def __init__(self, process_obj, show=False, app=None):
+    def __init__(self, process_obj, displayed_data='precursor', show=False, app=None):
         super().__init__()
         self.setWindowTitle("FEBID process")
         self.app = app
         # The object of the simulation process state
         self.process_obj = process_obj
+        self.displayed_data = displayed_data
         # Create a PyVista BackgroundPlotter and add it to the layout
         self.render = Render(app=app, show=show, cell_size=process_obj.structure.cell_size)
         self.scalar_bar_timer = 0 # timer for the scale bar update
         self.scalar_bar_framerate = 2 # update rate for the scalar bar
+        self.frame_rate = 1
 
     def start(self, frame_rate=1):
         """
@@ -32,9 +34,10 @@ class RenderWindow(QMainWindow):
 
         :param frame_rate: rendering speed in frames per second
         """
-        self._visualize_process(frame_rate)
+        self.frame_rate = frame_rate
+        self._visualize_process()
 
-    def _visualize_process(self, frame_rate=1):
+    def _visualize_process(self):
         """
         Visualize the process of the core deposition
 
@@ -45,15 +48,14 @@ class RenderWindow(QMainWindow):
         pr = self.process_obj
         rn = self.render
         cmap = 'inferno'
-        data = pr.structure.precursor
-        mask = pr.structure.surface_bool
-        displayed_data = 'precursor'
+        data = self.__get_data_by_name(self.displayed_data)
+        mask = self.__get_data_by_name('surface_bool')
         # Initializing graphical monitoring
         pr.redraw = True
         ### For some reason adding a mesh to the scene in a child thread
         # causes a wglMakeCurrent failed in MakeCurrent() error in VTK.
         # Thus preparing the scene before starting the update loop.
-        self._create_scene(data, mask, displayed_data, cmap)
+        self._create_scene(data, mask, self.displayed_data, cmap)
         pr.redraw = False
         time.sleep(1)
         rn.p.show_axes()
@@ -66,15 +68,16 @@ class RenderWindow(QMainWindow):
                 now = timeit.default_timer()
                 if pr.redraw:
                     mask = pr.structure.surface_bool
-                    data = pr.structure.precursor
+                    data = pr.structure.deposit
                     cam_pos = rn.p.camera_position
-                    self._create_scene(data, mask, displayed_data, cmap)
+                    self._create_scene(data, mask, self.displayed_data, cmap)
                     rn.p.camera_position = cam_pos
                     rn.p.show_axes()
                     rn.p.show_grid()
                     pr.redraw = False
                 self.__update_graphical(data, mask, now - start_time)
-                time.sleep(1 / frame_rate)
+                time.sleep(1 / self.frame_rate)
+            self.process_obj.displayed_data = None
 
         thread = Thread(target=update, args=(data, mask))
         thread.start()
@@ -169,7 +172,7 @@ class RenderWindow(QMainWindow):
             if timeit.default_timer() > self.scalar_bar_timer:
                 try:
                     data_flat = data.reshape(-1)
-                    _min = data_flat[data_flat != 0].min()
+                    _min = data_flat[data_flat > 0].min()
                 except ValueError:
                     _min = 1e-8
                 rn.p.update_scalar_bar_range(clim=[_min, data.max()])
@@ -193,3 +196,13 @@ class RenderWindow(QMainWindow):
         Close the plotting window
         """
         self.render.p.close()
+
+    def __get_data_by_name(self, name):
+        """
+        Get data by name from the arrays available in the process object.
+
+        :param name: name of the data. Check self.process_obj.structure for array names.
+        """
+        data = getattr(self.process_obj.structure, name)
+        return data
+

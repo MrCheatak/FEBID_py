@@ -141,10 +141,12 @@ def run_febid(structure, precursor_params, settings, sim_params, path, temperatu
         stats.get_params(sim_params, 'Simulation volume parameters')
         process_obj.stats_frequency = min(saving_params.get('gather_stats_interval', 1),
                                           saving_params.get('save_snapshot_interval', 1))
+        process_obj.stats_gathering = True
     else:
         stats = None
     if saving_params['save_snapshot']:
         struc = StructureSaver(process_obj, flag, saving_params['save_snapshot_interval'], saving_params['filename'])
+        process_obj.stats_gathering = True
     else:
         struc = None
     printing = Thread(target=print_all, args=[path, process_obj, sim, stats, struc])
@@ -344,7 +346,7 @@ def print_step_GPU(y, x, dwell_time, pr: Process, sim: MC_Simulation, t, run_fla
         # Collecting prcess stats
         if time_passed % pr.stats_frequency < pr.dt * 1.5:
             pr._gather_stats()
-            pr.offload_from_gpu_partial('precursor')
+            pr.get_data()
             # pr.structure.offload_partial(pr.knl, 'surface_bool')
         pr.reset_dt()
         # Allow only one tick of the loop for daemons per one tick of simulation

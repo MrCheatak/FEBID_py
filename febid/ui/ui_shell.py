@@ -183,6 +183,7 @@ class MainPanel(QMainWindow, UI_MainPanel):
         self.window_size_febid = self.size().width(), self.size().height()
         self.window_size_mc = self.size().width(), 530
         self.stop_febid_button.setVisible(False)
+        self.groupBox_visualization.setVisible(False)
         self.show()
         # self.tab_switched(self.tabWidget.currentIndex())
         self.__group_interface_elements()
@@ -206,6 +207,9 @@ class MainPanel(QMainWindow, UI_MainPanel):
         self.save_directory = ''
         self.cam_pos = None
         self.viz = None
+        self.frame_rate = 1
+        self.displayed_data = 'precursor' # Name of the data tp be visualized
+        self.frame_rate_control_tick_size = 0.1  # s
 
         self.load_last_session()
         self.update_ui()
@@ -515,7 +519,7 @@ class MainPanel(QMainWindow, UI_MainPanel):
         """
         try:
             return_val = self.session_handler.start()
-            self.reopen_process_visualization.setVisible(True)
+            self.groupBox_visualization.setVisible(True)
         except Exception as e:
             self.__exception_handler(e)
         self.start_febid_button.setVisible(False)
@@ -560,8 +564,29 @@ class MainPanel(QMainWindow, UI_MainPanel):
         if type(self.viz) is RenderWindow:
             if self.viz.isVisible():
                 return
-        self.viz = RenderWindow(self.session_handler.starter.process_obj, show=True, app=self.app)
-        self.viz.start(frame_rate=3)
+        self.session_handler.starter.process_obj.displayed_data = self.displayed_data # enables data acquisition from GPU
+        self.viz = RenderWindow(self.session_handler.starter.process_obj, displayed_data=self.displayed_data, show=True,
+                                app=self.app)
+        self.viz.start(frame_rate=self.frame_rate)
+
+    def precursor_coverage_viz_chosen(self):
+        self.choice_precursor_coverage_viz.setChecked(True)
+        self.displayed_data = 'precursor'
+        pass
+
+    def surface_deposit_viz_chosen(self):
+        self.choice_surface_deposit_viz.setChecked(True)
+        self.displayed_data = 'deposit'
+        pass
+
+    def frame_rate_slider_moved(self, tick):
+        frame_rate = tick * self.frame_rate_control_tick_size
+        self.display_frame_rate.setText(str(f'{frame_rate:.1f}'))
+        self.frame_rate = frame_rate
+        try:
+            self.viz.frame_rate = frame_rate
+        except AttributeError:
+            pass
 
     # Supporting functions
     def load_last_session(self, filename=''):
@@ -677,7 +702,7 @@ class MainPanel(QMainWindow, UI_MainPanel):
     def on_finish(self, message=''):
         self.start_febid_button.setVisible(True)
         self.stop_febid_button.setVisible(False)
-        self.reopen_process_visualization.setVisible(False)
+        self.groupBox_visualization.setVisible(False)
         flag.reset()
         self.statusBar().showMessage(message)
 
@@ -761,6 +786,7 @@ class MainPanel(QMainWindow, UI_MainPanel):
                                                                self.choice_auto, names=['vtk', 'geom', 'auto'])
         self.radio_buttons_pattern_source = RadioButtonGroup(self.choice_simple_pattern, self.choice_stream_file,
                                                              names=['simple', 'stream_file'])
+        self.radio_buttons_viz_data = None
 
     def __get_file_name_from_dialog(self):
         """
