@@ -28,7 +28,11 @@ class GPU:
         """
 
         # Create a context with the first available GPU
-        self.ctx = cl.create_some_context(answers=['0'])
+        platforms = cl.get_platforms()  # initialize OpenCL platform
+        platform = platforms[0]  # select the first platform
+        devices = platform.get_devices(device_type=cl.device_type.GPU)  # Get GPU devices
+        self.ctx = cl.Context(devices=devices)  # Create a context with the selected devices
+
         self.queue = cl.CommandQueue(self.ctx)
         self.max_storage = self.queue.device.max_mem_alloc_size
 

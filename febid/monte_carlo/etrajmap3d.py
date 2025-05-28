@@ -90,8 +90,8 @@ class ETrajMap3d(MC_Sim_Base):
         self.surface = structure.surface_bool
         self.s_neighb = structure.surface_neighbors_bool  # 3D array representing surface n-nearest neigbors
         self.cell_size = structure.cell_size  # absolute dimension of a cell, nm
-        self.DE = np.zeros_like(self.grid)  # array for storing of deposited energies
-        self.flux = np.zeros_like(self.grid)  # array for storing SE fluxes
+        self.DE = np.zeros_like(self.grid, dtype=float)  # array for storing of deposited energies
+        self.flux = np.zeros_like(self.grid, dtype=float)  # array for storing SE fluxes
 
         self.amplifying_factor = 10000  # artificially increases SE yield to preserve accuracy
         self.se_E = 19  # eV, average SE energy
@@ -271,54 +271,78 @@ class ETrajMap3d(MC_Sim_Base):
         # and collect them when they cross surface
 
         # Getting cell index for each emission point
-        self.se_coords_all = coords_all = np.int32(ne.evaluate('a/b', global_dict={'a': self.coords_all.T, 'b': self.cell_size}))
+        coords, coords_all, dEs, in_index = self._get_included_trajectories()
+
+        # Generating random direction for each emission point
+        delta, direction, sign = self._generate_random_directions(coords, dEs)
+
+        lambda_escape, n_se = self._get_isotropic_se_sources(coords_all, dEs, in_index)
+
+        max_traversed_cells, pn, step_t, t = self._prepapre_for_cell_traversal(coords, delta, direction, lambda_escape)
+        # Here each vector is processed with the same ray traversal algorithm as in 'follow_segment' method.
+        # It checks if vectors cross surface cells and if they do, the number of emitted SEs (n) associated
+        # with the vector is collected in the cell crossed.
+        self._run_traversal_and_save_intersection_coords(coords, direction, max_traversed_cells, n_se, pn, sign, step_t,
+                                                         t)
+
+    def _run_traversal_and_save_intersection_coords(self, coords, direction, max_traversed_cells, n_se, pn, sign,
+                                                    step_t, t):
+        traversal.generate_flux(self.flux, self.surface.view(dtype=np.uint8), self.cell_size, coords, pn, direction,
+                                sign, t, step_t, n_se, max_traversed_cells)  # Cython script
+        self.coords = np.empty((coords.shape[0], 2, 3))
+        self.coords[:, 0] = coords[...]
+        self.coords[:, 1] = pn[...]
+
+    def _prepapre_for_cell_traversal(self, coords, delta, direction, lambda_escape):
+        length = lambda_escape  # explicitly says that every vector has same length that equals SE escape path
+        direction[:, 0] *= length
+        direction[:, 1] *= length
+        direction[:, 2] *= length
+        pn = direction + coords
+        step = np.sign(direction) * self.cell_size
+        step_t = step / direction
+        t = ne.evaluate('abs((d + m0s + d0 * s)/dir)',
+                        global_dict={'d': delta, 'm0s': np.maximum(step, 0), 'd0': delta == 0, 's': step,
+                                     'dir': direction})
+        max_traversed_cells = int(np.amax(length, initial=0) / self.cell_size * 2 + 5)
+        return max_traversed_cells, pn, step_t, t
+
+    def _get_isotropic_se_sources(self, coords_all, dEs, in_index):
+        coords_ind = coords_all[:, in_index]
+        cell_material = self.grid[coords_ind[0], coords_ind[1], coords_ind[2]]
+        e = np.empty_like(cell_material)
+        e[cell_material == -1] = self.deponat.e
+        e[cell_material == -2] = self.substrate.e
+        e[cell_material >= 0] = 1000000
+        lambda_escape = np.where(cell_material == -1, self.deponat.lambda_escape * 2, 0.00001) + np.where(
+            cell_material == -2, self.substrate.lambda_escape * 2, 0.00001)
+        n_se = dEs / e * self.amplifying_factor  # number of generated SEs, usually ~0.1
+        return lambda_escape, n_se
+
+    def _generate_random_directions(self, coords, dEs):
+        rng = np.random.default_rng()
+        direction = rng.normal(0, 10, (dEs.shape[0], 3))  # creates spherically randomly distributed vectors
+        L = np.empty_like(dEs)
+        traversal.det_2d(direction, L)
+        direction /= L.reshape(L.shape[0], 1)  # normalizing
+        # Preparing from ray tracing algorithm
+        sign = np.int8(np.sign(direction))
+        sign[sign == -1] = 0
+        sign[sign == 1] = -1
+        delta = ne.evaluate('-(a%b)', global_dict={'a': coords, 'b': 5})
+        sign = (delta == 0) * sign
+        return delta, direction, sign
+
+    def _get_included_trajectories(self):
+        self.se_coords_all = coords_all = np.int32(
+            ne.evaluate('a/b', global_dict={'a': self.coords_all.T, 'b': self.cell_size}))
         # Selecting only cells in surface proximity
         neighbors = self.s_neighb
         self.se_coords_included = include = neighbors[coords_all[0], coords_all[1], coords_all[2]]
         in_index = include.nonzero()[0]
         coords = self.coords_all[in_index]
         dEs = self.dEs_all[in_index]
-
-        # Generating random direction for each emission point
-        rng = np.random.default_rng()
-        direction = rng.normal(0, 10, (dEs.shape[0], 3)) # creates spherically randomly distributed vectors
-        L = np.empty_like(dEs)
-        traversal.det_2d(direction, L)
-        direction /= L.reshape(L.shape[0],1) # normalizing
-        # Preparing from ray tracing algorithm
-        sign = np.int8(np.sign(direction))
-        sign[sign==-1] = 0
-        sign[sign==1] = -1
-        delta = ne.evaluate('-(a%b)', global_dict={'a':coords, 'b':5})
-        sign = (delta==0) * sign
-
-        coords_ind = coords_all[:, in_index]
-        cell_material = self.grid[coords_ind[0], coords_ind[1], coords_ind[2]]
-        e = np.empty_like(cell_material)
-        e[cell_material==-1] = self.deponat.e
-        e[cell_material==-2] = self.substrate.e
-        e[cell_material>=0] = 1000000
-        lambda_escape = np.where(cell_material == -1, self.deponat.lambda_escape * 2, 0.00001) + np.where(cell_material == -2, self.substrate.lambda_escape * 2, 0.00001)
-        n_se = dEs / e * self.amplifying_factor  # number of generated SEs, usually ~0.1
-
-        length = lambda_escape # explicitly says that every vector has same length that equals SE escape path
-        direction[:,0] *= length
-        direction[:,1] *= length
-        direction[:,2] *= length
-        pn = direction + coords
-        step = np.sign(direction) * self.cell_size
-        step_t = step / direction
-
-        t = ne.evaluate('abs((d + m0s + d0 * s)/dir)', global_dict={'d':delta, 'm0s':np.maximum(step,0), 'd0':delta==0, 's':step, 'dir':direction})
-        max_traversed_cells = int(np.amax(length, initial=0) / self.cell_size * 2 + 5)
-        # Here each vector is processed with the same ray traversal algorithm as in 'follow_segment' method.
-        # It checks if vectors cross surface cells and if they do, the number of emitted SEs (n) associated
-        # with the vector is collected in the cell crossed.
-        traversal.generate_flux(self.flux, self.surface.view(dtype=np.uint8), self.cell_size, coords, pn, direction, sign, t, step_t, n_se, max_traversed_cells) # Cython script
-
-        self.coords = np.empty((coords.shape[0], 2, 3))
-        self.coords[:,0] = coords[...]
-        self.coords[:,1] = pn[...]
+        return coords, coords_all, dEs, in_index
 
     def extract_se_heat(self):
         """
