@@ -26,7 +26,7 @@ cpdef int surface_temp_av(double[:,:,:] surface_temp, double[:,:,:] temp, int[:]
         traceback.print_exc()
         raise ex
 
-cpdef int beam_matrix_semi_surface_av(long[:,:,:] beam_matrix_source, long[:,:,:] beam_matrix_output, int[:] z, int[:] y, int[:] x) except -1:
+cpdef int beam_matrix_semi_surface_av(int[:,:,:] beam_matrix_source, int[:,:,:] beam_matrix_output, int[:] z, int[:] y, int[:] x) except -1:
     try:
         beam_matrix_av_cy(beam_matrix_output, beam_matrix_source, z, y, x)
     except Exception as ex:
@@ -390,7 +390,7 @@ cdef int stencil_base(double* sum, double[:,:,:] grid, int x, int xdim, int y, i
 @cython.initializedcheck(False) # turn off initialization check for memoryviews
 @cython.boundscheck(False) # turn off bounds-checking for entire function
 @cython.wraparound(False)  # turn off negative index wrapping for entire function
-cdef int beam_matrix_av_cy(long[:,:,:] grid_out, long[:,:,:] grid, int[:] z_index, int[:] y_index, int[:] x_index) nogil except -1:
+cdef int beam_matrix_av_cy(int[:,:,:] grid_out, int[:,:,:] grid, int[:] z_index, int[:] y_index, int[:] x_index) nogil except -1:
     """
     Define temperature of the surface cells by averaging temperature of the neighboring solid cells 
 
@@ -423,13 +423,13 @@ cdef int beam_matrix_av_cy(long[:,:,:] grid_out, long[:,:,:] grid, int[:] z_inde
         # with gil: # show actual calculation for debugging
         #     print(f'{z, y, x}:  {grid_out[z, y, x]}  =  {average}  /  {6 - zero_count}')
         if zero_count < 6:
-            grid_out[z, y, x] = <long>(average / (6 - zero_count))
+            grid_out[z, y, x] = <int>(average / (6 - zero_count))
 
 
 @cython.initializedcheck(False) # turn off initialization check for memoryviews
 @cython.boundscheck(False) # turn off bounds-checking for entire function
 @cython.wraparound(False)  # turn off negative index wrapping for entire function
-cdef int stencil_base_long(long* sum, long[:,:,:] grid, int x, int xdim, int y, int ydim, int z, int zdim) nogil except -1:
+cdef int stencil_base_long(long* sum, int[:,:,:] grid, int x, int xdim, int y, int ydim, int z, int zdim) nogil except -1:
     """
     Stencil operator. Sums all the neighbors of the current cell. 
     If a neighbor is 0 or out of the bounds, then increase skipped cell counter.
