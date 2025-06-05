@@ -123,7 +123,7 @@ def get_index_in_parent(index, slicer):
     """
     Get the index in the parent array from the index in the view array.
 
-    :param index: The index in the view array, must be array of tuples, like the result of np.argwhere()
+    :param index: The index in the view array
     :param slicer: The slice object applied to the parent array
 
     :return: The index in the parent array

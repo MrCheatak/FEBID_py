@@ -71,7 +71,7 @@ setuptools.setup(
     license='MIT',
     packages=['febid', 'febid.monte_carlo', 'febid.monte_carlo.compiled', 'febid.ui', 'febid.libraries.vtk_rendering',
               'febid.libraries.rolling', 'febid.libraries.ray_traversal', 'febid.libraries.pde'],
-    package_data = {'': ['*.pyx', 'ui/last_session_stub.yml']},
+    package_data = {'': ['*.pyx', 'ui/last_session_stub.yml', 'kernels/*.cl']},
     include_package_data=True,
     install_requires=requirements,
     ext_modules=cythonize(ext_modules),
