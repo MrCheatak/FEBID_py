@@ -60,7 +60,7 @@ with open('requirements.txt') as f:
     requirements = f.read().splitlines()
 setuptools.setup(
     name='febid',
-    version='0.9.6',
+    version='0.10.0',
     author='Alexander Kuprava, Michael Huth',
     author_email='sandro1742@gmail.com',
     description='FEBID process simulator',
@@ -68,7 +68,7 @@ setuptools.setup(
     long_description_content_type="text/markdown",
     url='https://github.com/MrCheatak/FEBID_py',
     project_urls = {},
-    license='MIT',
+    license='APGL-3.0',
     packages=['febid', 'febid.monte_carlo', 'febid.monte_carlo.compiled', 'febid.ui', 'febid.libraries.vtk_rendering',
               'febid.libraries.rolling', 'febid.libraries.ray_traversal', 'febid.libraries.pde'],
     package_data = {'': ['*.pyx', 'ui/last_session_stub.yml', 'kernels/*.cl']},
