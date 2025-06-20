@@ -17,7 +17,3 @@ class SimulationContext:
 
     process: Process = None
     mcSimulation: MC_Simulation = None
-    statistics: Statistics = None
-    structureSaver: StructureSaver = None
-    syncHelper: SynchronizationHelper = None
-    printingThread: object = None

@@ -9,10 +9,11 @@ import yaml
 import pyvista as pv
 
 import febid.simple_patterns as sp
-from febid import febid_core
 from febid.Structure import Structure
 from febid.monte_carlo import etraj3d as e3d
 from febid.simulation_context import SimulationContext
+from febid.febid_core import SimulationManager
+
 
 
 class Starter:
@@ -24,6 +25,8 @@ class Starter:
         self.context = SimulationContext()
         self.dwell_time_units = 1E-6
         self.context.structure = Structure()
+        self.simulation_manager: SimulationManager = None
+        self.syncHelper = None
 
 
     def start(self):
@@ -34,7 +37,7 @@ class Starter:
         self._create_printing_path()
         self._open_settings_and_precursor_params()
         self._run_febid_interface()
-        return self.context.process, self.context.mcSimulation, self.context.printingThread
+        return self.simulation_manager
 
     def start_mc(self, **kwargs):
         self._create_simulation_volume()
@@ -45,11 +48,8 @@ class Starter:
         """
         Stop the simulation
         """
-        if self.context.printingThread is not None:
-            if self.context.printingThread.is_alive():
-                self.context.syncHelper.run_flag = True
-                self.context.syncHelper.is_stopped = True
-                self.context.printingThread.join()
+        if not self.syncHelper:
+            self.simulation_manager.stop()
 
     def _create_simulation_volume(self):
         """
@@ -215,7 +215,7 @@ class Starter:
         Compile simulation parameters and start the simulation
         """
         sim_volume_params = self.get_simulation_volume_parameters()
-        saving_params = {'gather_stats': False, 'gather_stats_interval': None, 'save_snapshot': False, 'save_snapshot_interval': None,
+        saving_params = {'gather_stats': False, 'gather_stats_interval': 1000, 'save_snapshot': False, 'save_snapshot_interval': 1000,
                          'filename': ''}
         flag1, flag2 = self._params['save_simulation_data'], self._params['save_structure_snapshot']
         gather_stats = saving_params['gather_stats'] = self._params['save_simulation_data']
@@ -259,7 +259,11 @@ class Starter:
         self.context.temperatureTracking = temperature_tracking
         self.context.device = gpu_flag
 
-        self.context = febid_core.run_febid(self.context)
+        self.simulation_manager = SimulationManager(self.context)
+        self.simulation_manager.initialize()
+        self.simulation_manager.run()
+
+        self.syncHelper = self.simulation_manager.syncHelper
 
     def _run_mc_interface(self, **kwargs):
         """

@@ -67,15 +67,14 @@ class MonitoringDaemon(Thread):
     def run(self):
         print(f'Starting {self.purpose} daemon.')
         next_record_time = self.passed_time + self.refresh_rate
-        self.run_flag.loop_tick.acquire()
-        while not self.run_flag:
-            self.run_flag.loop_tick.wait()
-            if next_record_time < self.run_flag.timer:
-                self.passed_time = self.run_flag.timer
-                next_record_time = self.passed_time + self.refresh_rate
-                self.looped_func()
+        with self.run_flag.loop_tick:
+            while not self.run_flag:
+                self.run_flag.loop_tick.wait(0.1)
+                if next_record_time < self.run_flag.timer:
+                    self.passed_time = self.run_flag.timer
+                    next_record_time = self.passed_time + self.refresh_rate
+                    self.looped_func()
         self.looped_func(end=True)
-        self.run_flag.loop_tick.release()
         print(f'Closing {self.purpose} daemon.')
 
     def looped_func(self, end=False):
