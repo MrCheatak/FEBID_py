@@ -14,7 +14,6 @@ from ruamel.yaml import YAML, CommentedMap
 from febid.start import Starter
 from febid.Structure import Structure
 from febid.libraries.vtk_rendering.VTK_Rendering import read_field_data
-from febid.febid_core import flag
 
 from febid.ui.process_viz import RenderWindow
 
@@ -526,6 +525,7 @@ class MainPanel(QMainWindow, UI_MainPanel):
         self.stop_febid_button.setVisible(True)
 
         def wait_for_success():
+            flag = self.session_handler.starter.context.syncHelper
             flag.event.wait()
             if flag.is_success:
                 self.on_finish('Simulation finished')
@@ -564,9 +564,9 @@ class MainPanel(QMainWindow, UI_MainPanel):
         if type(self.viz) is RenderWindow:
             if self.viz.isVisible():
                 return
-        self.session_handler.starter.process_obj.displayed_data = self.displayed_data # enables data acquisition from GPU
-        self.viz = RenderWindow(self.session_handler.starter.process_obj, displayed_data=self.displayed_data, show=True,
-                                app=self.app)
+        self.session_handler.starter.context.process.displayed_data = self.displayed_data # enables data acquisition from GPU
+        self.viz = RenderWindow(self.session_handler.starter.context.process, self.session_handler.starter.context.syncHelper,
+                                displayed_data=self.displayed_data, show=True, app=self.app)
         self.viz.start(frame_rate=self.frame_rate)
 
     def precursor_coverage_viz_chosen(self):
@@ -703,7 +703,7 @@ class MainPanel(QMainWindow, UI_MainPanel):
         self.start_febid_button.setVisible(True)
         self.stop_febid_button.setVisible(False)
         self.groupBox_visualization.setVisible(False)
-        flag.reset()
+        self.session_handler.starter.context.syncHelper.reset()
         self.statusBar().showMessage(message)
 
     def on_close(self):

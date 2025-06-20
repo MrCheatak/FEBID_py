@@ -134,7 +134,8 @@ class Process:
         self.min_precursor_coverage = 0
         self.x0 = 0
         self.y0 = 0
-        self.last_full_cells = [] # indices of the last filled cells
+        self.full_cells = None  # indices of the filled cells, used for beam matrix update
+        self.last_full_cells = None # indices of the last filled cells
 
         self.lock = Lock()
         self.device = device
@@ -244,7 +245,8 @@ class Process:
         nd = self.__deposition_index_3d[0][nd], self.__deposition_index_3d[1][nd], self.__deposition_index_3d[2][nd]
         new_deposits = [(nd[0][i], nd[1][i], nd[2][i]) for i in range(nd[0].shape[0])]
         cells_abs = [get_index_in_parent(cell, self._irradiated_area_3d) for cell in new_deposits] # cell's absolute position in array
-        self.last_full_cells = np.array(cells_abs)
+        self.last_full_cells = cells_abs
+        self.full_cells = (self.full_cells or []) + self.last_full_cells
         self.filled_cells += len(new_deposits)
         for cell in new_deposits:
             self._update_cell_config(cell)

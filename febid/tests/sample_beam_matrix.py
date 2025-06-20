@@ -17,7 +17,7 @@ def test_beam_matrix(x, y, sim, pr, resized=False):
         beam_matrix_buff = None
         filled_cells_init = None
     else:
-        beam_matrix_buff = pr.beam_matrix
+        beam_matrix_buff = pr._beam_matrix
         filled_cells_init = pr.full_cells
     beam_matrix = sample_beam_matrix(x, y, sim.pe_sim.sigma, pr.structure,
                                      beam_matrix_buff=beam_matrix_buff,
@@ -51,8 +51,8 @@ def sample_beam_matrix(x_pos, y_pos, a, structure:Structure, f0=1e6, beam_matrix
     else:
         beam_matrix = np.zeros(structure.shape, dtype=np.int32)
     # Clear filled cells and project the values from the 2D Gaussian onto the 3D structure using surface_bool
-    if filled_cells_init is not None:
-
+    if  filled_cells_init is not None:
+        filled_cells_init = np.array(filled_cells_init, dtype=np.int32)
         beam_matrix[*filled_cells_init.T] = 0
         for n in range(len(filled_cells_init)):
             filled_cells_T = filled_cells_init.T

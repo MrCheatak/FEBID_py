@@ -20,9 +20,11 @@ from tqdm import tqdm
 
 from febid.Statistics import Statistics, StructureSaver, SynchronizationHelper
 # Local packages
-from febid.Structure import Structure
 from febid.Process import Process
 from febid.monte_carlo.etraj3d import MC_Simulation
+from febid.simulation_context import SimulationContext
+from febid.parameter_utils import prepare_equation_values, prepare_ms_config
+
 
 # It is assumed, that surface cell is a cell with a fully deposited cell(or substrate) under it and thus able produce deposit under irradiation.
 
@@ -32,86 +34,11 @@ from febid.monte_carlo.etraj3d import MC_Simulation
 # The program uses multithreading to run the simulation itself, statistics gathering, structure snapshot dumping
 # and visualization all in parallel to the main thread that is reserved for the UI
 # These flags are used to synchronize the threads and stop them if needed.
-flag = SynchronizationHelper(False)
 x_pos, y_pos = 0., 0.
 warnings.simplefilter('always')
 
 
-def prepare_equation_values(precursor: dict, settings: dict):
-    """
-    Prepare equation values for the reaction-equation solver.
-
-    :param precursor: dictionary containing precursor properties
-    :param settings: dictionary containing beam and precursor flux settings
-    :return: dictionary containing equation values for the solver
-    """
-    equation_values = {}
-    try:
-        equation_values['F'] = settings.get("precursor_flux")
-        equation_values['n0'] = precursor.get("max_density")
-        equation_values['sigma'] = precursor.get("cross_section")
-        equation_values['tau'] = precursor.get("residence_time") * 1E-6
-        equation_values['Ea'] = precursor.get('desorption_activation_energy')
-        equation_values['k0'] = precursor.get('desorption_attempt_frequency')
-        equation_values['V'] = precursor.get("dissociated_volume")
-        equation_values['D'] = precursor.get("diffusion_coefficient")
-        equation_values['Ed'] = precursor.get('diffusion_activation_energy')
-        equation_values['D0'] = precursor.get('diffusion_prefactor')
-        equation_values['rho'] = precursor.get('average_density')
-        equation_values['heat_cond'] = precursor.get('thermal_conductivity')
-        equation_values['cp'] = precursor.get('heat_capacity')
-        equation_values['deposition_scaling'] = settings.get('deposition_scaling')
-    except KeyError as e:
-        raise KeyError(f"Missing key in precursor or settings dictionary: {str(e)}")
-    return equation_values
-
-
-def prepare_ms_config(precursor: dict, settings: dict, structure: Structure):
-    """
-    Prepare the configuration for Monte-Carlo simulation.
-
-    :param precursor: dictionary containing precursor information
-    :param settings: dictionary containing simulation settings
-    :param structure: Structure object representing the simulation volume
-    :return: dictionary containing the Monte-Carlo simulation configuration
-    :raises TypeError: if the 'structure' parameter is not an instance of the 'Structure' class
-    :raises KeyError: if any key is missing in the precursor or settings dictionaries
-    """
-    if not isinstance(structure, Structure):
-        raise TypeError("The 'structure' parameter must be an instance of the 'Structure' class.")
-    # Parameters for Monte-Carlo simulation
-    try:
-        mc_config = {'name': precursor["deposit"], 'E0': settings["beam_energy"],
-                     'Emin': settings["minimum_energy"],
-                     'Z': precursor["average_element_number"],
-                     'A': precursor["average_element_mol_mass"], 'rho': precursor["average_density"],
-                     'I0': settings["beam_current"], 'sigma': settings["gauss_dev"], 'n': settings['n'],
-                     'substrate_element': settings["substrate_element"],
-                     'cell_size': structure.cell_size,
-                     'e': precursor["SE_emission_activation_energy"], 'l': precursor["SE_mean_free_path"],
-                     'emission_fraction': settings['emission_fraction']}
-    except KeyError as e:
-        raise KeyError(f"Missing key in precursor or settings dictionary: {str(e)}")
-    return mc_config
-
-
-def setup_stats_collection(observed_obj, run_flag, config):
-    stats = Statistics(observed_obj, run_flag, config['gather_stats_interval'], config['filename'])
-    return stats
-
-
-def setup_structure_saving(process_obj, run_flag, saving_params):
-    struc = StructureSaver(process_obj, flag, saving_params['save_snapshots'], saving_params['filename'])
-    return struc
-
-
-def run_febid_interface(*args, **kwargs):
-    process_obj, sim, printing_thread = run_febid(*args, **kwargs)
-    return process_obj, sim, printing_thread
-
-
-def run_febid(structure, precursor_params, settings, sim_params, path, temperature_tracking,
-              saving_params=None, device=None):
+def run_febid(context: SimulationContext):
     """
         Create necessary objects and start the FEBID process.
 
@@ -124,37 +51,57 @@ def run_febid(structure, precursor_params, settings, sim_params, path, temperatu
     :param saving_params: settings for the monitoring function
     :return:
     """
-    equation_values = prepare_equation_values(precursor_params, settings)
-    mc_config = prepare_ms_config(precursor_params, settings, structure)
+    equation_values = prepare_equation_values(context.precursorParams, context.settings)
+    mc_config = prepare_ms_config(context.precursorParams, context.settings, context.structure)
 
-    flag.reset()
-    process_obj = Process(structure, equation_values, temp_tracking=temperature_tracking, device=device)
+    # Setup synchronization
+    run_flag = SynchronizationHelper(False)
 
-    sim = MC_Simulation(structure, mc_config)
+    process_obj = Process(context.structure, equation_values, temp_tracking=context.temperatureTracking, device=context.device)
+
+    sim = MC_Simulation(context.structure, mc_config)
+
     process_obj.max_neib = math.ceil(
         np.max([sim.deponat.lambda_escape, sim.substrate.lambda_escape]) / process_obj.cell_size)
     process_obj.structure.define_surface_neighbors(process_obj.max_neib)
-    if saving_params['gather_stats']:
-        stats = setup_stats_collection(process_obj, flag, saving_params)
-        stats.get_params(precursor_params, 'Precursor parameters')
-        stats.get_params(settings, 'Beam parameters and settings')
-        stats.get_params(sim_params, 'Simulation volume parameters')
-        process_obj.stats_frequency = min(saving_params.get('gather_stats_interval', 1),
-                                          saving_params.get('save_snapshot_interval', 1))
+
+    # Setup optional features
+    stats = None
+    struc = None
+    gather_stats = context.savingParams.get('gather_stats', False)
+    save_snapshot = context.savingParams.get('save_snapshot', False)
+    if gather_stats or save_snapshot:
+        if gather_stats:
+            stats = Statistics(process_obj, run_flag,
+                               refresh_rate=context.savingParams.get('gather_stats_interval'),
+                               filename=context.savingParams.get('filename'))
+            stats.get_params(context.precursorParams, 'Precursor parameters')
+            stats.get_params(context.settings, 'Beam parameters and settings')
+            stats.get_params(context.simParams, 'Simulation volume parameters')
+        if save_snapshot:
+            struc = StructureSaver(process_obj, run_flag,
+                                   refresh_rate=context.savingParams.get('save_snapshot_interval'),
+                                   filename=context.savingParams.get('filename'))
+        process_obj.stats_frequency = min(context.savingParams.get('gather_stats_interval', 1),
+                                          context.savingParams.get('save_snapshot_interval', 1))
         process_obj.stats_gathering = True
-    else:
-        stats = None
-    if saving_params['save_snapshot']:
-        struc = StructureSaver(process_obj, flag, saving_params['save_snapshot_interval'], saving_params['filename'])
-        process_obj.stats_gathering = True
-    else:
-        struc = None
-    printing = Thread(target=print_all, args=[path, process_obj, sim, stats, struc])
+
+    # Store initialized components in context
+    context.process = process_obj
+    context.mcSimulation = sim
+    context.statistics = stats
+    context.structureSaver = struc
+    context.syncHelper = run_flag
+
+    printing = Thread(target=print_all, args=[context])
     printing.start()
-    return process_obj, sim, printing
+
+    context.printingThread = printing
+
+    return context
 
 
-def print_all(path, pr: Process, sim: MC_Simulation, stats: Statistics=None, struc: StructureSaver=None):
+def print_all(context: SimulationContext):
     """
     Main event loop, that iterates through consequent points in a stream-file.
 
@@ -166,7 +113,12 @@ def print_all(path, pr: Process, sim: MC_Simulation, stats: Statistics=None, str
     :param run_flag:
     :return:
     """
-    run_flag = flag
+    path = context.printingPath
+    pr = context.process
+    sim = context.mcSimulation
+    stats = context.statistics
+    struc = context.structureSaver
+    run_flag = context.syncHelper
     run_flag.run_flag = False
     if stats:
         stats.start()

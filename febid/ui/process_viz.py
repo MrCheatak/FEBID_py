@@ -8,17 +8,17 @@ import numpy as np
 from PyQt5.QtWidgets import QMainWindow
 
 from febid.libraries.vtk_rendering.VTK_Rendering import Render
-from febid.febid_core import flag
 
 
 class RenderWindow(QMainWindow):
     """
     Class for the visualization of the FEBID process
     """
-    def __init__(self, process_obj, displayed_data='precursor', show=False, app=None):
+    def __init__(self, process_obj, syncHelper, displayed_data='precursor',  show=False, app=None):
         super().__init__()
         self.setWindowTitle("FEBID process")
         self.app = app
+        self.syncHelper = syncHelper
         # The object of the simulation process state
         self.process_obj = process_obj
         self.displayed_data = displayed_data
@@ -64,7 +64,7 @@ class RenderWindow(QMainWindow):
         # Event loop
         def update(data, mask):
             self.scalar_bar_timer = timeit.default_timer()
-            while self.render.p.isVisible() and not flag:
+            while self.render.p.isVisible() and not self.syncHelper:
                 now = timeit.default_timer()
                 if pr.redraw:
                     mask = pr.structure.surface_bool

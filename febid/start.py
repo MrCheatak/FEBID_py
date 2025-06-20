@@ -12,6 +12,7 @@ import febid.simple_patterns as sp
 from febid import febid_core
 from febid.Structure import Structure
 from febid.monte_carlo import etraj3d as e3d
+from febid.simulation_context import SimulationContext
 
 
 class Starter:
@@ -20,14 +21,10 @@ class Starter:
     """
     def __init__(self, params=None):
         self._params = params
-        self.structure = Structure()
+        self.context = SimulationContext()
         self.dwell_time_units = 1E-6
-        self.printing_path = None
-        self.settings = None
-        self.precursor_params = None
-        self.process_obj = None
-        self.sim = None
-        self.printing_thread = None
+        self.context.structure = Structure()
+
 
     def start(self):
         """
@@ -37,22 +34,22 @@ class Starter:
         self._create_printing_path()
         self._open_settings_and_precursor_params()
         self._run_febid_interface()
-        return self.process_obj, self.sim, self.printing_thread
+        return self.context.process, self.context.mcSimulation, self.context.printingThread
 
     def start_mc(self, **kwargs):
         self._create_simulation_volume()
-        self.precursor_params = self._open_precursor_params()
+        self.context.precursorParams  = self._open_precursor_params()
         self._run_mc_interface(**kwargs)
 
     def stop(self):
         """
         Stop the simulation
         """
-        if self.printing_thread is not None:
-            if self.printing_thread.is_alive():
-                febid_core.flag.run_flag = True
-                febid_core.flag.is_stopped = True
-                self.printing_thread.join()
+        if self.context.printingThread is not None:
+            if self.context.printingThread.is_alive():
+                self.context.syncHelper.run_flag = True
+                self.context.syncHelper.is_stopped = True
+                self.context.printingThread.join()
 
     def _create_simulation_volume(self):
         """
@@ -70,7 +67,7 @@ class Starter:
         Create simulation volume from VTK file
         """
         try:
-            self.structure.load_from_vtk(pv.read(self._params['vtk_filename']))
+            self.context.structure.load_from_vtk(pv.read(self._params['vtk_filename']))
         except FileNotFoundError as e:
             e.errno = 1
             e.args = ('VTK file not specified. Please choose the file and try again.',)
@@ -89,7 +86,7 @@ class Starter:
             ydim = int(float(self._params['length'])) // cell_size
             zdim = int(float(self._params['height'])) // cell_size
             substrate_height = int(float(self._params['substrate_height'])) // cell_size
-            self.structure.create_from_parameters(cell_size, xdim, ydim, zdim, substrate_height)
+            self.context.structure.create_from_parameters(cell_size, xdim, ydim, zdim, substrate_height)
         except KeyError as e:
             e.errno = 2
             e.args = ('An error occurred while fetching geometry parameters for the simulation volume. \n '
@@ -105,17 +102,17 @@ class Starter:
         """
         cell_size = int(self._params['cell_size'])
         substrate_height = int(float(self._params['substrate_height'])) // cell_size
-        self.structure.cell_size = cell_size
-        self.structure.substrate_height = substrate_height
+        self.context.structure.cell_size = cell_size
+        self.context.structure.substrate_height = substrate_height
 
     def _create_printing_path(self):
         """
         Create printing path either from simple shape or stream file
         """
         if self._params['pattern_source'] == 'simple':
-            self.printing_path = self._create_from_simple_shape()
+            self.context.printingPath = self._create_from_simple_shape()
         if self._params['pattern_source'] == 'stream_file':
-            self.printing_path = self._create_from_stream_file()
+            self.context.printingPath = self._create_from_stream_file()
 
     def _create_from_simple_shape(self):
         """
@@ -130,8 +127,8 @@ class Starter:
             dwell_time = float(self._params['dwell_time']) * self.dwell_time_units
             pitch = float(self._params['pitch'])
             repeats = int(float(self._params['repeats']))
-            x = self.structure.shape[2] // 2 * self.structure.cell_size
-            y = self.structure.shape[1] // 2 * self.structure.cell_size
+            x = self.context.structure.shape[2] // 2 * self.context.structure.cell_size
+            y = self.context.structure.shape[1] // 2 * self.context.structure.cell_size
             if pattern == 'Point':
                 x, y = p1, p2
             printing_path = sp.generate_pattern(pattern, repeats, dwell_time, x, y, (p1, p2), pitch)
@@ -151,12 +148,12 @@ class Starter:
             hfw = self._params['hfw']
             printing_path, shape = sp.open_stream_file(self._params['stream_file_filename'], hfw, collapse=True)
             if self._params['structure_source'] != 'auto':
-                if printing_path[:, 0].max() > self.structure.xdim_abs or printing_path[:,
-                                                                          1].max() > self.structure.ydim_abs:
+                if printing_path[:, 0].max() > self.context.structure.xdim_abs or printing_path[:,
+                                                                          1].max() > self.context.structure.ydim_abs:
                     raise ValueError('Printing path is out of simulation volume', f'Required dimensions: {shape[2]} * {shape[1]}')
                 return printing_path
-            shape = shape[::-1] // self.structure.cell_size
-            self.structure.create_from_parameters(self.structure.cell_size, *shape, self.structure.substrate_height)
+            shape = shape[::-1] // self.context.structure.cell_size
+            self.context.structure.create_from_parameters(self.context.structure.cell_size, *shape, self.context.structure.substrate_height)
             return printing_path
         except FileNotFoundError as e:
             e.errno = 4
@@ -173,8 +170,8 @@ class Starter:
         """
         Open settings and precursor parameters
         """
-        self.settings = self._open_settings()
-        self.precursor_params = self._open_precursor_params()
+        self.context.settings = self._open_settings()
+        self.context.precursorParams  = self._open_precursor_params()
 
     def _open_settings(self):
         """
@@ -185,7 +182,7 @@ class Starter:
                 settings = yaml.load(f, Loader=yaml.FullLoader)
             factor = settings.get('deposition_scaling', 1)
             if factor:
-                self.printing_path[:, 2] /= factor
+                self.context.printingPath[:, 2] /= factor
             return settings
         except FileNotFoundError as e:
             e.errno = 6
@@ -256,31 +253,34 @@ class Starter:
             raise e
         gpu_param = self._params.get('gpu', False)
         gpu_flag = (4,0) if gpu_param else False
-        self.process_obj, self.sim, self.printing_thread = febid_core.run_febid_interface(self.structure,
-                                                                    self.precursor_params, self.settings,
-                                                                    sim_volume_params, self.printing_path,
-                                                                    temperature_tracking, saving_params, gpu_flag)
+
+        self.context.savingParams = saving_params
+        self.context.simParams = sim_volume_params
+        self.context.temperatureTracking = temperature_tracking
+        self.context.device = gpu_flag
+
+        self.context = febid_core.run_febid(self.context)
 
     def _run_mc_interface(self, **kwargs):
         """
         Run Monte Carlo simulation
         """
         sim_volume_params = self.get_simulation_volume_parameters()
-        return e3d.run_mc_simulation(self.structure, precursor=self.precursor_params, **kwargs)
+        return e3d.run_mc_simulation(self.context.structure, precursor=self.context.precursorParams , **kwargs)
 
     def get_simulation_volume_parameters(self):
         sim_volume_params = {
-            'width': self.structure.shape_abs[2],
-            'length': self.structure.shape_abs[1],
-            'height': self.structure.shape_abs[0],
-            'cell_size': self.structure.cell_size,
-            'substrate_height': self.structure.substrate_height_abs
+            'width': self.context.structure.shape_abs[2],
+            'length': self.context.structure.shape_abs[1],
+            'height': self.context.structure.shape_abs[0],
+            'cell_size': self.context.structure.cell_size,
+            'substrate_height': self.context.structure.substrate_height_abs
         }
         return sim_volume_params
 
     def check_for_temperature_tracking_consistency(self):
         if self._params['temperature_tracking']:
-            precursor_params = self.precursor_params
+            precursor_params = self.context.precursorParams 
             keys = ['desorption_activation_energy', 'desorption_attempt_frequency',
                     'diffusion_activation_energy', 'diffusion_prefactor',
                     'thermal_conductivity']
