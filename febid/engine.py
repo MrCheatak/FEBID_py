@@ -25,7 +25,7 @@ class DepositionEngineExecutor:
 
 
 class MonteCarloExecutor:
-    def __init__(self, process, mc_sim):
+    def __init__(self, process: Process, mc_sim: MC_Simulation):
         self.process = process
         self.sim = mc_sim
         self.beam_matrix = None
@@ -38,35 +38,100 @@ class MonteCarloExecutor:
         else:
             self.process.set_beam_matrix(self.beam_matrix)
 
+    def update_structure(self):
+        """
+        Update the structure in the MC simulation with the current process structure.
+        """
+        self.sim.update_structure(self.process.structure)
+
 
 class HeatSolverExecutor:
-    def __init__(self, process, mc_sim):
+    def __init__(self, process: Process, mc_sim: MC_Simulation):
         self.process = process
-        self.sim = mc_sim
+        self.mc_sim = mc_sim
 
     def step(self):
         if self.process.temperature_tracking:
-            self.process.heat_transfer(self.sim.beam_heating)
+            self.process.heat_transfer(self.mc_sim.beam_heating)
             self.process.request_temp_recalc = False
 
 
+class TimeStepper:
+    def __init__(self, process, printingPath, syncHelper):
+        self.pr = process
+        self.printingPath = printingPath
+        self.scaling = process.deposition_scaling
+        self.sync = syncHelper
+        self.time_passed_dt_loop = 0.0  # time passed during progressing through a single dwell time
+        self.time_passed_total = 0.0
+        self.start_time = datetime.datetime.now()
+        self.real_timer_start = timeit.default_timer()
+        self.real_time_passed = 0.0
+        self._dt = self.pr.dt
+        self.last_loop = False
+        self.progress_bar = None
+        self.__setup_progress_bar()
+
+    def get_dt(self, dwell_time):
+        self._dt = self.pr.dt
+        if self._dt > dwell_time:   # reducing time step to the dwell time if it is larger
+            warnings.warn('Dwell time is smaller than the requested deposition range!')
+        # Next condition plays two roles:
+        # 1. It ensures that the time step is not larger than the dwell time. It is caught at the first iteration and time_passed_loop=0
+        # 2. It ensures that the time step is not larger than the remaining dwell time in the last iteration.
+        if self.time_passed_dt_loop + self._dt > dwell_time:  # stepping only for remaining dwell time to avoid accumulating of excess deposit
+            self._dt = dwell_time - self.time_passed_dt_loop
+            self.last_loop = True
+        self.pr.dt = self._dt
+
+    def update_timer(self):
+        self.time_passed_dt_loop += self._dt
+        self.time_passed_total += self._dt * self.scaling
+        self.pr.t = self.time_passed_total
+        self.real_time_passed = timeit.default_timer() - self.real_timer_start
+
+        # update progress
+        if self.progress_bar:
+            d_it = self._dt * self.scaling * 1e6
+            self.progress_bar.update(min(d_it, self.progress_bar.total - self.progress_bar.n))
+
+        # trigger stats
+        if self.pr.stats_gathering and self.time_passed_total % self.pr.stats_frequency < self._dt * 1.5:
+            self.pr._gather_stats()
+
+        # tick threads
+        self.sync.timer = self.time_passed_total
+        # Allow only one tick of the loop for daemons per one tick of simulation
+        self.sync.notify()
+        self.pr.reset_dt()  # reset the time step for the next iteration
+
+    def __setup_progress_bar(self):
+        total_time = int(self.printingPath[:, 2].sum() * self.scaling * 1e6)
+        bar_format = "{desc}: {percentage:.1f}%|{bar}| {n:.0f}/{total_fmt} [{elapsed}<{remaining}, {rate_fmt}{postfix}]"
+        self.progress_bar = tqdm(total=total_time, desc='Patterning', position=0, unit='µs',
+                                 bar_format=bar_format)  # the execution speed is shown in µs of simulation time per s of real time
+
+    def reset_dt_loop(self):
+        """
+        Reset the loop parameters for a new iteration.
+        """
+        self.time_passed_dt_loop = 0.0
+        self.last_loop = False
+        self._dt = self.pr.dt
+
+
 class SimulationPipeline:
-    def __init__(self, context):
+    def __init__(self, context: SimulationContext):
         self.context = context
         self.deposition_engine = DepositionEngineExecutor(context.process)
         self.mc_executor = MonteCarloExecutor(context.process, context.mcSimulation)
         self.heat_solver = HeatSolverExecutor(context.process, context.mcSimulation)
+        self.stepper: TimeStepper = None
 
     def initialize(self):
         self.context.process.start_time = datetime.datetime.now()
         self.context.process.x0, self.context.process.y0 = self.context.printingPath[0, 0:2]
-        self.__setup_progress_bar()
-
-    def __setup_progress_bar(self):
-        total_time = int(self.context.printingPath[:, 2].sum() * self.context.process.deposition_scaling * 1e6)
-        bar_format = "{desc}: {percentage:.1f}%|{bar}| {n:.0f}/{total_fmt} [{elapsed}<{remaining}, {rate_fmt}{postfix}]"
-        self.progress_bar = tqdm(total=total_time, desc='Patterning', position=0, unit='µs',
-                                 bar_format=bar_format)  # the execution speed is shown in µs of simulation time per s of real time
+        self.stepper = TimeStepper(self.context.process, self.context.printingPath, self.context.syncHelper)
 
     def run_step(self, x, y, dwell_time):
         """
@@ -75,55 +140,34 @@ class SimulationPipeline:
         pr = self.context.process
         sim = self.context.mcSimulation
         run_flag = self.context.syncHelper
-        t = self.progress_bar
+        stepper = self.stepper
 
-        if dwell_time < pr.dt:
-            warnings.warn('Dwell time is smaller that the time step!')
-            pr.dt = dwell_time
-        time_passed = 0
-        flag_dt = True
-        flag_resize = True
         pr.x0, pr.y0 = x, y
         # THE core loop.
         # Any changes to the events sequence are defined by or stem from this loop.
         # The FEBID process is 'constructed' here by arranging events like deposition(dissociated volume calculation),
         # precursor coverage recalculation, execution of the MC simulation, temperature profile recalculation and other.
         # If any additional calculations and to be included, they shall be run from this loop
-        while flag_dt and not run_flag.run_flag:
-            if time_passed + pr.dt > dwell_time:  # stepping only for remaining dwell time to avoid accumulating of excess deposit
-                pr.dt = dwell_time - time_passed
-                flag_dt = False
+        while not stepper.last_loop and not run_flag.run_flag:
+            stepper.get_dt(dwell_time)  # get the time step for the current iteration
             pr.deposition()  # depositing on a selected area
             if pr.check_cells_filled():
-                flag_resize = pr.cell_filled_routine()  # updating surface on a selected area
-                if flag_resize:  # update references if the allocated simulation volume was increased
-                    sim.update_structure(pr.structure)
-                start = timeit.default_timer()
-                self.mc_executor.step(y, x)  # run MC sim. and retrieve SE surface flux and update beam matrix
-                print(f'Finished MC in {timeit.default_timer() - start} s')
-                self.heat_solver.step()  # recalculate temperature profile
-                cell_filling_routine(y, x, pr, sim)  # cell configuration update
+                self._handle_cell_filled(y, x)
             pr.precursor_density()  # recalculate precursor coverage
-            pr.t += pr.dt * pr.deposition_scaling
-            time_passed += pr.dt
-            run_flag.timer = pr.t
-            # Advancing the progress bar
-            # Making sure the last iteration does not overflow the counter
-            d_it = pr.dt * pr.deposition_scaling * 1e6
-            if t.n + d_it > t.total:
-                d_it = t.total - t.n
-            t.update(d_it)
-            # Collecting process stats
-            if time_passed % pr.stats_frequency < pr.dt * 1.5:
-                pr._gather_stats()
-            pr.reset_dt()
-            # Allow only one tick of the loop for daemons per one tick of simulation
-            run_flag.loop_tick.acquire()
-            run_flag.loop_tick.notify_all()
-            run_flag.loop_tick.release()
+            stepper.update_timer()  # update timer, progress bar and trigger timed events
+        stepper.reset_dt_loop()  # reset the loop parameters for the next iteration
+
+    def _handle_cell_filled(self, y, x):
+        pr = self.context.process
+        sim = self.context.mcSimulation
+        flag_resize = pr.cell_filled_routine()  # updating surface on a selected area
+        if flag_resize:  # update references if the allocated simulation volume was increased
+            sim.update_structure(pr.structure)
+        self.mc_executor.step(y, x)  # run MC sim. and retrieve SE surface flux and update beam matrix
+        self.heat_solver.step()  # recalculate temperature profile
 
 
-def print_all(context: SimulationContext, stats, struc):
+def print_all(context: SimulationContext):
     """
     Main event loop, that iterates through consequent points in a stream-file.
 
@@ -161,61 +205,9 @@ def print_all(context: SimulationContext, stats, struc):
     else:
         message = 'Simulation stopped!'
     run_flag.run_flag = True
-    run_flag.loop_tick.acquire()
-    run_flag.loop_tick.notify_all()
-    run_flag.loop_tick.release()
+    run_flag.notify()
     print(message)
     run_flag.event.set()
-
-
-def cell_filling_routine(y, x, pr: Process, sim: MC_Simulation):
-    """
-    Run the full set of operations on a filled cell event.
-
-    :param y: spot y-coordinate
-    :param x: spot x-coordinate
-    :param pr: Process object
-    :param sim: MC simulation object
-    """
-    flag_resize = pr.cell_filled_routine()  # updating surface on a selected area
-    if flag_resize:  # update references if the allocated simulation volume was increased
-        sim.update_structure(pr.structure)
-    start = timeit.default_timer()
-    beam_matrix = sim.run_simulation(y, x, pr.request_temp_recalc)  # run MC sim. and retrieve SE surface flux
-    print(f'Finished MC in {timeit.default_timer() - start} s')
-    if beam_matrix.max() <= 1:
-        warnings.warn('No surface flux!', RuntimeWarning)
-        pr.set_beam_matrix(1)
-    else:
-        pr.set_beam_matrix(beam_matrix)
-    if pr.temperature_tracking:
-        pr.heat_transfer(sim.beam_heating)
-        pr.request_temp_recalc = False
-
-
-def cell_filling_routine(y, x, pr: Process, sim: MC_Simulation):
-    """
-    Run the full set of operations on a filled cell event.
-
-    :param y: spot y-coordinate
-    :param x: spot x-coordinate
-    :param pr: Process object
-    :param sim: MC simulation object
-    """
-    flag_resize = pr.cell_filled_routine()  # updating surface on a selected area
-    if flag_resize:  # update references if the allocated simulation volume was increased
-        sim.update_structure(pr.structure)
-    start = timeit.default_timer()
-    beam_matrix = sim.run_simulation(y, x, pr.request_temp_recalc)  # run MC sim. and retrieve SE surface flux
-    print(f'Finished MC in {timeit.default_timer() - start} s')
-    if beam_matrix.max() <= 1:
-        warnings.warn('No surface flux!', RuntimeWarning)
-        pr.set_beam_matrix(1)
-    else:
-        pr.set_beam_matrix(beam_matrix)
-    if pr.temperature_tracking:
-        pr.heat_transfer(sim.beam_heating)
-        pr.request_temp_recalc = False
 
 
 def print_step_GPU(y, x, dwell_time, pr: Process, sim: MC_Simulation, t, run_flag: SynchronizationHelper):

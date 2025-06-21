@@ -37,6 +37,15 @@ class SynchronizationHelper:
     def timer(self, value):
         self._current_time = value
 
+    def notify(self):
+        """
+        Notify all threads waiting on the loop tick.
+        This is used to ensure that all threads are synchronized at the end of each time step.
+        """
+        self.loop_tick.acquire()
+        self.loop_tick.notify_all()
+        self.loop_tick.release()
+
     def reset(self):
         """
         Reset the timer and the run flag.

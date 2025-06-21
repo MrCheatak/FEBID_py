@@ -79,7 +79,7 @@ class SimulationManager:
                                               self.context.savingParams.get('save_snapshot_interval', 1))
             self.process.stats_gathering = True
 
-        self.printing = Thread(target=print_all, args=[self.context, self.stats_thread, self.snapshot_thread],)
+        self.printing = Thread(target=print_all, args=[self.context],)
 
     def run(self):
         self._running.set()
