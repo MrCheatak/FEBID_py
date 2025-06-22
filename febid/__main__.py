@@ -6,6 +6,9 @@ import sys
 import febid
 from febid.ui import ui_shell
 from febid.start import Starter
+from febid.logging_config import setup_logger
+# Setup logger
+logger = setup_logger(__name__)
 
 intro = ('Welcome to the FEBID simulator. \n'
          ' To start a basic session with GUI use \n'
@@ -61,7 +64,7 @@ def welcome():
             else:
                 function()
         else:
-            print(f'Unexpected argument {command}')
+            logger.warning(f'Unexpected argument {command}')
     else:
         start_ui()
 

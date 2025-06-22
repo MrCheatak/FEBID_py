@@ -16,6 +16,9 @@ from febid.Structure import Structure
 from febid.libraries.vtk_rendering.VTK_Rendering import read_field_data
 
 from febid.ui.process_viz import RenderWindow
+from febid.logging_config import setup_logger
+# Setup logger
+logger = setup_logger(__name__)
 
 
 class SessionHandler:
@@ -39,8 +42,8 @@ class SessionHandler:
                 params = yaml.load(f, Loader=yaml.FullLoader)
                 self.params.update(params)
         except FileNotFoundError as e:
-            print('Session file not found')
-            raise e
+            logger.exception('Session file not found')
+            raise
 
     def create_session(self, params):
         """
@@ -343,8 +346,7 @@ class MainPanel(QMainWindow, UI_MainPanel):
         except Exception as e:
             self.__view_message('File read error',
                                 'Specified file is not a valid VTK file. Please choose a valid .vtk file.')
-            print("Was unable to open .vtk file. Following error occurred:")
-            print(e.args)
+            logger.exception("Was unable to open .vtk file.")
         self.statusBar().showMessage('VTK file loaded')
 
     def open_geom_parameters_file(self, file=''):
@@ -359,8 +361,7 @@ class MainPanel(QMainWindow, UI_MainPanel):
             # Setting FEBID panel
             self.set_interface_from_config(params)
         except Exception as e:
-            print("Was unable to open .yml geometry parameters file. Following error occurred:")
-            print(e.args)
+            logger.exception("Was unable to open .yml geometry parameters file.")
 
     def open_stream_file(self, file=''):
         if not file:
@@ -390,8 +391,7 @@ class MainPanel(QMainWindow, UI_MainPanel):
         except Exception as e:
             self.__view_message('File read error',
                                 'Specified file is not a valid settings file. Please choose a valid .yml file.')
-            print("Was unable to open .yaml settings file. Following error occurred:")
-            print(e.args)
+            logger.exception("Was unable to open .yaml settings file.")
         self.statusBar().showMessage('Settings loaded')
 
     def open_precursor_parameters_file(self, file=''):
@@ -409,8 +409,7 @@ class MainPanel(QMainWindow, UI_MainPanel):
         except Exception as e:
             self.__view_message('File read error',
                                 'Specified file is not a valid parameters file. Please choose a valid .yml file.')
-            print("Was unable to open .yml precursor parameters file. Following error occurred:")
-            print(e.args)
+            logger.exception("Was unable to open .yml precursor parameters file.")
         self.statusBar().showMessage('Precursor parameters loaded')
 
     def change_state_save_sim_data(self, param=None):
@@ -521,6 +520,7 @@ class MainPanel(QMainWindow, UI_MainPanel):
             self.groupBox_visualization.setVisible(True)
         except Exception as e:
             self.__exception_handler(e)
+            return
         self.start_febid_button.setVisible(False)
         self.stop_febid_button.setVisible(True)
 
@@ -600,7 +600,6 @@ class MainPanel(QMainWindow, UI_MainPanel):
         """
         if not filename:
             filename = self.last_session_filename
-        print('Trying to load last session...', end='')
         if os.path.exists(filename):
             self.session_handler.load_session(filename)
             self.set_interface_from_config(self.session_handler.params)
@@ -611,8 +610,7 @@ class MainPanel(QMainWindow, UI_MainPanel):
             self.session_handler.create_session(params)
             if self.save_flag:
                 self.session_handler.save_session(filename)
-
-        print('done!')
+        logger.info('Loaded last session.')
 
     def ui_to_parameters_mapping(self):
         """
@@ -919,8 +917,8 @@ class MainPanel(QMainWindow, UI_MainPanel):
                         value = entry_splitted[0]
                         unit = ''
                     except Exception as e:
-                        print(f'An error occurred while reading units from YAML file:')
-                        raise e
+                        logger.exception(f'An error occurred while reading units from YAML file.')
+                        raise
                     try:
                         val = int(value)
                     except ValueError:

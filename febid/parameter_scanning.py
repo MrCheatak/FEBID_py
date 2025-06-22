@@ -12,7 +12,9 @@ from loky import ProcessPoolExecutor
 
 from febid.__main__ import start_no_ui
 from febid.ui.ui_shell import SessionHandler
-
+from febid.logging_config import setup_logger
+# Setup logger
+logger = setup_logger(__name__)
 
 def extr_number(text):
     """
@@ -114,8 +116,8 @@ def scan_stream_files(session_file, directory, add_name='', n_parallel=1):
     write_param(session_file, 'stream_file_filename', init_stream)
     write_param(session_file, 'unique_name', init_name)
     for future, name in futures:
-        print(f'Simulation with the {name} stream file has finished.')
-    print(f'Successfully finished {len(files)} simulations with all {len(files_orig)} pattering files in {directory}')
+        logger.info(f'Simulation with the {name} stream file has finished.')
+    logger.info(f'Successfully finished {len(files)} simulations with all {len(files_orig)} pattering files in {directory}')
 
 
 def scan_settings(session_file, param_name, scan, base_name=''):
@@ -143,6 +145,7 @@ def scan_settings(session_file, param_name, scan, base_name=''):
     elif param_name in precursor_keys:
         file = precursor_params_file
     else:
+        logger.error(f'Parameter {param_name} not found in settings or precursor parameters!', exc_info=True)
         raise RuntimeError(f'Parameter {param_name} not found!')
     # Scanning
     initial_val = read_param(file, param_name)
@@ -154,7 +157,7 @@ def scan_settings(session_file, param_name, scan, base_name=''):
         start_no_ui(session_file)
         # Restoring initial state
     write_param(file, param_name, initial_val)
-    print(
+    logger.info(
         f'Successfully finished {vals.shape[0]} simulations, scanning \'{param_name}\' from {vals.amin()} to {vals.max()}')
 
 

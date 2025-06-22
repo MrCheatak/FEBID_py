@@ -2,6 +2,10 @@ from pickle import dump
 
 import numpy as np
 
+from febid.logging_config import setup_logger
+# Setup logger
+logger = setup_logger(__name__)
+
 
 class BaseParameterCollection:
     def __init__(self):
@@ -170,7 +174,7 @@ class ContinuumModel(BaseParameterCollection):
     def dt(self, val):
         dt = self.dt
         if val > dt:
-            print(f'Not allowed to increase time step. \nTime step larger than {dt} s will crash the solution.')
+            logger.warning(f'Not allowed to increase time step. \nTime step larger than {dt} s will crash the solution.')
         else:
             self._dt = val
 

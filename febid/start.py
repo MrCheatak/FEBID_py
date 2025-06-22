@@ -13,7 +13,9 @@ from febid.Structure import Structure
 from febid.monte_carlo import etraj3d as e3d
 from febid.simulation_context import SimulationContext
 from febid.febid_core import SimulationManager
-
+from febid.logging_config import setup_logger
+# Setup logger
+logger = setup_logger(__name__)
 
 
 class Starter:
@@ -69,11 +71,13 @@ class Starter:
         try:
             self.context.structure.load_from_vtk(pv.read(self._params['vtk_filename']))
         except FileNotFoundError as e:
+            msg = 'VTK file not specified. Please choose the file and try again.'
+            logger.exception(msg)
             e.errno = 1
-            e.args = ('VTK file not specified. Please choose the file and try again.',)
+            e.args = (msg,)
             raise e
         except Exception as e:
-            print(f'Unexpected error occurred while opening VTK file: {e.args}')
+            logger.exception(f'Unexpected error occurred while opening VTK file: {e.args}')
             raise e
 
     def _create_from_geometry(self):
@@ -88,14 +92,16 @@ class Starter:
             substrate_height = int(float(self._params['substrate_height'])) // cell_size
             self.context.structure.create_from_parameters(cell_size, xdim, ydim, zdim, substrate_height)
         except KeyError as e:
+            msg = (f'An error occurred while fetching geometry parameters for the simulation volume. \n '
+                   f'Check values and try again.')
+            logger.exception(msg)
             e.errno = 2
-            e.args = ('An error occurred while fetching geometry parameters for the simulation volume. \n '
-                      'Check values and try again.',)
-            raise e
+            e.args = (msg,)
+            raise
         except Exception as e:
-            print(f'Unexpected error occurred while creating simulation volume: {e.args}')
-            raise e
-
+            msg = 'Unexpected error occurred while creating simulation volume from geometry parameters.'
+            logger.exception(msg)
+            raise
     def _create_auto(self):
         """
         Set only cell size and substrate height and leave simulation volume creation for later
@@ -134,11 +140,14 @@ class Starter:
             printing_path = sp.generate_pattern(pattern, repeats, dwell_time, x, y, (p1, p2), pitch)
             return printing_path
         except AttributeError as e:
+            msg = 'An error occurred while creating simple printing path.'
+            logger.exception(msg)
             e.errno = 3
-            raise e
+            raise
         except Exception as e:
-            print(f'Unexpected error occurred while creating simple printing path: {e.args}')
-            raise e
+            msg = 'Unexpected error occurred while creating simple printing path.'
+            logger.exception(msg)
+            raise
 
     def _create_from_stream_file(self):
         """
@@ -156,15 +165,15 @@ class Starter:
             self.context.structure.create_from_parameters(self.context.structure.cell_size, *shape, self.context.structure.substrate_height)
             return printing_path
         except FileNotFoundError as e:
+            msg = 'User input error: stream file not specified or not found. Please choose the file and try again.'
+            logger.exception(msg)
             e.errno = 4
             e.args = ('Stream file not specified. Please choose the file and try again.',)
-            raise e
+            raise
         except ValueError as e:
+            logger.error('User input error: printing path is out of simulation volume', exc_info=True)
             e.errno = 5
-            raise e
-        except Exception as e:
-            print(f'Unexpected error occurred while opening a stream-file: {e.args}')
-            raise e
+            raise
 
     def _open_settings_and_precursor_params(self):
         """
@@ -185,13 +194,15 @@ class Starter:
                 self.context.printingPath[:, 2] /= factor
             return settings
         except FileNotFoundError as e:
+            msg = 'User input error: beam parameters file not specified or not found.'
+            logger.exception(msg)
             e.errno = 6
             e.args = ('Beam parameters file not specified. Please choose the file and try again.',)
-            raise e
+            raise
         except Exception as e:
-            print(f'Unexpected error occurred while opening a settings file')
-            print(e.args)
-            raise e
+            msg = 'Unexpected error occurred while opening a settings file.'
+            logger.exception(msg)
+            raise
 
     def _open_precursor_params(self):
         """
@@ -202,13 +213,15 @@ class Starter:
                 precursor_params = yaml.load(f, Loader=yaml.FullLoader)
             return precursor_params
         except FileNotFoundError as e:
+            msg = 'User input error: precursor parameters file not specified or not found.'
+            logger.exception(msg)
             e.errno = 7
             e.args = ('Precursor parameters file not specified. Please choose the file and try again.',)
-            raise e
+            raise
         except Exception as e:
-            print(f'Unexpected error occurred while opening a precursor parameters file')
-            print(e.args)
-            raise e
+            msg = 'Unexpected error occurred while opening a precursor parameters file.'
+            logger.exception(msg)
+            raise
 
     def _run_febid_interface(self):
         """
@@ -230,24 +243,27 @@ class Starter:
                 if not self._params['unique_name']:
                     random_name = 'simulation_' + str(random.randint(10000, 99999))
                     self._params['unique_name'] = random_name
+                    logger.warning(f'Unique name is not specified. Setting random name: {random_name}')
                     raise AttributeError('Unique name is not specified')
             except AttributeError as e:
                 e.errno = 8
-                raise e
+                raise
             saving_params['filename'] = os.path.join(self._params['save_directory'], self._params['unique_name'])
             try:
                 os.makedirs(saving_params['filename'])
             except FileExistsError as e:
-                print('Saving directory already exists.')
+                logger.info('Saving directory already exists. Using it for saving simulation data.')
             saving_params['filename'] = os.path.join(saving_params['filename'], self._params['unique_name'])
         if not (flag1 or flag2):
-            warnings.warn('No simulation information is saved. Neither saving statistics, nor snapshots.')
+            logger.warn('No simulation information is saved. Neither saving statistics, nor snapshots.')
         temperature_tracking = self._params.get('temperature_tracking', False)
         try:
             if not self.check_for_temperature_tracking_consistency():
-                raise AttributeError('Temperature tracking cannot be enabled without specifying all of the following parameters: '
+                msg = ('Temperature tracking cannot be enabled without specifying all of the following parameters: '
                                  'Desorption activation energy, Desorption attempt frequency, Diffusion activation energy, '
                                  'Diffusion prefactor, Thermal conductivity')
+                logger.error(msg, exc_info=True)
+                raise AttributeError(msg)
         except AttributeError as e:
             e.errno = 9
             raise e

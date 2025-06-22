@@ -8,6 +8,9 @@ import numpy as np
 from PyQt5.QtWidgets import QMainWindow
 
 from febid.libraries.vtk_rendering.VTK_Rendering import Render
+from febid.logging_config import setup_logger
+# Setup logger
+logger = setup_logger(__name__)
 
 
 class RenderWindow(QMainWindow):
@@ -100,8 +103,7 @@ class RenderWindow(QMainWindow):
             try:
                 rn.p.button_widgets.clear()
             except Exception as e:
-                print('Something went wrong while clearing widgets from the scene...')
-                print(e.args)
+                logger.exception('Something went wrong while clearing widgets from the scene...')
             rn.p.clear()
             # Putting an arrow to indicate beam position
             start = np.array([0, 0, 100]).reshape(1, 3)  # position of the center of the arrow
@@ -118,8 +120,7 @@ class RenderWindow(QMainWindow):
             rn.p.add_text('.', position='upper_left', font_size=12, name='time')
             rn.p.add_text('.', position='upper_right', font_size=12, name='stats')
         except Exception as e:
-            print('An error occurred while creating the scene.')
-            print(e.args)
+            logger.error(f'An error occurred while creating the scene.')
 
     def __update_graphical(self, data, mask, time_spent):
         """
@@ -179,9 +180,9 @@ class RenderWindow(QMainWindow):
                 self.scalar_bar_timer += self.scalar_bar_framerate
         except Exception as e:
             if not rn.p.isVisible():
-                print('The scene window was closed.')
+                logger.error('The scene window was unexpectedly closed.', exc_info=e)
             else:
-                warnings.warn(f"Failed to redraw the scene.\n"
+                logger.warn(f"Failed to redraw the scene.\n"
                               f"{e.args}")
                 pr.redraw = True
 

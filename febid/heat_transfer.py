@@ -9,6 +9,9 @@ from febid.libraries.rolling import roll
 from febid.libraries.pde import tridiag
 import numexpr_mod as ne
 from febid.diffusion import laplace_term_stencil, prepare_surface_index
+from febid.logging_config import setup_logger
+# Setup logger
+logger = setup_logger(__name__)
 
 # Heat transfer is currently solved statically for a steady-state condition according to
 # Simultaneous Over-Relaxation (SOR) method.
@@ -181,7 +184,7 @@ def heat_transfer_steady_sor(grid, k, dl, heat_source, eps, solid_index=None):
             z, y, x = grid.nonzero()
             z, y, x = z.astype(np.intc), y.astype(np.intc), x.astype(np.intc)
         return z, y, x
-    print('\nFinding steady state solution using Simultaneous Over-Relaxation:')
+    logger.info('\nFinding steady state solution using Simultaneous Over-Relaxation:')
     p_j = 1 - np.pi ** 2 / grid.shape[0] ** 2 / 2 # spectral radius of the Jacobi iteration
     S = heat_source * dl ** 2 / k * 1.60217733E-19
     grid_gs = np.zeros_like(grid)
@@ -208,7 +211,7 @@ def heat_transfer_steady_sor(grid, k, dl, heat_source, eps, solid_index=None):
             iters.append(i)
             skip += skip_step
         if eps > norm:
-            print(f'Reached solution with an error of {norm:.3e}')
+            logger.info(f'Reached solution with an error of {norm:.3e}')
             return grid
         if i % prediction_step == 0 and i != 0:
             a, b = fit_exponential(iters, norm_array)

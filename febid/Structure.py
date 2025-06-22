@@ -3,7 +3,9 @@ import sys
 import numpy as np
 import pyvista as pv
 
-from febid.kernel_modules import GPU
+from febid.logging_config import setup_logger
+# Setup logger
+logger = setup_logger(__name__)
 
 
 ### Structure class contains all necessary main (deposit, precursor, surface) and axillary (ghost_cells, semi_surface) arrays
@@ -157,7 +159,7 @@ class Structure(BaseSolidStructure):
         self.cell_size = int(self.cell_size)
         shape = (vtk_obj.dimensions[2] - 1, vtk_obj.dimensions[1] - 1, vtk_obj.dimensions[0] - 1)
         if 'deposit' in vtk_obj.array_names:  # checking if it is a complete result of a deposition process
-            print('VTK file is a FEBID file, reading arrays...', end='')
+            logger.info('VTK file is a FEBID file, reading arrays...')
 
             try:
                 self.deposit = np.asarray(vtk_obj.cell_data['deposit'].reshape(shape))
@@ -166,49 +168,48 @@ class Structure(BaseSolidStructure):
                     self.precursor = np.asarray(vtk_obj.cell_data['precursor'].reshape(shape))
                 else:
                     self.precursor = np.asarray(vtk_obj.cell_data['precursor_density'].reshape(shape)) # legacy support
-                print('retrieved deposit and precursor data...', end='')
+                logger.debug('retrieved deposit and precursor data...')
             except Exception as e:
-                print('failed to read data from the .vtk FEBID file')
-                print(e.args)
-                return False
+                logger.exception('Failed to read data from the .vtk FEBID file')
+                raise
             try:
                 self.surface_bool = np.asarray(vtk_obj.cell_data['surface_bool'].reshape(shape), dtype=bool)
-                print('retrieved surface index data...', end='')
+                logger.debug('retrieved surface index data...')
             except:
-                print('failed to retrieve surface index data...', end='')
+                logger.debug('failed to retrieve surface index data...')
                 self.surface_bool = np.zeros_like(self.deposit, dtype=bool)
                 self.define_surface()
             try:
                 self.semi_surface_bool = np.asarray(vtk_obj.cell_data['semi_surface_bool'].reshape(shape), dtype=bool)
-                print('retrieved semi-surface index data...', end='')
+                logger.debug('retrieved semi-surface index data...')
             except:
-                print('failed to retrieve semi-surface index data...', end='')
+                logger.debug('failed to retrieve semi-surface index data...')
                 self.semi_surface_bool = np.zeros_like(self.deposit, dtype=bool)
                 self.define_semi_surface()
             try:
                 self.surface_neighbors_bool = np.asarray(vtk_obj.cell_data['surface_neighbors_bool'].reshape(shape),
                                                          dtype=bool)
-                print('retrieved surface nearest neighbors index data...', end='')
+                logger.debug('retrieved surface nearest neighbors index data...')
             except:
-                print('failed to retrieve surface nearest neighbors index data...', end='')
+                logger.debug('failed to retrieve surface nearest neighbors index data...')
                 self.surface_neighbors_bool = np.zeros_like(self.deposit, dtype=bool)
                 self.define_surface_neighbors(3)
             try:
                 self.ghosts_bool = np.asarray(vtk_obj.cell_data['ghosts_bool'].reshape(shape), dtype=bool)
-                print('retrieved ghost cells index data...', end='')
+                logger.debug('retrieved ghost cells index data...')
             except:
-                print('failed to retrieve ghost cells index data...', end='')
+                logger.debug('failed to retrieve ghost cells index data...')
                 self.ghosts_bool = np.zeros_like(self.deposit, dtype=bool)
                 self.define_ghosts()
             try:
                 self.temperature = np.asarray(vtk_obj.cell_data['temperature'].reshape(shape))
-                print('retrieved temperature data...', end='')
+                logger.debug('retrieved temperature data...')
             except:
-                print('failed to retrieve temperature data...', end='')
+                logger.debug('failed to retrieve temperature data...')
                 self.temperature = np.zeros_like(self.deposit)
                 self.temperature[self.deposit < 0] = self.room_temp
         else:
-            print('VTK file is a regular file, generating auxiliary arrays...', end='')
+            logger.info('VTK file is a regular file, generating auxiliary arrays...')
             self.deposit = np.asarray(vtk_obj.cell_data.active_scalars.reshape(shape))
             # self.deposit[self.deposit != 0] = -1
             # Electrons need at least one empty cell layer for creation
@@ -229,7 +230,7 @@ class Structure(BaseSolidStructure):
             self.define_semi_surface()
             self.define_surface_neighbors()
             self.define_ghosts()
-            print('...done!')
+        logger.info('Loaded the VTK file!')
         self.precursor[self.precursor < 0] = 0
         if self.substrate_height == 0:
             self.substrate_height = (self.deposit == -2).nonzero()[0].max()
@@ -343,14 +344,13 @@ class Structure(BaseSolidStructure):
         try:
             resize_all(True)
         except ValueError:
-            print(f'Resized Structure arrays are referenced. \n'
+            logger.exception(f'Resized Structure arrays are referenced. \n'
                   f'Resizing is forced, references has to be updated manually.')
             try:
                 resize_all(False)
             except Exception as e:
-                print(f'An error occurred while resizing Structure arrays: \n'
-                      f'{e.args}')
-                raise e
+                logger.exception(f'An error occurred while resizing Structure arrays.')
+                raise
 
     def fill_surface(self, nr: float):
         """
@@ -375,7 +375,7 @@ class Structure(BaseSolidStructure):
         # 3. Surface cells now have changed values and have to be separated from surface on the solid side
         #   it achieved by the intersection of 'positive' and convoluted arrays, as surface is ultimately not a solid
 
-        # print(f'generating surface index...', end='')
+        logger.debug('Generating surface index...')
         positive = np.full(self.deposit.shape, False, dtype=bool)
         positive[self.deposit >= 0] = True  # gas cells
         grid = np.copy(self.deposit)
@@ -397,7 +397,7 @@ class Structure(BaseSolidStructure):
         grid += positive
         grid += combined
         self.surface_bool[grid == 2] = True
-        # print(f'done!', end=' ')
+        logger.debug('...done!')
 
     def define_semi_surface(self):
         """
@@ -409,14 +409,14 @@ class Structure(BaseSolidStructure):
         If semi-surface cell turns into a regular surface cell, the precursor density in it is preserved.
        :return:
        """
-        # print(f'generating semi-surface index...')
+        logger.debug('Generating semi-surface index...')
         grid = np.zeros_like(self.deposit)
         self.__stencil_3d(grid, self.surface_bool)
         grid[self.deposit != 0] = 0
         grid[self.surface_bool] = 0
         grid[grid < 2] = 0
         self.semi_surface_bool[grid != 0] = True
-        # print(f'done!', end=' ')
+        logger.debug('...done!')
 
     def define_surface_neighbors(self, n=0, deposit=None, surface=None, neighbors=None):
         """
@@ -429,7 +429,7 @@ class Structure(BaseSolidStructure):
         :param neighbors: neighbors array
         :return:
         """
-        # print(generating surface nearest neighbors index...', end='')
+        logger.debug('Generating surface nearest neighbors index...')
         if deposit is None:
             deposit = self.deposit
         if surface is None:
@@ -473,7 +473,7 @@ class Structure(BaseSolidStructure):
         g = grid[1:-1, 1:-1, 1:-1]
         neigb[...] = 0
         neigb[g > 0] = True
-        # print(f'done!', end=' ')
+        logger.debug('...done!')
 
     def define_ghosts(self):
         """
@@ -484,12 +484,12 @@ class Structure(BaseSolidStructure):
         """
         # Rolling in all directions marks all the neighboring cells
         # Subtracting surface from that selection results in a "shell" around the surface
-        # print(f'generating ghost cells index...', end='')
+        logger.debug('Generating ghost cells index...')
         roller = np.logical_or(self.surface_bool, self.semi_surface_bool)
         self.ghosts_bool = np.copy(roller)
         self.__stencil_3d(self.ghosts_bool, roller)
         self.ghosts_bool[roller] = False
-        # print('done!', end=' ')
+        logger.debug('...done!')
 
     def max_z(self):
         """

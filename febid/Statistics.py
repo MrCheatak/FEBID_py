@@ -13,7 +13,9 @@ import numpy as np
 import pandas as pd
 
 from febid.libraries.vtk_rendering.VTK_Rendering import save_deposited_structure
-
+from febid.logging_config import setup_logger
+# Setup logger
+logger = setup_logger(__name__)
 
 @dataclass
 class SynchronizationHelper:
@@ -74,7 +76,7 @@ class MonitoringDaemon(Thread):
         self.passed_time = run_flag.timer
 
     def run(self):
-        print(f'Starting {self.purpose} daemon.')
+        logger.info(f'Starting {self.purpose} daemon.')
         next_record_time = self.passed_time + self.refresh_rate
         with self.run_flag.loop_tick:
             while not self.run_flag:
@@ -84,7 +86,7 @@ class MonitoringDaemon(Thread):
                     next_record_time = self.passed_time + self.refresh_rate
                     self.looped_func()
         self.looped_func(end=True)
-        print(f'Closing {self.purpose} daemon.')
+        logger.info(f'Closing {self.purpose} daemon.')
 
     def looped_func(self, end=False):
         """
@@ -179,7 +181,7 @@ class Statistics(MonitoringDaemon):
                 series.to_excel(writer, sheet_name=name)
             # self.writer.save()
         except Exception as e:
-            print(f'Failed to save setup parameters to excel file: {e.args}')
+            logger.error(f'Failed to save setup parameters to excel file.', exc_info=True)
 
     def append(self, *stats):
         """
@@ -201,8 +203,7 @@ class Statistics(MonitoringDaemon):
                 record[cols[i + 2]] = item
             self.data.loc[self.shape[0]] = tuple([record[cols[i]] for i in range(len(cols))])
         except Exception as e:
-            print('An error occurred while recording statistics.')
-            print(e.args)
+            logger.error('An error occurred while recording statistics.', exc_info=True)
 
     def plot(self, x, y):
         """
@@ -245,7 +246,7 @@ class Statistics(MonitoringDaemon):
                 write_to_file(data, header, last_row)
                 break
             except PermissionError as e:
-                print(f'Was unable to save statistics to file, the following error occurred: {e.args}')
+                logger.exception(f'Was unable to save statistics to file, the following error occurred.')
                 input('Please close the file and press Enter to continue recording.')
 
     def get_growth_rate(self):

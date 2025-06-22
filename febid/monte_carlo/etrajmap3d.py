@@ -12,6 +12,9 @@ import numpy as np
 
 from febid.libraries.ray_traversal import traversal
 from febid.monte_carlo.mc_base import MC_Sim_Base
+from febid.logging_config import setup_logger
+# Setup logger
+logger = setup_logger(__name__)
 
 
 def process_trajectories(points, energies, mask):
@@ -168,7 +171,7 @@ class ETrajMap3d(MC_Sim_Base):
             with np.errstate(divide='raise', invalid='raise'):
                 step_t = step / direction # iteration step of the t-values
         except Exception as e:
-            print(e.args)
+            logger.error("An error occurred while processing PE trajectories for heating", exc_info=e)
             zeros = np.nonzero(direction==0)[0]
             for item in zeros:
                 print(f'p0: {p0[item]}, pn: {pn[item]}, direction: {direction[item]}, L: {L[item]}')
@@ -227,15 +230,18 @@ class ETrajMap3d(MC_Sim_Base):
             energies = np.empty(N)
             traversal.divide_segments(dEs[long], coords_long[:,0], num, delta, pieces, energies) # Cython script
             if pieces.min() < 0:
-                print(f'Encountered negative values in coordinates in prep_se_emission')
-                print(f'Num: {num}, delta: {delta}, ')
                 err_index = (pieces<0).nonzero()[0]
-                print(f'Pieces:')
-                print(*pieces[err_index], sep='\n\t')
-                print('Energies:')
-                print(*energies[err_index], sep='\n\t')
-                print(f'Segments\' energies: {dEs[long]}')
-                print(f'Segments\' coordinates: {coords_long[:,0]}')
+                msg = [
+                    'Encountered negative values in coordinates in prep_se_emission',
+                    f'Num: {num}, delta: {delta}, ',
+                    'Pieces:',
+                    '\n\t' + '\n\t'.join(map(str, pieces[err_index])),
+                    'Energies:',
+                    '\n\t' + '\n\t'.join(map(str, energies[err_index])),
+                    f"Segments' energies: {dEs[long]}",
+                    f"Segments' coordinates: {coords_long[:,0]}"
+                ]
+                logger.error('\n'.join(msg))
                 pieces[err_index] = np.fabs(pieces[err_index])
                 frame = inspect.currentframe().f_back.f_back
                 sim = frame.f_locals['sim']
@@ -255,8 +261,7 @@ class ETrajMap3d(MC_Sim_Base):
         # Combining all the collected segments into one array
         coords_all = np.concatenate((coords_all), axis=0)
         if coords_all.min() < 0:
-            print(f'Encountered negative values in coordinates in prep_se_emission')
-            print(f'')
+            logger.warning(f'Encountered negative values in coordinates in prep_se_emission\n')
         energies_all = np.concatenate((energies_all), axis=0)
         self.dEs_all = energies_all
         self.coords_all = coords_all
@@ -401,7 +406,6 @@ class ETrajMap3d(MC_Sim_Base):
         dEs = [] # same for energies
         traj_lengths = []
         traj_len = 0
-        print(f'*Preparing trajectories...', end='')
         start = timeit.default_timer()
         passes = copy.deepcopy(passes)
         for one_pass in passes:
@@ -416,29 +420,25 @@ class ETrajMap3d(MC_Sim_Base):
         traj_lengths = np.asarray(traj_lengths)
         segments_all = np.concatenate(points, axis=0)
         dEs_all = np.concatenate(dEs, axis=0)
-        print(f'finished. \t {timeit.default_timer() - start}')
+        logger.debug(f'*Preparing trajectories finished in {(timeit.default_timer() - start):3f} s')
 
-        print(f'**Running \'divide_segments\'....', end='')
         start = timeit.default_timer()
         self.prep_se_emission(segments_all, dEs_all, traj_lengths-1)
-        print(f'finished. \t {timeit.default_timer() - start}')
+        logger.debug(f'**Dividing segments finished in {(timeit.default_timer() - start):3f} s')
 
         self.flux = np.zeros_like(self.grid)
 
-        print(f'***Running \'generate_flux\'...', end='')
         start = timeit.default_timer()
         self.generate_se()
-        print(f'finished. \t {timeit.default_timer() - start}')
+        logger.debug(f'***Generating SE flux finished in {(timeit.default_timer() - start):3f} s')
 
         if heating:
-            print(f'****Running \'traverse_segment\'...', end='')
             start = timeit.default_timer()
             self.follow_segment(segments_all, dEs_all)
-            print(f'finished. \t {timeit.default_timer() - start}')
+            logger.debug(f'Traversing PE segments for heating finished in {(timeit.default_timer() - start):3f} s')
 
-            print(f'*****Running \'joule_heating\'...', end='')
             start = timeit.default_timer()
             self.joule_heating()
-            print(f'finished. \t {timeit.default_timer() - start}')
+            logger.debug(f'Generating Joule heating finished in {(timeit.default_timer() - start):3f} s')
 
         return self.flux, self.heat, self.dEs_all # has to be returned, as every process (when using multiprocessing) gets its own copy of the whole class and thus does not write to the original

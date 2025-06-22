@@ -18,6 +18,9 @@ import traceback as tb
 from febid.libraries.ray_traversal import traversal
 from febid.monte_carlo.compiled import etrajectory_c
 from febid.monte_carlo.mc_base import MC_Sim_Base
+from febid.logging_config import setup_logger
+# Setup logger
+logger = setup_logger(__name__)
 
 
 class Electron():
@@ -385,15 +388,17 @@ class ETrajectory(MC_Sim_Base):
             except:
                 i += 1
                 if i > 10000:
+                    logger.error("Stuck in an endless loop in Gauss distribution creation. \n Terminating.", exc_info=True)
                     raise OverflowError("Stuck in an endless loop in Gauss distribution creation. \n Terminating.")
                 continue
             if x.size > 0 and y.size > 0:
                 if x.shape[0] != y.shape[0]:
-                    print(f'x and y shape mismatch in \'rnd_gauss_xy\'')
+                    logger.error(f'x and y shape mismatch in \'rnd_gauss_xy\'', exc_info=True)
                     raise ValueError
                 return x, y
             i += 1
             if i > 10000:
+                logger.error("Stuck in an endless loop in Gauss distribution creation. \n Terminating.", exc_info=True)
                 raise OverflowError("Stuck in an endless loop in Gauss distribution creation. \n Terminating.")
 
     def map_wrapper(self, y0, x0, N=0):
@@ -408,11 +413,11 @@ class ETrajectory(MC_Sim_Base):
         if N == 0:
             N = self.N
         x0, y0 = self.rnd_super_gauss(x0, y0, N)  # generate gauss-distributed beam positions
-        print('Running \'map trajectory\'...', end='')
         start = dt()
         self.passes = self.map_trajectory(x0, y0)
-        print(f'finished. \t {dt() - start}')
+        logger.debug(f'Generating PE trajectories finished in {(dt() - start):3f} s')
         if not len(self.passes) > 0:
+            logger.error('Zero trajectories generated!', exc_info=True)
             raise ValueError('Zero trajectories generated!')
         return self.passes
 
@@ -428,15 +433,16 @@ class ETrajectory(MC_Sim_Base):
         if N == 0:
             N = self.N
         x0, y0 = self.rnd_super_gauss(x0, y0, N)  # generate gauss-distributed beam positions
-        print('Running \'map trajectory\'...', end='')
         start = dt()
         try:
             self.passes = etrajectory_c.start_sim(self.E0, self.Emin, y0, x0, self.cell_size, self.grid,
                                                   self.surface.view(dtype=np.uint8), [self.substrate, self.deponat])
         except Exception as e:
-            raise RuntimeError(f'An error occurred while generating trajectories: {e.args}')
-        print(f'finished. \t {dt() - start}')
+            logger.exception('An error occurred while generating trajectories')
+            raise
+        logger.debug(f'Generating PE trajectories finished in {(dt() - start):3f} s')
         if not len(self.passes) > 0:
+            logger.error('Zero trajectories generated!', exc_info=True)
             raise ValueError('Zero trajectories generated!')
         return self.passes
 
@@ -451,7 +457,7 @@ class ETrajectory(MC_Sim_Base):
         self.passes = []
         self.ztop = np.nonzero(self.surface)[0].max()
         count = -1
-        print('\nStarting PE trajectories mapping...')
+        logger.degug('\nStarting PE trajectories mapping...')
         for x, y in zip(x0, y0):
             count += 1
             # print(f'{count}', end=' ')
@@ -561,17 +567,21 @@ class ETrajectory(MC_Sim_Base):
                         break
                 self.passes.append((trajectories, energies, mask))  # collecting mapped trajectories and energies
             except Exception as e:
-                print(e.args)
-                tb.print_exc()
-                print(f'Current electron properties: ', end='\n\t')
-                print(*vars(coords).items(), sep='\n\t')
-                print(f'Generated trajectory:', end='\n\t')
-                print(*zip(trajectories, energies, mask), sep='\n\t')
+                msg = [
+                    f"Exception args: {e.args}",
+                    "Current electron properties:",
+                    *(f"\t{k}: {v}" for k, v in vars(coords).items()),
+                    "Generated trajectory:",
+                    *(f"\t{t}" for t in zip(trajectories, energies, mask))
+                ]
                 try:
-                    print(f'Last indices: {i, j, k}')
-                except:
+                    msg.append(f"Last indices: {i, j, k}")
+                except Exception:
                     pass
-        print('\nFinished PE sim')
+                logger.exception('\n'.join(msg))
+                tb.print_exc()
+                raise e
+        logger.debug('\nFinished PE sim')
         return self.passes
 
     def map_trajectory_verbose(self, x0, y0):

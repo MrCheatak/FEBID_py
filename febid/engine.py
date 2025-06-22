@@ -8,6 +8,9 @@ from febid.Process import Process
 from febid.monte_carlo.etraj3d import MC_Simulation
 from febid.Statistics import SynchronizationHelper
 from febid.simulation_context import SimulationContext
+from febid.logging_config import setup_logger
+# Setup logger
+logger = setup_logger(__name__)
 
 
 class DepositionEngineExecutor:
@@ -16,7 +19,7 @@ class DepositionEngineExecutor:
 
     def step(self, dwell_time):
         if dwell_time < self.process.dt:
-            warnings.warn('Dwell time is smaller than the time step!')
+            logger.info('Dwell time is smaller than the time step!')
             self.process.dt = dwell_time
         self.process.deposition()
         self.process.precursor_density()
@@ -31,9 +34,11 @@ class MonteCarloExecutor:
         self.beam_matrix = None
 
     def step(self, y, x):
+        start = timeit.default_timer()
         self.beam_matrix = self.sim.run_simulation(y, x, self.process.request_temp_recalc)
+        logger.info(f'Finished MC in {(timeit.default_timer() - start):.3f} s')
         if self.beam_matrix.max() <= 1:
-            warnings.warn("No surface flux!", RuntimeWarning)
+            logger.warning("No surface flux!", RuntimeWarning)
             self.process.set_beam_matrix(1)
         else:
             self.process.set_beam_matrix(self.beam_matrix)
@@ -197,7 +202,7 @@ def print_all(context: SimulationContext):
         else:
             pipeline.run_step(x, y, step)
         if run_flag.is_stopped:  # check if the simulation was stopped at the end of an iteration
-            print('Stopping simulation...')
+            logger.info('Stopping simulation...')
             break
     if not run_flag.is_stopped:
         run_flag.is_success = True
@@ -206,7 +211,7 @@ def print_all(context: SimulationContext):
         message = 'Simulation stopped!'
     run_flag.run_flag = True
     run_flag.notify()
-    print(message)
+    logger.info(message)
     run_flag.event.set()
 
 
@@ -279,7 +284,7 @@ def cell_filling_routine_GPU(y, x, pr: Process, sim: MC_Simulation):
     start = timeit.default_timer()
     beam_matrix = sim.run_simulation(y, x, pr.request_temp_recalc) # run MC sim. and retrieve SE surface flux
     pr.set_beam_matrix(beam_matrix)
-    print(f'Finished MC in {timeit.default_timer() - start} s')
+    logger.info(f'Finished MC in {timeit.default_timer() - start} s')
     if beam_matrix.max() <= 1:
         warnings.warn('No surface flux!', RuntimeWarning)
         beam_matrix = 1
@@ -287,9 +292,9 @@ def cell_filling_routine_GPU(y, x, pr: Process, sim: MC_Simulation):
         try:
             pr.onload_structure_to_gpu(beam_matrix)
         except Exception as e:
-            print("Error during structure resizing: " + repr(e))
+            logger.exception("Error during structure resizing: " + repr(e))
             return False
-        print("Resize successfull")
+        logger.info("Resize successfull")
     else:
         pr.knl.update_beam_matrix(beam_matrix)
     if pr.temperature_tracking:
@@ -319,7 +324,7 @@ def cell_filling_routine_CPU(y, x, pr: Process, sim: MC_Simulation):
         pr.knl.reload_beam_matrix(beam_matrix, blocking=False)
     else:
         pr.knl.update_beam_matrix(beam_matrix, blocking=False)
-    print(f'Finished MC in {timeit.default_timer() - start} s')
+    logger.info(f'Finished MC in {timeit.default_timer() - start} s')
     if beam_matrix.max() <= 1:
         warnings.warn('No surface flux!', RuntimeWarning)
         pr.set_beam_matrix(1)
