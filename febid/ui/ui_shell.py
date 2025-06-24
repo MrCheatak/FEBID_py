@@ -9,101 +9,15 @@ from febid.ui.main_window import Ui_MainWindow as UI_MainPanel
 
 import pyvista as pv
 import yaml
-from ruamel.yaml import YAML, CommentedMap
 
-from febid.start import Starter
 from febid.Structure import Structure
 from febid.libraries.vtk_rendering.VTK_Rendering import read_field_data
 
 from febid.ui.process_viz import RenderWindow
 from febid.logging_config import setup_logger
+from febid.ui.session_manager import SessionManager
 # Setup logger
 logger = setup_logger(__name__)
-
-
-class SessionHandler:
-    """
-    Class for creating, loading and saving sessions (interface configuration)
-    """
-    def __init__(self):
-        self.params = CommentedMap()
-        self.starter = Starter()
-        self.starter.params = self.params
-        self.default_config_stub = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'last_session_stub.yml')
-
-    def load_session(self, filename):
-        """
-        Load session configuration from a file
-
-        :param filename: full file name
-        """
-        try:
-            with open(filename, mode='rb') as f:
-                params = yaml.load(f, Loader=yaml.FullLoader)
-                self.params.update(params)
-        except FileNotFoundError as e:
-            logger.exception('Session file not found')
-            raise
-
-    def create_session(self, params):
-        """
-        Create new session configuration and set it up
-
-        :param params: session configuration parameters
-        """
-        self.load_empty_config()
-        for param in params:
-            self.set_parameter(param, params[param])
-
-    def load_empty_config(self):
-        """
-        Configuration file template
-
-        :return:
-        """
-        self.load_session(self.default_config_stub)
-
-    def save_session(self, filename):
-        """
-        Save current configuration to a file
-
-        :param filename: full file name
-        """
-        # self.filename = filename
-        yml = YAML()
-        with open(filename, mode='wb') as f:
-            yml.dump(self.params, f, )
-
-    def set_parameter(self, name, value):
-        """
-        Set the value of a parameter in the session configuration.
-
-        :param name: parameter name
-        :param value: parameter value
-        """
-        if name in self.params:
-            self.params[name] = value
-
-    def start(self, module='febid', **kwargs):
-        """
-        Start the simulation
-
-        :return:
-        """
-        if module == 'febid':
-            return self.starter.start()
-        elif module == 'monte_carlo':
-            self.starter.start_mc(**kwargs)
-        else:
-            raise ValueError(f'Unknown module: {module}')
-
-    def stop(self):
-        """
-        Stop the simulation
-
-        :return:
-        """
-        self.starter.stop()
 
 
 class UI_Group(list):
@@ -195,7 +109,7 @@ class MainPanel(QMainWindow, UI_MainPanel):
             self.last_session_filename = config_filename
         else:
             self.last_session_filename = 'last_session.yml'
-        self.session_handler = SessionHandler()
+        self.session_handler: SessionManager = SessionManager()
         self.save_flag = False
         self.structure_source = 'vtk'  # vtk, geom or auto
         self.pattern_source = 'simple'  # simple or stream_file
@@ -515,7 +429,13 @@ class MainPanel(QMainWindow, UI_MainPanel):
         """
         Start FEBID simulation
         """
+        # Collect parameters from UI and update session config (dict-like)
+        params = self.get_config_from_ui()
+        for k, v in params.items():
+            self.session_handler.set_param(k, v)
         try:
+            # Optionally validate before starting (hybrid approach)
+            self.session_handler.validate()
             return_val = self.session_handler.start()
             self.groupBox_visualization.setVisible(True)
         except Exception as e:
@@ -601,15 +521,16 @@ class MainPanel(QMainWindow, UI_MainPanel):
         if not filename:
             filename = self.last_session_filename
         if os.path.exists(filename):
-            self.session_handler.load_session(filename)
+            self.session_handler.load(filename)
+            # Use dict-like config for UI population (preserves comments)
             self.set_interface_from_config(self.session_handler.params)
             self.__set_structure_source(self.session_handler.params['structure_source'])
             self.__set_pattern_source(self.session_handler.params['pattern_source'])
         else:
             params = self.get_config_from_ui()
-            self.session_handler.create_session(params)
+            self.session_handler.create(params)
             if self.save_flag:
-                self.session_handler.save_session(filename)
+                self.session_handler.save(filename)
         logger.info('Loaded last session.')
 
     def ui_to_parameters_mapping(self):
@@ -687,7 +608,7 @@ class MainPanel(QMainWindow, UI_MainPanel):
                 if self.__is_float(text):
                     val = float(text)
                     if int(val) - val == 0:
-                        val = int(text)
+                        val = int(val)
                 else:
                     val = text
                 params[parameter] = val
@@ -857,9 +778,9 @@ class MainPanel(QMainWindow, UI_MainPanel):
         :param value: value of the parameter
         :return:
         """
-        self.session_handler.set_parameter(param_name, value)
+        self.session_handler.set_param(param_name, value)
         if self.save_flag:
-            self.session_handler.save_session(self.last_session_filename)
+            self.session_handler.save(self.last_session_filename)
 
     @staticmethod
     def __is_float(element) -> bool:
@@ -963,40 +884,18 @@ class MainPanel(QMainWindow, UI_MainPanel):
             self.__view_message('An unknownerror occurred', traceback_output, icon='Critical')
             # raise e
 
-    # def interface_to_config_map(self):
-    #     """
-    #     Mapping between UI and config file
-    #
-    #     :return:
-    #     """
-    #     self.session['load_last_session'] = self.save_flag
-    #     self.session['structure_source'] = self.structure_source
-    #     self.session['vtk_filename'] = self.vtk_filename
-    #     self.session['geom_parameters_filename'] = self.geom_parameters_filename
-    #     self.session['width'] = int(self.input_width.text())
-    #     self.session['length'] = int(self.input_length.text())
-    #     self.session['height'] = int(self.input_height.text())
-    #     self.session['cell_size'] = int(self.input_cell_size.text())
-    #     self.session['substrate_height'] = int(self.input_substrate_height.text())
-    #     self.session['pattern_source'] = self.pattern_source
-    #     self.session['pattern'] = self.pattern_selection.currentText()
-    #     self.session['param1'] = float(self.input_param1.text())
-    #     self.session['param2'] = float(self.input_param2.text())
-    #     self.session['dwell_time'] = int(self.input_dwell_time.text())
-    #     self.session['pitch'] = int(self.input_pitch.text())
-    #     self.session['repeats'] = int(self.input_repeats.text())
-    #     self.session['stream_file_filename'] = self.stream_file_filename
-    #     self.session['hfw'] = float(self.input_hfw.text())
-    #     self.session['settings_filename'] = self.settings_filename
-    #     self.session['precursor_filename'] = self.precursor_parameters_filename
-    #     self.session['temperature_tracking'] = self.temperature_tracking
-    #     self.session['save_simulation_data'] = self.checkbox_save_simulation_data.isChecked()
-    #     self.session['save_structure_snapshot'] = self.checkbox_save_snapshots.isChecked()
-    #     self.session['simulation_data_interval'] = float(self.input_sim_data_interval.text())
-    #     self.session['structure_snapshot_interval'] = float(self.input_snapshot_interval.text())
-    #     self.session['unique_name'] = self.input_unique_name.text()
-    #     self.session['save_directory'] = self.save_directory
-    #     self.session['show_process'] = self.checkbox_show.isChecked()
+    def validate_config(self):
+        """
+        Validate the current configuration using the dataclass. Show errors to the user if any.
+        """
+        params = self.get_config_from_ui()
+        for k, v in params.items():
+            self.session_handler.set_param(k, v)
+        try:
+            self.session_handler.validate()
+            self.__view_message('Validation successful', 'The configuration is valid.', icon='Information')
+        except Exception as e:
+            self.__exception_handler(e)
 
 
 def start(config_filename=None):

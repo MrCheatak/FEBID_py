@@ -11,7 +11,7 @@ from ruamel.yaml import YAML
 from loky import ProcessPoolExecutor
 
 from febid.__main__ import start_no_ui
-from febid.ui.ui_shell import SessionHandler
+from febid.ui.session_manager import SessionManager
 from febid.logging_config import setup_logger
 # Setup logger
 logger = setup_logger(__name__)
@@ -76,7 +76,7 @@ def read_param(file, param_name):
         raise KeyError(f'Failed to read parameter. The parameter not present in the file!')
 
 
-def runner_func(session: SessionHandler):
+def runner_func(session: SessionManager):
     """
     Run a simulation with blocking.
     """
@@ -100,17 +100,17 @@ def scan_stream_files(session_file, directory, add_name='', n_parallel=1):
     files = [os.path.join(directory, f) for f in files_orig]
     init_stream = read_param(session_file, 'stream_file_filename')
     init_name = read_param(session_file, 'unique_name')
-    session = SessionHandler()
-    session.load_session(session_file)
-    session.set_parameter('structure_source', 'auto')
-    session.set_parameter('pattern_source', 'stream_file')
+    session = SessionManager()
+    session.load(session_file)
+    session.set_param('structure_source', 'auto')
+    session.set_param('pattern_source', 'stream_file')
     futures = []
     with ProcessPoolExecutor(max_workers=n_parallel) as executor:
         for stream_file, name in zip(files, files_orig):
             name = name + '_' + add_name
             session_i = deepcopy(session)
-            session_i.set_parameter('stream_file_filename', stream_file)
-            session_i.set_parameter('unique_name', name)
+            session_i.set_param('stream_file_filename', stream_file)
+            session_i.set_param('unique_name', name)
             futures.append((executor.submit(runner_func,session_i), name))
             sleep(1)
     write_param(session_file, 'stream_file_filename', init_stream)
