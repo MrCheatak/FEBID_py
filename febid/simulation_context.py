@@ -17,3 +17,4 @@ class SimulationContext:
 
     process: Process = None
     mcSimulation: MC_Simulation = None
+    syncHelper: SynchronizationHelper = None

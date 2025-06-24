@@ -143,7 +143,6 @@ class SimulationPipeline:
         Equivalent to print_step() function
         """
         pr = self.context.process
-        sim = self.context.mcSimulation
         run_flag = self.context.syncHelper
         stepper = self.stepper
 
@@ -172,6 +171,55 @@ class SimulationPipeline:
         self.heat_solver.step()  # recalculate temperature profile
 
 
+class Simulation:
+    def __init__(self, context: SimulationContext):
+        self.context = context
+        self.pipeline = SimulationPipeline(context)
+        self.logger = setup_logger("febid.simulation")
+        self.initialized = False
+
+    def initialize(self):
+        self.logger.info("Initializing simulation pipeline...")
+        self.pipeline.initialize()
+        self.initialized = True
+        self.logger.info("Initialization complete.")
+
+
+    def run(self):
+        if not self.initialized:
+            self.initialize()
+        pr = self.context.process
+        path = self.context.printingPath
+        run_flag = self.context.syncHelper
+
+        self.logger.info("Simulation started.")
+        for i, (x, y, dwell_time) in enumerate(path):
+            if run_flag.is_stopped:
+                self.logger.warning(f"Simulation stopped at step {i}/{len(path)}.")
+                break
+            self.pipeline.mc_executor.step(y, x)
+            self.pipeline.heat_solver.step()
+            if pr.device:
+                pr.knl.load_beam_matrix(self.pipeline.mc_executor.beam_matrix, blocking=False)
+                print_step_GPU(y, x, dwell_time, pr, self.context.mcSimulation, self.pipeline.stepper.progress_bar, run_flag)
+            else:
+                self.pipeline.run_step(x, y, dwell_time)
+
+        run_flag.is_success = not run_flag.is_stopped
+        run_flag.run_flag = True
+        run_flag.notify()
+        run_flag.event.set()
+
+        self.logger.info("Simulation finished successfully." if run_flag.is_success else "Simulation ended early.")
+
+    def stop(self):
+        self.logger.info("Stop requested.")
+        self.context.syncHelper.is_stopped = True
+
+    def is_running(self):
+        return not self.context.syncHelper.run_flag and not self.context.syncHelper.is_stopped
+
+
 def print_all(context: SimulationContext):
     """
     Main event loop, that iterates through consequent points in a stream-file.
@@ -184,35 +232,9 @@ def print_all(context: SimulationContext):
     :param run_flag:
     :return:
     """
-    path = context.printingPath
-    pr = context.process
-    sim = context.mcSimulation
-    run_flag = context.syncHelper
-
-    pipeline = SimulationPipeline(context)
-    pipeline.initialize()
-
-    start = 0
-    for x, y, step in path[start:]:
-        pipeline.mc_executor.step(y, x) # run MC sim. and retrieve SE surface flux and update beam matrix
-        pipeline.heat_solver.step()  # recalculate temperature profile
-        if pr.device:
-            pr.knl.load_beam_matrix(pipeline.mc_executor.beam_matrix, blocking=False)
-            print_step_GPU(y, x, step, pr, sim, pipeline.progress_bar, run_flag)
-        else:
-            pipeline.run_step(x, y, step)
-        if run_flag.is_stopped:  # check if the simulation was stopped at the end of an iteration
-            logger.info('Stopping simulation...')
-            break
-    if not run_flag.is_stopped:
-        run_flag.is_success = True
-        message = 'Simulation finished!'
-    else:
-        message = 'Simulation stopped!'
-    run_flag.run_flag = True
-    run_flag.notify()
-    logger.info(message)
-    run_flag.event.set()
+    sim = Simulation(context)
+    sim.initialize()
+    sim.run()
 
 
 def print_step_GPU(y, x, dwell_time, pr: Process, sim: MC_Simulation, t, run_flag: SynchronizationHelper):
