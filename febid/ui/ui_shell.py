@@ -20,6 +20,8 @@ from febid.ui.session_manager import SessionManager
 logger = setup_logger(__name__)
 
 
+
+
 class UI_Group(list):
     """
     A collection of UI elements.
@@ -102,8 +104,8 @@ class MainPanel(QMainWindow, UI_MainPanel):
         self.groupBox_visualization.setVisible(False)
         self.show()
         # self.tab_switched(self.tabWidget.currentIndex())
-        self.__group_interface_elements()
-        self.__aggregate_radio_buttons()
+        self._setup_ui_helpers()
+
         # Parameters
         if config_filename is not None:
             self.last_session_filename = config_filename
@@ -127,11 +129,19 @@ class MainPanel(QMainWindow, UI_MainPanel):
         self.displayed_data = 'precursor' # Name of the data tp be visualized
         self.frame_rate_control_tick_size = 0.1  # s
 
+        self.config_mapper = UIConfigMapper(self)  # Pass self (the UI) to the mapper
         self.load_last_session()
         self.update_ui()
 
         self.initialized = True
         self.statusBar().showMessage('Ready')
+
+    def _setup_ui_helpers(self):
+        """
+        Group all UI element helper initialization.
+        """
+        self.__group_interface_elements()
+        self.__aggregate_radio_buttons()
 
     def update_ui(self):
         """
@@ -273,7 +283,7 @@ class MainPanel(QMainWindow, UI_MainPanel):
                 params = yaml.load(f, Loader=yaml.FullLoader)
             self.__save_parameter('geom_parameters_filename', file)
             # Setting FEBID panel
-            self.set_interface_from_config(params)
+            self.config_mapper.apply_config_to_ui(params)
         except Exception as e:
             logger.exception("Was unable to open .yml geometry parameters file.")
 
@@ -430,7 +440,7 @@ class MainPanel(QMainWindow, UI_MainPanel):
         Start FEBID simulation
         """
         # Collect parameters from UI and update session config (dict-like)
-        params = self.get_config_from_ui()
+        params = self.config_mapper.get_config_from_ui()
         for k, v in params.items():
             self.session_handler.set_param(k, v)
         try:
@@ -523,100 +533,15 @@ class MainPanel(QMainWindow, UI_MainPanel):
         if os.path.exists(filename):
             self.session_handler.load(filename)
             # Use dict-like config for UI population (preserves comments)
-            self.set_interface_from_config(self.session_handler.params)
+            self.config_mapper.apply_config_to_ui(self.session_handler.params)
             self.__set_structure_source(self.session_handler.params['structure_source'])
             self.__set_pattern_source(self.session_handler.params['pattern_source'])
         else:
-            params = self.get_config_from_ui()
+            params = self.config_mapper.get_config_from_ui()
             self.session_handler.create(params)
             if self.save_flag:
                 self.session_handler.save(filename)
         logger.info('Loaded last session.')
-
-    def ui_to_parameters_mapping(self):
-        """
-        Mapping of interface elements to session configuration parameters.
-        :return: mapping dictionary
-        """
-        mapping_of_interface_elements_to_parameters = {
-            'load_last_session': self.checkbox_load_last_session,
-            'structure_source': self.radio_buttons_structure_source,
-            'vtk_filename': self.vtk_filename_display,
-            'geom_parameters_filename': self.geom_parameters_filename,
-            'width': self.input_width,
-            'length': self.input_length,
-            'height': self.input_height,
-            'cell_size': self.input_cell_size,
-            'substrate_height': self.input_substrate_height,
-            'pattern_source': self.radio_buttons_pattern_source,
-            'pattern': self.pattern_selection,
-            'param1': self.input_param1,
-            'param2': self.input_param2,
-            'dwell_time': self.input_dwell_time,
-            'pitch': self.input_pitch,
-            'repeats': self.input_repeats,
-            'stream_file_filename': self.stream_file_filename_display,
-            'hfw': self.input_hfw,
-            'settings_filename': self.settings_filename_display,
-            'precursor_filename': self.precursor_parameters_filename_display,
-            'temperature_tracking': self.checkbox_temperature_tracking,
-            'save_simulation_data': self.checkbox_save_simulation_data,
-            'save_structure_snapshot': self.checkbox_save_snapshots,
-            'simulation_data_interval': self.input_simulation_data_interval,
-            'structure_snapshot_interval': self.input_structure_snapshot_interval,
-            'unique_name': self.input_unique_name,
-            'save_directory': self.save_folder_display,
-            'gpu': self.checkbox_gpu
-        }
-        return mapping_of_interface_elements_to_parameters
-
-    def set_interface_from_config(self, parameters=None):
-        """
-        Insert values from session configuration to UI.
-        If parameters is None, use all parameters from current session configuration.
-        :param parameters: dictionary with parameters
-        """
-        mapping = self.ui_to_parameters_mapping()
-        if parameters is None:
-            param_source = self.session_handler.params
-        else:
-            param_source = parameters
-            mapping = {key: value for key, value in mapping.items() if key in parameters.keys()}
-        for parameter, element in mapping.items():
-            val = param_source[parameter]
-            if element.__class__ == QtWidgets.QCheckBox:
-                element.setChecked(val)
-            elif element.__class__ == QtWidgets.QLineEdit:
-                element.setText(str(val))
-            elif element.__class__ == QtWidgets.QComboBox:
-                element.setCurrentText(str(val))
-            elif element.__class__ == RadioButtonGroup:
-                element.setChecked(val)
-
-    def get_config_from_ui(self):
-        """
-        Retrieve values from UI to session configuration.
-        :return: dictionary with parameters
-        """
-        mapping = self.ui_to_parameters_mapping()
-        params = {}
-        for parameter, element in mapping.items():
-            if element.__class__ == QtWidgets.QCheckBox:
-                params[parameter] = element.isChecked()
-            elif element.__class__ == QtWidgets.QLineEdit:
-                text = element.text()
-                if self.__is_float(text):
-                    val = float(text)
-                    if int(val) - val == 0:
-                        val = int(val)
-                else:
-                    val = text
-                params[parameter] = val
-            elif element.__class__ == QtWidgets.QComboBox:
-                params[parameter] = element.currentText()
-            elif element.__class__ == RadioButtonGroup:
-                params[parameter] = element.getChecked()
-        return params
 
     def on_finish(self, message=''):
         self.start_febid_button.setVisible(True)
@@ -757,7 +682,7 @@ class MainPanel(QMainWindow, UI_MainPanel):
             'cell_size': cell_size,
             'substrate_height': substrate_height
         }
-        self.set_interface_from_config(interface_set_config)
+        self.config_mapper.apply_config_to_ui(interface_set_config)
         # Setting MC panel
         self.input_width_mc.setText(str(xdim))
         self.input_length_mc.setText(str(ydim))
@@ -781,14 +706,6 @@ class MainPanel(QMainWindow, UI_MainPanel):
         self.session_handler.set_param(param_name, value)
         if self.save_flag:
             self.session_handler.save(self.last_session_filename)
-
-    @staticmethod
-    def __is_float(element) -> bool:
-        try:
-            float(element)
-            return True
-        except ValueError:
-            return False
 
     @staticmethod
     def __is_int(element) -> bool:
@@ -888,7 +805,7 @@ class MainPanel(QMainWindow, UI_MainPanel):
         """
         Validate the current configuration using the dataclass. Show errors to the user if any.
         """
-        params = self.get_config_from_ui()
+        params = self.config_mapper.get_config_from_ui()
         for k, v in params.items():
             self.session_handler.set_param(k, v)
         try:
@@ -902,6 +819,118 @@ def start(config_filename=None):
     app = QApplication(sys.argv)
     win1 = MainPanel(config_filename)
     sys.exit(app.exec())
+
+class UIConfigMapper:
+    """
+    Maps UI elements to configuration parameters.
+    This class is used to simplify the process of updating UI elements based on configuration parameters
+    and vice versa.
+    """
+
+    def __init__(self, ui: MainPanel):
+        self.ui = ui
+        self._mapping = self._get_mapping()
+
+    def _get_mapping(self):
+        """
+        Mapping of interface elements to session configuration parameters.
+        :return: mapping dictionary
+        """
+        mapping_of_interface_elements_to_parameters = {
+            'load_last_session': self.ui.checkbox_load_last_session,
+            'structure_source': self.ui.radio_buttons_structure_source,
+            'vtk_filename': self.ui.vtk_filename_display,
+            'geom_parameters_filename': self.ui.geom_parameters_filename,
+            'width': self.ui.input_width,
+            'length': self.ui.input_length,
+            'height': self.ui.input_height,
+            'cell_size': self.ui.input_cell_size,
+            'substrate_height': self.ui.input_substrate_height,
+            'pattern_source': self.ui.radio_buttons_pattern_source,
+            'pattern': self.ui.pattern_selection,
+            'param1': self.ui.input_param1,
+            'param2': self.ui.input_param2,
+            'dwell_time': self.ui.input_dwell_time,
+            'pitch': self.ui.input_pitch,
+            'repeats': self.ui.input_repeats,
+            'stream_file_filename': self.ui.stream_file_filename_display,
+            'hfw': self.ui.input_hfw,
+            'settings_filename': self.ui.settings_filename_display,
+            'precursor_filename': self.ui.precursor_parameters_filename_display,
+            'temperature_tracking': self.ui.checkbox_temperature_tracking,
+            'save_simulation_data': self.ui.checkbox_save_simulation_data,
+            'save_structure_snapshot': self.ui.checkbox_save_snapshots,
+            'simulation_data_interval': self.ui.input_simulation_data_interval,
+            'structure_snapshot_interval': self.ui.input_structure_snapshot_interval,
+            'unique_name': self.ui.input_unique_name,
+            'save_directory': self.ui.save_folder_display,
+            'gpu': self.ui.checkbox_gpu
+        }
+        return mapping_of_interface_elements_to_parameters
+
+    def apply_config_to_ui(self, config: dict):
+        """
+        Insert values from session configuration into UI widgets.
+
+        :param config: dictionary with widget names and a value to set
+        """
+        for param_name, widget in self._mapping.items():
+            if param_name not in config:
+                continue
+            value = config[param_name]
+            if isinstance(widget, QtWidgets.QCheckBox):
+                widget.setChecked(bool(value))
+            elif isinstance(widget, QtWidgets.QLineEdit):
+                widget.setText(str(value))
+            elif isinstance(widget, QtWidgets.QComboBox):
+                widget.setCurrentText(str(value))
+            elif isinstance(widget, RadioButtonGroup):
+                widget.setChecked(value)
+
+    def get_config_from_ui(self) -> dict:
+        """Reads widget values and returns them as a configuration dictionary."""
+        """
+        Retrieve values from UI to session configuration.
+        :return: dictionary with parameters
+        """
+        mapping = self._mapping
+        params = {}
+        for parameter, element in mapping.items():
+            if element.__class__ == QtWidgets.QCheckBox:
+                params[parameter] = element.isChecked()
+            elif element.__class__ == QtWidgets.QLineEdit:
+                val = self.__infer_type(element)
+                params[parameter] = val
+            elif element.__class__ == QtWidgets.QComboBox:
+                params[parameter] = element.currentText()
+            elif element.__class__ == RadioButtonGroup:
+                params[parameter] = element.getChecked()
+        return params
+
+    def __infer_type(self, element: QtWidgets.QLineEdit):
+        """
+        Infer the type of the value from the UI element text and convert to that type.
+
+        :param element: UI element to read text from
+        :return: value converted to the appropriate type (int, float, or str)
+        """
+        text = element.text()
+        if self.__is_float(text):
+            val = float(text)
+            if int(val) - val == 0:
+                val = int(val)
+        else:
+            val = text
+        return val
+
+    @staticmethod
+    def __is_float(element) -> bool:
+        try:
+            float(element)
+            return True
+        except ValueError:
+            return False
+
 
 
 if __name__ == "__main__":
