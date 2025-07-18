@@ -4,6 +4,7 @@ from threading import Thread
 
 from PyQt5.QtWidgets import QApplication, QMainWindow, QMessageBox, QLineEdit
 from PyQt5 import QtWidgets
+from PyQt5.QtCore import pyqtSignal, pyqtSlot
 
 from febid.ui.main_window import Ui_MainWindow as UI_MainPanel
 
@@ -16,6 +17,7 @@ from febid.libraries.vtk_rendering.VTK_Rendering import read_field_data
 from febid.ui.process_viz import RenderWindow
 from febid.logging_config import setup_logger
 from febid.ui.session_manager import SessionManager
+from febid.ui.app_controller import ApplicationController
 # Setup logger
 logger = setup_logger(__name__)
 
@@ -92,6 +94,10 @@ class MainPanel(QMainWindow, UI_MainPanel):
     """
     Main control panel window class
     """
+    # Define signals that the view can emit
+    start_simulation_requested = pyqtSignal(dict)
+    stop_simulation_requested = pyqtSignal()
+
     def __init__(self, app=None, config_filename=None, parent=None):
         super().__init__(parent)
         self.app = app
@@ -441,12 +447,8 @@ class MainPanel(QMainWindow, UI_MainPanel):
         """
         # Collect parameters from UI and update session config (dict-like)
         params = self.config_mapper.get_config_from_ui()
-        for k, v in params.items():
-            self.session_handler.set_param(k, v)
         try:
-            # Optionally validate before starting (hybrid approach)
-            self.session_handler.validate()
-            return_val = self.session_handler.start()
+            self.start_simulation_requested.emit(params)
             self.groupBox_visualization.setVisible(True)
         except Exception as e:
             self.__exception_handler(e)
@@ -454,21 +456,14 @@ class MainPanel(QMainWindow, UI_MainPanel):
         self.start_febid_button.setVisible(False)
         self.stop_febid_button.setVisible(True)
 
-        def wait_for_success():
-            flag = self.session_handler.starter.syncHelper
-            flag.event.wait()
-            if flag.is_success:
-                self.on_finish('Simulation finished')
 
-        thread = Thread(target=wait_for_success)
-        thread.start()
         self.statusBar().showMessage('Simulation running')
 
     def stop_febid(self):
         """
         Stop FEBID simulation
         """
-        self.session_handler.stop()
+        self.stop_simulation_requested.emit()
         self.on_finish('Simulation stopped')
 
     def start_mc(self):
@@ -543,6 +538,7 @@ class MainPanel(QMainWindow, UI_MainPanel):
                 self.session_handler.save(filename)
         logger.info('Loaded last session.')
 
+    @pyqtSlot(str)
     def on_finish(self, message=''):
         self.start_febid_button.setVisible(True)
         self.stop_febid_button.setVisible(False)
@@ -806,19 +802,32 @@ class MainPanel(QMainWindow, UI_MainPanel):
         Validate the current configuration using the dataclass. Show errors to the user if any.
         """
         params = self.config_mapper.get_config_from_ui()
-        for k, v in params.items():
-            self.session_handler.set_param(k, v)
+        self.session_handler.set_all_params(params)
         try:
             self.session_handler.validate()
             self.__view_message('Validation successful', 'The configuration is valid.', icon='Information')
         except Exception as e:
             self.__exception_handler(e)
 
+    def register_ApplicationController(self, controller: ApplicationController):
+        """
+        Register the application controller to handle application-level events.
+
+        :param controller: ApplicationController instance
+        """
+        self.controller = controller
+        self.start_simulation_requested.connect(controller.on_start_simulation_requested)
+        self.stop_simulation_requested.connect(controller.on_stop_simulation_requested)
+        self.controller.register_view(self)
+
 
 def start(config_filename=None):
     app = QApplication(sys.argv)
     win1 = MainPanel(config_filename)
+    controller = ApplicationController(win1.session_handler)
+    win1.register_ApplicationController(controller)
     sys.exit(app.exec())
+
 
 class UIConfigMapper:
     """

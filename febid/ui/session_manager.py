@@ -32,8 +32,7 @@ class SessionManager:
 
     def create(self, params):
         self.load_empty()
-        for param, value in params.items():
-            self.set_param(param, value)
+        self.set_all_params(params)
 
     def load_empty(self):
         self.load(self.default_config_stub)
@@ -45,6 +44,13 @@ class SessionManager:
 
     def set_param(self, name, value):
         self.params[name] = value
+
+    def set_all_params(self, params):
+        """
+        Set all parameters from the current params dict.
+        """
+        for name, value in params.items():
+            self.set_param(name, value)
 
     def get_param(self, name, default=None):
         return self.params.get(name, default)
@@ -68,7 +74,7 @@ class SessionManager:
 
     def start(self, module='febid', **kwargs):
         # Optionally validate before starting
-        # self.validate()
+        self.validate()
         if module == 'febid':
             # Pass dataclass to starter if needed, else use dict
             self.starter.params = self.to_dataclass()
