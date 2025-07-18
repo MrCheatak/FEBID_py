@@ -1,6 +1,5 @@
 import os, sys
 import traceback
-from threading import Thread
 
 from PyQt5.QtWidgets import QApplication, QMainWindow, QMessageBox, QLineEdit
 from PyQt5 import QtWidgets
@@ -18,76 +17,9 @@ from febid.ui.process_viz import RenderWindow
 from febid.logging_config import setup_logger
 from febid.ui.session_manager import SessionManager
 from febid.ui.app_controller import ApplicationController
+from febid.ui.ui_helper import UIHelper, RadioButtonGroup
 # Setup logger
 logger = setup_logger(__name__)
-
-
-
-
-class UI_Group(list):
-    """
-    A collection of UI elements.
-    """
-
-    def __init__(self, *args):
-        super().__init__()
-        if type(args[0]) in [set, list, tuple]:
-            self.extend(args[0])
-        else:
-            for arg in args:
-                self.append(arg)
-
-    def set(self):
-        """
-        Convert to set
-        """
-        return set(self)
-
-    def disable(self):
-        """
-        Disable UI element.
-
-        :return:
-        """
-        for element in self:
-            element.setEnabled(False)
-
-    def enable(self):
-        """
-        Enable UI element.
-        :return:
-        """
-        for element in self:
-            element.setEnabled(True)
-
-
-class RadioButtonGroup(UI_Group):
-    """
-    A collection of bound radio buttons.
-    """
-    def __init__(self, *args, names=None):
-        super().__init__(*args)
-        self.names = names
-
-    def setChecked(self, param):
-        """
-        Check one of the radio buttons based on its name.
-
-        :param param: name of the button to check
-        :return:
-        """
-        index = self.names.index(param)
-        self[index].setChecked(True)
-
-    def getChecked(self):
-        """
-        Get the name of the checked button.
-
-        :return: name of checked button
-        """
-        for i, button in enumerate(self):
-            if button.isChecked():
-                return self.names[i]
 
 
 class MainPanel(QMainWindow, UI_MainPanel):
@@ -110,7 +42,10 @@ class MainPanel(QMainWindow, UI_MainPanel):
         self.groupBox_visualization.setVisible(False)
         self.show()
         # self.tab_switched(self.tabWidget.currentIndex())
-        self._setup_ui_helpers()
+        self.ui_helper = UIHelper(self)
+        # Getting radio buttons for compatability with UIConfigMapper
+        self.radio_buttons_structure_source = self.ui_helper.radio_buttons_structure_source
+        self.radio_buttons_pattern_source = self.ui_helper.radio_buttons_pattern_source
 
         # Parameters
         if config_filename is not None:
@@ -142,13 +77,6 @@ class MainPanel(QMainWindow, UI_MainPanel):
         self.initialized = True
         self.statusBar().showMessage('Ready')
 
-    def _setup_ui_helpers(self):
-        """
-        Group all UI element helper initialization.
-        """
-        self.__group_interface_elements()
-        self.__aggregate_radio_buttons()
-
     def update_ui(self):
         """
         Update UI appearance based on the current configuration
@@ -177,28 +105,12 @@ class MainPanel(QMainWindow, UI_MainPanel):
 
     def vtk_chosen(self):
         self.structure_source = 'vtk'
-        # Changing FEBID tab interface
-        self.choice_vtk_file.setChecked(True)
-        self.ui_sim_volume.disable()
-        self.ui_vtk_choice.enable()
-
-        # Changing MC tab interface
-        self.choice_vtk_file_mc.setChecked(True)
-        self.ui_sim_volume_mc.disable()
-        self.ui_vtk_choice_mc.enable()
-
+        self.ui_helper.set_vtk_chosen()
         self.__save_parameter('structure_source', self.structure_source)
 
     def geom_parameters_chosen(self):
-        # Changing FEBID tab interface
-        self.choice_geom_parameters_file.setChecked(True)
-        self.ui_sim_volume.disable()
-        self.ui_geom_choice.enable()
-
-        # Changing MC tab interface
-        self.choice_geom_parameters_file_mc.setChecked(True)
-        self.ui_sim_volume_mc.disable()
-        self.ui_geom_choice_mc.enable()
+        self.structure_source = 'geom'
+        self.ui_helper.set_geom_chosen()
 
         # Auto-switching to Simple patterns option
         self.choice_simple_pattern.setChecked(True)
@@ -207,18 +119,8 @@ class MainPanel(QMainWindow, UI_MainPanel):
         self.__save_parameter('structure_source', 'geom')
 
     def auto_chosen(self):
-        # Changing FEBID tab interface
-        self.choice_auto.setChecked(True)
-        self.ui_sim_volume.disable()
-        self.ui_auto_choice.enable()
-
-        # Changing MC tab interface
-        self.choice_geom_parameters_file_mc.setAutoExclusive(False)
-        self.choice_geom_parameters_file_mc.setChecked(False)
-        self.choice_geom_parameters_file_mc.setAutoExclusive(True)
-        self.choice_vtk_file_mc.setAutoExclusive(False)
-        self.choice_vtk_file_mc.setChecked(False)
-        self.choice_vtk_file_mc.setAutoExclusive(True)
+        self.structure_source = 'auto'
+        self.ui_helper.set_auto_chosen()
 
         # Auto-switching to Stream-file option
         self.choice_stream_file.setChecked(True)
@@ -227,38 +129,15 @@ class MainPanel(QMainWindow, UI_MainPanel):
         self.__save_parameter('structure_source', 'auto')
 
     def simple_pattern_chosen(self):
-        # Changing FEBID tab interface
-        self.choice_simple_pattern.setChecked(True)
-        self.ui_pattern.disable()
-        self.ui_simple_patterns.enable()
+        self.ui_helper.set_simple_pattern_chosen()
         self.__save_parameter('pattern_source', 'simple')
 
     def stream_file_chosen(self):
-        # Changing FEBID tab interface
-        self.choice_stream_file.setChecked(True)
-        self.ui_pattern.disable()
-        self.ui_stream_file.enable()
+        self.ui_helper.set_stream_file_chosen()
         self.__save_parameter('pattern_source', 'stream_file')
 
     def pattern_selection_changed(self, current=''):
-        if current == 'Point':
-            self.ui_pattern_param1.enable()
-            self.ui_pattern_param2.enable()
-        if current == 'Line':
-            self.ui_pattern_param1.enable()
-            self.ui_pattern_param2.disable()
-        if current == 'Rectangle':
-            self.ui_pattern_param1.enable()
-            self.ui_pattern_param2.enable()
-        if current == 'Square':
-            self.ui_pattern_param1.enable()
-            self.ui_pattern_param2.disable()
-        if current == 'Triangle':
-            self.ui_pattern_param1.enable()
-            self.ui_pattern_param2.disable()
-        if current == 'Circle':
-            self.ui_pattern_param1.enable()
-            self.ui_pattern_param2.disable()
+        self.ui_helper.set_simple_pattern_change()
         self.pattern = current
         self.__save_parameter('pattern', current)
 
@@ -344,32 +223,12 @@ class MainPanel(QMainWindow, UI_MainPanel):
 
     def change_state_save_sim_data(self, param=None):
         switch = bool(param)
-        self.checkbox_save_simulation_data.setChecked(switch)
-        if switch:
-            self.ui_sim_data_interval.enable()
-        else:
-            self.ui_sim_data_interval.disable()
-        if switch or self.checkbox_save_snapshots.isChecked():
-            self.ui_unique_name.enable()
-            self.ui_save_folder.enable()
-        else:
-            self.ui_unique_name.disable()
-            self.ui_save_folder.disable()
+        self.ui_helper.set_state_save_sim_data(switch)
         self.__save_parameter('save_simulation_data', switch)
 
     def change_state_save_snapshots(self, param=None):
         switch = bool(param)
-        self.checkbox_save_snapshots.setChecked(switch)
-        if switch:
-            self.ui_snapshot.enable()
-        else:
-            self.ui_snapshot.disable()
-        if switch or self.checkbox_save_snapshots.isChecked():
-            self.ui_unique_name.enable()
-            self.ui_save_folder.enable()
-        else:
-            self.ui_unique_name.disable()
-            self.ui_save_folder.disable()
+        self.ui_helper.set_state_save_snapshots(switch)
         self.__save_parameter('save_structure_snapshot', switch)
 
     def change_state_temperature_tracking(self, param):
@@ -497,12 +356,10 @@ class MainPanel(QMainWindow, UI_MainPanel):
     def precursor_coverage_viz_chosen(self):
         self.choice_precursor_coverage_viz.setChecked(True)
         self.displayed_data = 'precursor'
-        pass
 
     def surface_deposit_viz_chosen(self):
         self.choice_surface_deposit_viz.setChecked(True)
         self.displayed_data = 'deposit'
-        pass
 
     def frame_rate_slider_moved(self, tick):
         frame_rate = tick * self.frame_rate_control_tick_size
@@ -529,8 +386,6 @@ class MainPanel(QMainWindow, UI_MainPanel):
             self.session_handler.load(filename)
             # Use dict-like config for UI population (preserves comments)
             self.config_mapper.apply_config_to_ui(self.session_handler.params)
-            self.__set_structure_source(self.session_handler.params['structure_source'])
-            self.__set_pattern_source(self.session_handler.params['pattern_source'])
         else:
             params = self.config_mapper.get_config_from_ui()
             self.session_handler.create(params)
@@ -554,79 +409,6 @@ class MainPanel(QMainWindow, UI_MainPanel):
         self.on_close()
         event.accept()
 
-    # Helper interface functions
-    def __group_interface_elements(self):
-        """
-        Group interface elements for easier enabling/disabling.
-
-        :return:
-        """
-        # Groups of controls on the panel for easier Enabling/Disabling
-
-        # Inputs and their labels
-        self.ui_dimensions = UI_Group(self.input_width, self.input_length, self.input_height,
-                                      self.l_width, self.l_height, self.l_length,
-                                      self.l_dimensions_units)
-        self.ui_dimensions_mc = UI_Group(self.input_width_mc, self.input_length_mc, self.input_height_mc,
-                                         self.l_width_mc, self.l_height_mc, self.l_length_mc,
-                                         self.l_dimensions_units_mc)
-        self.ui_cell_size = UI_Group(self.l_cell_size, self.input_cell_size, self.l_cell_size_units)
-        self.ui_cell_size_mc = UI_Group(self.l_cell_size_mc, self.input_cell_size_mc, self.l_cell_size_units_mc)
-        self.ui_substrate_height = UI_Group(self.l_substrate_height, self.input_substrate_height,
-                                            self.l_substrate_height_units)
-        self.ui_substrate_height_mc = UI_Group(self.l_substrate_height_mc, self.input_substrate_height_mc,
-                                               self.l_substrate_height_units_mc)
-
-        self.ui_pattern_param1 = UI_Group(self.l_param1, self.input_param1, self.l_param1_units)
-        self.ui_pattern_param2 = UI_Group(self.l_param2, self.input_param2, self.l_param2_units)
-        self.ui_dwell_time = UI_Group(self.l_dwell_time, self.input_dwell_time, self.l_dwell_time_units)
-        self.ui_pitch = UI_Group(self.l_pitch, self.input_pitch, self.l_pitc_units)
-        self.ui_repeats = UI_Group(self.l_repeats, self.input_repeats)
-
-        self.ui_hfw = UI_Group(self.l_hfw, self.input_hfw, self.l_hfw_units)
-
-        self.ui_sim_data_interval = UI_Group(self.l_sim_data_interval, self.input_simulation_data_interval,
-                                             self.l_sim_data_interval_units)
-        self.ui_snapshot = UI_Group(self.l_snapshot_interval, self.input_structure_snapshot_interval,
-                                    self.l_snapshot_interval_units)
-        self.ui_unique_name = UI_Group(self.l_unique_name, self.input_unique_name)
-        self.ui_save_folder = UI_Group(self.open_save_folder_button, self.save_folder_display)
-
-        # Grouping elements by their designation
-        self.ui_vtk_choice = UI_Group(self.open_vtk_file_button, self.vtk_filename_display)
-        self.ui_vtk_choice_mc = UI_Group(self.open_vtk_file_button_mc, self.vtk_filename_display_mc)
-
-        self.ui_geom_choice = UI_Group(
-            {self.open_geom_parameters_file_button} | self.ui_dimensions.set() | self.ui_cell_size.set() | \
-            self.ui_substrate_height.set())
-        self.ui_geom_choice_mc = UI_Group({self.open_geom_parameters_file_button_mc} | self.ui_dimensions_mc.set() | \
-                                          self.ui_cell_size_mc.set() | self.ui_substrate_height_mc.set())
-
-        self.ui_auto_choice = UI_Group(self.ui_cell_size.set() | self.ui_substrate_height.set())
-
-        self.ui_simple_patterns = UI_Group(
-            {self.pattern_selection} | self.ui_pattern_param1.set() | self.ui_pattern_param2.set() | \
-            self.ui_dwell_time.set() | self.ui_pitch.set() | self.ui_repeats.set())
-
-        self.ui_stream_file = UI_Group({self.open_stream_file_button} | self.ui_hfw.set())
-
-        # Grouping by the groupBoxes
-        self.ui_sim_volume = UI_Group(self.ui_vtk_choice.set() | self.ui_geom_choice.set() | self.ui_auto_choice.set())
-        self.ui_sim_volume_mc = UI_Group(self.ui_vtk_choice_mc.set() | self.ui_geom_choice_mc.set())
-        self.ui_pattern = UI_Group(self.ui_simple_patterns.set() | self.ui_stream_file.set())
-
-    def __aggregate_radio_buttons(self):
-        """
-        Aggregate radio buttons into a group.
-
-        :return:
-        """
-        self.radio_buttons_structure_source = RadioButtonGroup(self.choice_vtk_file, self.choice_geom_parameters_file,
-                                                               self.choice_auto, names=['vtk', 'geom', 'auto'])
-        self.radio_buttons_pattern_source = RadioButtonGroup(self.choice_simple_pattern, self.choice_stream_file,
-                                                             names=['simple', 'stream_file'])
-        self.radio_buttons_viz_data = None
-
     def __get_file_name_from_dialog(self):
         """
         Get file name from a file selection window
@@ -635,24 +417,6 @@ class MainPanel(QMainWindow, UI_MainPanel):
         """
         file, _ = QtWidgets.QFileDialog.getOpenFileName()
         return file
-
-    def __set_structure_source(self, source_name):
-        """
-        Select the radio button of the specified structure source
-
-        :param source_name:
-        :return:
-        """
-        self.radio_buttons_structure_source.setChecked(source_name)
-
-    def __set_pattern_source(self, source_name):
-        """
-        Select the radio button of the specified pattern source
-
-        :param source_name:
-        :return:
-        """
-        self.radio_buttons_pattern_source.setChecked(source_name)
 
     def __set_dimensions_from_vtk(self, file):
         """
@@ -940,7 +704,6 @@ class UIConfigMapper:
         except ValueError:
             return False
 
-
-
+        
 if __name__ == "__main__":
     start()
