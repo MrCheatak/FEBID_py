@@ -21,7 +21,7 @@ from febid.Process import Process
 from febid.monte_carlo.etraj3d import MC_Simulation
 from febid.simulation_context import SimulationContext
 from febid.parameter_utils import prepare_equation_values, prepare_ms_config
-from engine import print_all
+from .engine import print_all
 from febid.logging_config import setup_logger
 # Setup logger
 logger = setup_logger(__name__)
