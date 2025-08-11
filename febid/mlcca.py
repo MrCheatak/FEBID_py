@@ -173,17 +173,20 @@ def visualize_kernel(*arrays):
     colors = list(colors_dict.values())
     i = 0
     for grid in grids:
-        color = colors[i]
-        colors.remove(color)
-        mesh = plotter.add_mesh(grid, show_edges=True, opacity=1, color=color, label=f'Array {i}')
-        i += 1
-        meshes.append(mesh)
+        try:
+            color = colors[i]
+            colors.remove(color)
+            mesh = plotter.add_mesh(grid, show_edges=True, opacity=1, color=color, label=f'Array {i}')
+            i += 1
+            meshes.append(mesh)
+        except ValueError:
+            print(f"Array {i} could not be added due to being empty or invalid.")
 
     # Step 3: Add a checkbox widget to toggle visibility
     toggles = []
     i = 0
     for mesh in meshes:
-        toggle = SetVisibilityCallback(mesh)
+        toggle = SetVisibilityCallback(plotter, mesh)
         toggles.append(toggle)
         plotter.add_checkbox_button_widget(toggle, value=True, position=(10, 10+i*30), size=25)
         plotter.add_text(f"Array {i}", position=(40, 10+i*30), font_size=18)

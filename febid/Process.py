@@ -69,7 +69,7 @@ class Process:
         self.surface_temp = None
 
         # Cellular automata engine
-        self._local_mcca = MLCCA()
+        self._local_mcca: MLCCA = MLCCA()
 
         # Working arrays
         self.__deposit_reduced_3d = None
@@ -289,20 +289,22 @@ class Process:
         self.__ghosts_reduced_3d[cell] = True  # deposited cell belongs to ghost shell
         self.__surface_reduced_3d[cell] = False  # deposited cell is not a surface cell
         self.__semi_surface_reduced_3d[cell] = False  # deposited cell is not a semi-surface cell
+        cell_abs = get_index_in_parent(cell, self._irradiated_area_3d)  # cell's absolute position in array
+
         # Getting new converged configuration
         updated_slice, surface_bool, semi_s_bool, ghosts_bool = self._local_mcca.get_converged_configuration(
-            cell, self.__deposit_reduced_3d < 0,
-            self.__surface_reduced_3d,
-            self.__semi_surface_reduced_3d,
-            self.__ghosts_reduced_3d)
-        surf_bool_prev = self.__surface_reduced_3d[updated_slice].copy()
-        semi_s_bool_prev = self.__semi_surface_reduced_3d[updated_slice].copy()
+            cell_abs, self.structure.deposit < 0,
+            self.structure.surface_bool,
+            self.structure.semi_surface_bool,
+            self.structure.ghosts_bool,)
+        surf_bool_prev = self.structure.surface_bool[updated_slice].copy()
+        semi_s_bool_prev = self.structure.semi_surface_bool[updated_slice].copy()
         # Updating data arrays
-        deposit_kern = self.__deposit_reduced_3d[updated_slice]
-        precursor_kern = self.__precursor_reduced_3d[updated_slice]
-        surf_kern = self.__surface_reduced_3d[updated_slice]
-        surf_semi_kern = self.__semi_surface_reduced_3d[updated_slice]
-        ghosts_kern = self.__ghosts_reduced_3d[updated_slice]
+        deposit_kern = self.structure.deposit[updated_slice]
+        precursor_kern = self.structure.precursor[updated_slice]
+        surf_kern = self.structure.surface_bool[updated_slice]
+        surf_semi_kern = self.structure.semi_surface_bool[updated_slice]
+        ghosts_kern = self.structure.ghosts_bool[updated_slice]
         surf_kern[:] = surface_bool
         surf_semi_kern[:] = semi_s_bool
         ghosts_kern[:] = ghosts_bool
