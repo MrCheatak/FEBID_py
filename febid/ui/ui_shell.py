@@ -1004,7 +1004,7 @@ class MainPanel(QMainWindow, UI_MainPanel):
 
 def start(config_filename=None):
     app = QApplication(sys.argv)
-    win1 = MainPanel(config_filename)
+    win1 = MainPanel(config_filename=config_filename)
     sys.exit(app.exec())
 
 

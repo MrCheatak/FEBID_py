@@ -18,8 +18,10 @@ class Starter:
     """
     This class serves as an interface between the interface and the simulation code.
     """
-    def __init__(self, params=None):
+    def __init__(self, params=None, filename=''):
         self._params = params
+        if os.path.exists(filename):
+            self.load_session(filename=filename)
         self.structure = Structure()
         self.dwell_time_units = 1E-6
         self.printing_path = None
@@ -28,6 +30,20 @@ class Starter:
         self.process_obj = None
         self.sim = None
         self.printing_thread = None
+
+    def load_session(self, filename):
+        """
+        Load session configuration from a file
+
+        :param filename: full file name
+        """
+        try:
+            with open(filename, mode='rb') as f:
+                params = yaml.load(f, Loader=yaml.FullLoader)
+                self._params = params
+        except FileNotFoundError as e:
+            print('Session file not found')
+            raise e
 
     def start(self):
         """
