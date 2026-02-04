@@ -17,6 +17,7 @@ from .slice_trics import get_3d_slice, get_index_in_parent, index_where, any_whe
 from .expressions import cache_numexpr_expressions
 from .kernel_modules import GPU
 from .process.simulation_state import SimulationState
+from .process.data_view_manager import DataViewManager
 
 from timeit import default_timer as df
 
@@ -61,6 +62,7 @@ class Process:
             room_temp=294
         )
         self.state.deposition_scaling = deposition_scaling
+        self.state.temperature_tracking = temp_tracking  # Set temperature tracking flag in state
 
         # Temporary: Keep references for backward compatibility during migration
         self.cell_size = None
@@ -153,6 +155,11 @@ class Process:
         # Initialization sequence
         self.__set_structure(structure)
         self.__set_constants(equation_values)
+
+        # Initialize DataViewManager (Stage 2 refactoring)
+        self.view_manager = DataViewManager(self.state, acceleration_enabled=True)
+
+        # OLD: Keep for backward compatibility during migration
         self.__update_views_2d()
         self.__semi_surface_index_2d = index_where(self.__semi_surface_reduced_2d)  # has to be generated here in abscence of a beam matrix
         self.__generate_surface_index()
@@ -249,74 +256,97 @@ class Process:
 
         :return: flag if the structure was resized
         """
+        # Stage 2: Uses DataViewManager for optimized array access
 
         # What here actually done is marking the filled cell as a solid and a ghost cell and then updating surface,
         # semi-surface, ghosts and precursor to describe the surface geometry around the newly filled cell.
         # The approach is cell-centric, which means all the surroundings are processed
-        nd = index_where(self.__deposit_reduced_3d[self.__deposition_index_3d], '>=', 1)[0] # using index because data is sparse
-        nd = self.__deposition_index_3d[0][nd], self.__deposition_index_3d[1][nd], self.__deposition_index_3d[2][nd]
+        structure_extended = False
+
+        # Get deposition view to find filled cells (deposit >= 1)
+        dep_view = self.view_manager.get_deposition_view()
+
+        # Find cells that are filled using the view's deposit array and index
+        if dep_view.acceleration_enabled:
+            # Acceleration ON: use sparse index
+            nd = index_where(dep_view.deposit[dep_view.index], '>=', 1)[0]
+            nd = dep_view.index[0][nd], dep_view.index[1][nd], dep_view.index[2][nd]
+        else:
+            # Acceleration OFF: use boolean masking on full view
+            filled_mask = dep_view.deposit >= 1
+            nd = index_where(filled_mask, '>=', 1)[0]
+
         new_deposits = [(nd[0][i], nd[1][i], nd[2][i]) for i in range(nd[0].shape[0])]
-        cells_abs = [get_index_in_parent(cell, self._irradiated_area_3d) for cell in new_deposits] # cell's absolute position in array
+
+        # Get surface update view for cell configuration updates
+        surf_view = self.view_manager.get_surface_update_view()
+        cells_abs = [get_index_in_parent(cell, surf_view.irradiated_area_3d) for cell in new_deposits]
         self.last_full_cells = cells_abs
         self.full_cells = (self.full_cells or []) + self.last_full_cells
         self.filled_cells += len(new_deposits)
         for cell in new_deposits:
-            self._update_cell_config(cell)
+            self._update_cell_config(cell, surf_view)
             # Updating temperature in the new cell
             self.update_cell_temperature(cell)
             # Updating nearest neighbors profile
-            self.update_nearest_neighbors(cell)
-        if len(new_deposits) > 0:
-            # Post cell update routines
-            cell_abs_arr = np.array(cells_abs)
-            if np.any(cell_abs_arr[:, 0] + 4 > self.state.max_z):
-                self.__set_max_z()
-            self.__update_views_2d()
-            if self.temperature_tracking and self.state.max_z - self.state.substrate_height - 3 > 2:
-                self.request_temp_recalc = self.filled_cells > self._temp_calc_count * self._temp_step_cells
-                if self.request_temp_recalc:
-                    self._get_solid_index()
+            self.update_nearest_neighbors(cell, surf_view)
+        # Post cell update routines
+        cell_abs_arr = np.array(cells_abs)
+        if np.any(cell_abs_arr[:, 0] + 4 > self.state.max_z):
+            self.__set_max_z()
+        self.__update_views_2d()
 
-        if self.state.max_z + 5 > self.state.structure.shape[0]:
+        if self.temperature_tracking and self.state.max_z - self.state.substrate_height - 3 > 2:
+            self.request_temp_recalc = self.filled_cells > self._temp_calc_count * self._temp_step_cells
+            if self.request_temp_recalc:
+                self._get_solid_index()
+
+        if self.state.max_z + 5 > self.structure.shape[0]:
             # Here the Structure is extended in height
-            return self.extend_structure()
-        return False
+            structure_extended = self.extend_structure()
 
-    def _update_cell_config(self, cell):
+        # Phase 1 update - surface topology changed
+        self.view_manager.update_after_cell_filling()
+        return structure_extended
+
+    def _update_cell_config(self, cell, surf_view):
         """
         Updates all data arrays after a cell is filled.
 
-        :param cell: filled cell indices
+        :param cell: filled cell indices (local coordinates in view)
+        :param surf_view: SurfaceUpdateView with 3D array views
         :return:
         """
         # What here actually done is marking the filled cell as a solid and a ghost cell and then updating surface,
         # semi-surface, ghosts and precursor to describe the surface geometry around the newly filled cell.
         # The approach is cell-centric, which means all the surroundings are processed
-        surplus_deposit = self.__deposit_reduced_3d[
-                              cell] - 1  # saving deposit overfill to distribute among the neighbors later
-        precursor_cov = self.__precursor_reduced_3d[cell]
-        self.__deposit_reduced_3d[cell] = -1  # a fully deposited cell is always a minus unity
-        self.__temp_reduced_3d[cell] = self.state.room_temp
-        self.__precursor_reduced_3d[cell] = 0
-        self.__ghosts_reduced_3d[cell] = True  # deposited cell belongs to ghost shell
-        self.__surface_reduced_3d[cell] = False  # deposited cell is not a surface cell
-        self.__semi_surface_reduced_3d[cell] = False  # deposited cell is not a semi-surface cell
-        cell_abs = get_index_in_parent(cell, self._irradiated_area_3d)  # cell's absolute position in array
+
+        # Stage 2: Uses SurfaceUpdateView for array access
+        surplus_deposit = surf_view.deposit[cell] - 1  # saving deposit overfill to distribute among the neighbors later
+        precursor_cov = surf_view.precursor[cell]
+        surf_view.deposit[cell] = -1  # a fully deposited cell is always a minus unity
+        if surf_view.temp is not None:
+            surf_view.temp[cell] = self.state.room_temp
+        surf_view.precursor[cell] = 0
+        surf_view.ghosts[cell] = True  # deposited cell belongs to ghost shell
+        surf_view.surface[cell] = False  # deposited cell is not a surface cell
+        surf_view.semi_surface[cell] = False  # deposited cell is not a semi-surface cell
+        cell_abs = get_index_in_parent(cell, surf_view.irradiated_area_3d)  # cell's absolute position in array
 
         # Getting new converged configuration
         updated_slice, surface_bool, semi_s_bool, ghosts_bool = self._local_mcca.get_converged_configuration(
-            cell_abs, self.state.structure.deposit < 0,
-            self.state.structure.surface_bool,
-            self.state.structure.semi_surface_bool,
-            self.state.structure.ghosts_bool,)
-        surf_bool_prev = self.state.structure.surface_bool[updated_slice].copy()
-        semi_s_bool_prev = self.state.structure.semi_surface_bool[updated_slice].copy()
+            cell_abs, self.structure.deposit < 0,
+            self.structure.surface_bool,
+            self.structure.semi_surface_bool,
+            self.structure.ghosts_bool,)
+        surf_bool_prev = self.structure.surface_bool[updated_slice].copy()
+        semi_s_bool_prev = self.structure.semi_surface_bool[updated_slice].copy()
         # Updating data arrays
-        deposit_kern = self.state.structure.deposit[updated_slice]
-        precursor_kern = self.state.structure.precursor[updated_slice]
-        surf_kern = self.state.structure.surface_bool[updated_slice]
-        surf_semi_kern = self.state.structure.semi_surface_bool[updated_slice]
-        ghosts_kern = self.state.structure.ghosts_bool[updated_slice]
+        deposit_kern = self.structure.deposit[updated_slice]
+        precursor_kern = self.structure.precursor[updated_slice]
+        surf_kern = self.structure.surface_bool[updated_slice]
+        surf_semi_kern = self.structure.semi_surface_bool[updated_slice]
+        ghosts_kern = self.structure.ghosts_bool[updated_slice]
         surf_kern[:] = surface_bool
         surf_semi_kern[:] = semi_s_bool
         ghosts_kern[:] = ghosts_bool
@@ -357,6 +387,7 @@ class Process:
         # Restore old beam matrix values
         self.state.beam_matrix[:shape_old[0], :shape_old[1], :shape_old[2]] = beam_matrix_old
         self.redraw = True
+
         # Basically, none of the slices have to be updated, because they use indexes, not references.
         return True
 
@@ -373,7 +404,7 @@ class Process:
         if np.any(condition):
             self.__temp_reduced_3d[cell] = temp_kern[condition].sum() / np.count_nonzero(condition)
 
-    def update_nearest_neighbors(self, cell):
+    def update_nearest_neighbors(self, cell, data_view):
         """
         Update surface nearest neighbors surrounding the cell.
 
@@ -382,11 +413,11 @@ class Process:
         :param cell: cell indices
         :return:
         """
-        n_3d, _ = get_3d_slice(cell, self.__deposit_reduced_3d.shape, self.state.max_neib)
-        neighbors_neighbs = self.__surface_neighbors_reduced_3d[n_3d]
-        deposit_neighbs = self.__deposit_reduced_3d[n_3d]
-        surface_neighbs = self.__surface_reduced_3d[n_3d]
-        self.state.structure.define_surface_neighbors(self.state.max_neib,
+        n_3d, _ = get_3d_slice(cell, data_view.shape, self.state.max_neib)
+        neighbors_neighbs = data_view.surface_neighbors[n_3d]
+        deposit_neighbs = data_view.deposit[n_3d]
+        surface_neighbs = data_view.surface[n_3d]
+        self.structure.define_surface_neighbors(self.state.max_neib,
                                                        deposit_neighbs,
                                                        surface_neighbs,
                                                        neighbors_neighbs)
@@ -397,13 +428,18 @@ class Process:
 
         :return:
         """
-        # Instead of processing cell by cell and on the whole surface, it is implemented to process only (effectively)
-        # irradiated area and array-wise(thanks to Numpy)
-        # np.float32 — ~1E-7, produced value — ~1E-10
+        # Stage 2: Use DataViewManager for uniform expression approach
+        view = self.view_manager.get_deposition_view()
+
+        # Calculate constant (multiplying by 1e6 to preserve accuracy, np.float32 — ~1E-7, produced value — ~1E-10)
         const = (self.state.precursor.sigma * self.state.precursor.V * self.dt * 1e6 *
-                 self.state.deposition_scaling / self.state.cell_V * self.state.cell_size ** 2)  # multiplying by 1e6 to preserve accuracy
-        self.__deposit_reduced_3d[self.__deposition_index_3d] += (
-                self.__precursor_reduced_3d[self.__deposition_index_3d] * self.__beam_matrix_effective * const / 1e6)
+                 self.state.deposition_scaling / self.state.cell_V * self.state.cell_size ** 2)
+
+        # UNIFORM EXPRESSION: Works for both acceleration ON and OFF
+        # When acceleration ON: view.index is fancy tuple (z,y,x), beam_matrix is 1D
+        # When acceleration OFF: view.index is np.s_[:], beam_matrix is 3D
+        view.deposit[view.index] += (
+                view.precursor[view.index] * view.beam_matrix * const / 1e6)
 
     def precursor_density(self):
         """
@@ -411,10 +447,12 @@ class Process:
 
         :return:
         """
+        # Stage 2: Use DataViewManager for precursor density view
+        view = self.view_manager.get_precursor_density_view()
+
         # Here, surface_all represents surface+semi_surface cells.
-        precursor = self.__precursor_reduced_2d
-        surface_all = self.__surface_all_reduced_2d
-        precursor[surface_all] += self.__rk4_with_ftcs(self.__beam_matrix_surface)
+        # Boolean indexing: precursor[surface_all] extracts values at surface cells (1D flat array)
+        view.precursor[view.surface_all] += self.__rk4_with_ftcs(view.beam_matrix)
 
     def equilibrate(self, max_it=10000, eps=1e-8):
         """
@@ -691,8 +729,12 @@ class Process:
         """
         if not dt:
             dt = self.dt
+
+        # Stage 2: Use DataViewManager for surface_all_index (always needed for diffusion)
+        view = self.view_manager.get_diffusion_view()
         D = self._get_D()
-        return diffusion.diffusion_ftcs(grid, surface, D, dt, self.state.cell_size, self.__surface_all_index_2d, flat=flat,
+
+        return diffusion.diffusion_ftcs(grid, surface, D, dt, self.state.cell_size, view.surface_all_index, flat=flat,
                                         add=add)
 
     def heat_transfer(self, heating):
@@ -757,6 +799,9 @@ class Process:
         self.__semi_surface_index_2d = index = (np.intc(index[0]), np.intc(index[1]), np.intc(index[2]))
         beam_matrix_semi_surface_av(self.__beam_matrix_reduced_2d, self.__beam_matrix_reduced_2d, *index)
         self._update_helper_arrays()
+
+        # Stage 2: Phase 2 update - beam pattern changed
+        self.view_manager.update_after_beam_matrix()
 
     # Data maintenance methods
     # These methods support an optimization path that provides up to 100x speed up

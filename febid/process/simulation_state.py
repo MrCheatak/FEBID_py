@@ -63,3 +63,6 @@ class SimulationState:
 
         # Scaling factor
         self.deposition_scaling = 1.0  # Will be set during Process initialization
+
+        # Temperature tracking flag
+        self.temperature_tracking = False  # Will be set during Process initialization

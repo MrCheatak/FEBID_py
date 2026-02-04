@@ -389,28 +389,10 @@ class DataViewManager:
             semi_surface_2d = self.structure.semi_surface_bool[self._slice_irradiated_2d]
             surface_all = surface_2d | semi_surface_2d
 
-            # Get tau: check if temperature tracking is enabled
-            if self.state.tau_temp.any():
-                # Temperature-dependent: use flattened tau array (for surface cells only)
-                tau = self.state.tau_temp[self._slice_irradiated_2d][self._index_surface_all_2d]
-            else:
-                # Constant tau from precursor parameters
-                tau = self.state.precursor.tau
-
-            # Get D: check if temperature tracking is enabled
-            if self.state.D_temp.any():
-                # Temperature-dependent: use 2D view
-                D = self.state.D_temp[self._slice_irradiated_2d]
-            else:
-                # Constant D from precursor parameters
-                D = self.state.precursor.D
-
             return PrecursorDensityView(
                 precursor=precursor_2d,
                 surface_all=surface_all,
                 beam_matrix=self.beam_matrix_surface,  # 1D flattened array (surface cells only)
-                tau=tau,
-                D=D,
                 acceleration_enabled=True
             )
         else:
@@ -421,24 +403,10 @@ class DataViewManager:
             semi_surface_2d = self.structure.semi_surface_bool[slice_2d]
             surface_all = surface_2d | semi_surface_2d
 
-            # Get tau: check if temperature tracking is enabled
-            if self.state.tau_temp.any():
-                tau = self.state.tau_temp[slice_2d]
-            else:
-                tau = self.state.precursor.tau
-
-            # Get D: check if temperature tracking is enabled
-            if self.state.D_temp.any():
-                D = self.state.D_temp[slice_2d]
-            else:
-                D = self.state.precursor.D
-
             return PrecursorDensityView(
                 precursor=precursor_2d,
                 surface_all=surface_all,
                 beam_matrix=self.beam_matrix[slice_2d],  # Full 3D array
-                tau=tau,
-                D=D,
                 acceleration_enabled=False
             )
 
@@ -468,18 +436,11 @@ class DataViewManager:
         semi_surface_2d = self.structure.semi_surface_bool[slice_2d]
         surface_all = surface_2d | semi_surface_2d
 
-        # Get D: check if temperature tracking is enabled
-        if self.state.D_temp.any():
-            D = self.state.D_temp[slice_2d]
-        else:
-            D = self.state.precursor.D
-
         # ALWAYS use the actual fancy index tuple for surface cells (diffusion needs this)
         return DiffusionView(
             precursor=precursor_2d,
             surface_all=surface_all,
             surface_all_index=self._index_surface_all_2d,  # Always fancy index tuple
-            D=D,
             acceleration_enabled=self.acceleration_enabled
         )
 
