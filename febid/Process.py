@@ -16,6 +16,7 @@ from febid.mlcca import MultiLayerdCellCellularAutomata as MLCCA
 from .slice_trics import get_3d_slice, get_index_in_parent, index_where, any_where, concat_index
 from .expressions import cache_numexpr_expressions
 from .kernel_modules import GPU
+from .process.simulation_state import SimulationState
 
 from timeit import default_timer as df
 
@@ -51,12 +52,17 @@ class Process:
             self.name = str(np.random.randint(000000, 999999, 1)[0])
         else:
             self.name = name
-        # Declaring necessary properties
-        self.beam: BeamSettings
-        self.precursor: PrecursorParams
-        self.model: ContinuumModel
-        self.set_model(ContinuumModel())
-        self.structure: Structure = structure
+
+        # Create simulation state (will be fully populated in __set_structure and __set_constants)
+        self.state = SimulationState(
+            structure=structure,
+            model=ContinuumModel(),
+            heat_cond=equation_values.get('heat_cond', 0),
+            room_temp=294
+        )
+        self.state.deposition_scaling = deposition_scaling
+
+        # Temporary: Keep references for backward compatibility during migration
         self.cell_size = None
         self.cell_V = 0
         self.heat_cond = 0
@@ -123,7 +129,6 @@ class Process:
         # Statistics
         self.substrate_height = 0  # Thickness of the substrate
         self.n_substrate_cells = 0  # the number of the cells in the substrate
-        self.max_neib = 0  # the number of surface nearest neighbors that could be escaped by a SE
         self.max_z = 0  # maximum height of the deposited structure, cells
         self.max_z_prev = 0
         self.filled_cells = 0  # current number of filled cells
@@ -152,8 +157,8 @@ class Process:
         self.__semi_surface_index_2d = index_where(self.__semi_surface_reduced_2d)  # has to be generated here in abscence of a beam matrix
         self.__generate_surface_index()
         self._get_solid_index()
-        self._temp_step_cells = self._temp_step / self.cell_V
-        self.structure.precursor[self.structure.surface_bool] = self.model.nr
+        self._temp_step_cells = self._temp_step / self.state.cell_V
+        self.state.structure.precursor[self.state.structure.surface_bool] = self.state.model.nr
         if self.temperature_tracking:
             self.__get_surface_temp()
             self._residence_time_profile()
@@ -162,44 +167,51 @@ class Process:
 
     # Initialization methods
     def __set_structure(self, structure: Structure):
-        self.structure = structure
+        # State arrays are already initialized in SimulationState.__init__
+        # Just need to set max_z and update derived arrays
         self._surface_all = np.logical_or(self.structure.surface_bool, self.structure.semi_surface_bool)
-        self._beam_matrix = np.zeros_like(structure.deposit, dtype=np.int32)
-        self.surface_temp = np.zeros_like(self.structure.temperature)
-        self._D_temp = np.zeros_like(self.structure.precursor)
-        self._tau_temp = np.zeros_like(self.structure.precursor)
-        self.cell_size = self.structure.cell_size
-        self.cell_V = self.cell_size ** 3
+
+        # Backward compatibility: Keep references to state arrays
+        self._beam_matrix = self.state.beam_matrix
+        self.surface_temp = self.state.surface_temp
+        self._D_temp = self.state.D_temp
+        self._tau_temp = self.state.tau_temp
+        self.cell_size = self.state.cell_size
+        self.cell_V = self.state.cell_V
         self.__set_max_z()
-        self.substrate_height = structure.substrate_height
-        self.n_substrate_cells = self.structure.deposit[:structure.substrate_height].size
+
+        # Backward compatibility: Keep references to state properties
+        self.substrate_height = self.state.substrate_height
+        self.n_substrate_cells = self.state.n_substrate_cells
         if self.device:
             self.load_kernel()
 
     def __set_constants(self, params):
-        self.kb = 0.00008617
-        self.precursor.F = params['F']
-        self.precursor.n0 = params['n0']
-        self.precursor.V = params['V']
-        self.precursor.sigma = params['sigma']
-        self.precursor.tau = params['tau']
-        self.precursor.k0 = params.get('k0', 0)
-        self.precursor.Ea = params.get('Ea', 0)
-        self.precursor.D = params['D']
-        self.precursor.D0 = params.get('D0', 0)
-        self.precursor.Ed = params.get('Ed', 0)
-        self.heat_cond = params['heat_cond']
-        self.deposition_scaling = params['deposition_scaling']
+        # Set precursor parameters (these are stored in self.state.precursor via self.model)
+        self.state.precursor.F = params['F']
+        self.state.precursor.n0 = params['n0']
+        self.state.precursor.V = params['V']
+        self.state.precursor.sigma = params['sigma']
+        self.state.precursor.tau = params['tau']
+        self.state.precursor.k0 = params.get('k0', 0)
+        self.state.precursor.Ea = params.get('Ea', 0)
+        self.state.precursor.D = params['D']
+        self.state.precursor.D0 = params.get('D0', 0)
+        self.state.precursor.Ed = params.get('Ed', 0)
+
+        # Update state constants
+        self.state.heat_cond = params['heat_cond']
+        self.state.deposition_scaling = params['deposition_scaling']
+
+        # Backward compatibility: Keep references
+        self.kb = self.state.kb
+        self.heat_cond = self.state.heat_cond
+        self.deposition_scaling = self.state.deposition_scaling
         if self.temperature_tracking:
-            if not all([self.precursor.k0, self.precursor.Ea, self.precursor.D0, self.precursor.Ed]):
+            if not all([self.state.precursor.k0, self.state.precursor.Ea, self.state.precursor.D0, self.state.precursor.Ed]):
                 warnings.warn('Some of the temperature dependent parameters were not found! \n '
                               'Switch to static temperature mode? y/n')
                 self.temperature_tracking = False
-
-    def set_model(self, model: ContinuumModel):
-        self.model = model
-        self.precursor = model.precursor
-        self.beam = model.beam
 
     def print_dt(self, units='µs'):
         m = 1E6
@@ -257,15 +269,15 @@ class Process:
         if len(new_deposits) > 0:
             # Post cell update routines
             cell_abs_arr = np.array(cells_abs)
-            if np.any(cell_abs_arr[:, 0] + 4 > self.max_z):
+            if np.any(cell_abs_arr[:, 0] + 4 > self.state.max_z):
                 self.__set_max_z()
             self.__update_views_2d()
-            if self.temperature_tracking and self.max_z - self.substrate_height - 3 > 2:
+            if self.temperature_tracking and self.state.max_z - self.state.substrate_height - 3 > 2:
                 self.request_temp_recalc = self.filled_cells > self._temp_calc_count * self._temp_step_cells
                 if self.request_temp_recalc:
                     self._get_solid_index()
 
-        if self.max_z + 5 > self.structure.shape[0]:
+        if self.state.max_z + 5 > self.state.structure.shape[0]:
             # Here the Structure is extended in height
             return self.extend_structure()
         return False
@@ -284,7 +296,7 @@ class Process:
                               cell] - 1  # saving deposit overfill to distribute among the neighbors later
         precursor_cov = self.__precursor_reduced_3d[cell]
         self.__deposit_reduced_3d[cell] = -1  # a fully deposited cell is always a minus unity
-        self.__temp_reduced_3d[cell] = self.room_temp
+        self.__temp_reduced_3d[cell] = self.state.room_temp
         self.__precursor_reduced_3d[cell] = 0
         self.__ghosts_reduced_3d[cell] = True  # deposited cell belongs to ghost shell
         self.__surface_reduced_3d[cell] = False  # deposited cell is not a surface cell
@@ -293,18 +305,18 @@ class Process:
 
         # Getting new converged configuration
         updated_slice, surface_bool, semi_s_bool, ghosts_bool = self._local_mcca.get_converged_configuration(
-            cell_abs, self.structure.deposit < 0,
-            self.structure.surface_bool,
-            self.structure.semi_surface_bool,
-            self.structure.ghosts_bool,)
-        surf_bool_prev = self.structure.surface_bool[updated_slice].copy()
-        semi_s_bool_prev = self.structure.semi_surface_bool[updated_slice].copy()
+            cell_abs, self.state.structure.deposit < 0,
+            self.state.structure.surface_bool,
+            self.state.structure.semi_surface_bool,
+            self.state.structure.ghosts_bool,)
+        surf_bool_prev = self.state.structure.surface_bool[updated_slice].copy()
+        semi_s_bool_prev = self.state.structure.semi_surface_bool[updated_slice].copy()
         # Updating data arrays
-        deposit_kern = self.structure.deposit[updated_slice]
-        precursor_kern = self.structure.precursor[updated_slice]
-        surf_kern = self.structure.surface_bool[updated_slice]
-        surf_semi_kern = self.structure.semi_surface_bool[updated_slice]
-        ghosts_kern = self.structure.ghosts_bool[updated_slice]
+        deposit_kern = self.state.structure.deposit[updated_slice]
+        precursor_kern = self.state.structure.precursor[updated_slice]
+        surf_kern = self.state.structure.surface_bool[updated_slice]
+        surf_semi_kern = self.state.structure.semi_surface_bool[updated_slice]
+        ghosts_kern = self.state.structure.ghosts_bool[updated_slice]
         surf_kern[:] = surface_bool
         surf_semi_kern[:] = semi_s_bool
         ghosts_kern[:] = ghosts_bool
@@ -331,11 +343,19 @@ class Process:
         """
         with Lock():  # blocks run with Lock should exclude calls of decorated functions, otherwise the thread will hang
             shape_old = self.structure.shape
+            beam_matrix_old = self.state.beam_matrix.copy()  # Save old beam matrix
             self.structure.resize_structure(200)
-            self.structure.define_surface_neighbors(self.max_neib)
-            beam_matrix = self._beam_matrix  # taking care of the beam_matrix, because __set_structure creates it empty
+            self.structure.define_surface_neighbors(self.state.max_neib)
+
+            # Recreate state arrays with new size
+            self.state.beam_matrix = np.zeros_like(self.structure.deposit, dtype=np.int32)
+            self.state.surface_temp = np.zeros_like(self.structure.temperature)
+            self.state.D_temp = np.zeros_like(self.structure.precursor)
+            self.state.tau_temp = np.zeros_like(self.structure.precursor)
+
         self.__set_structure(self.structure)
-        self._beam_matrix[:shape_old[0], :shape_old[1], :shape_old[2]] = beam_matrix
+        # Restore old beam matrix values
+        self.state.beam_matrix[:shape_old[0], :shape_old[1], :shape_old[2]] = beam_matrix_old
         self.redraw = True
         # Basically, none of the slices have to be updated, because they use indexes, not references.
         return True
@@ -349,7 +369,7 @@ class Process:
         """
         temp_slice, _ = get_3d_slice(cell, self.__temp_reduced_3d.shape, 2)
         temp_kern = self.__temp_reduced_3d[temp_slice]
-        condition = (temp_kern > self.room_temp)
+        condition = (temp_kern > self.state.room_temp)
         if np.any(condition):
             self.__temp_reduced_3d[cell] = temp_kern[condition].sum() / np.count_nonzero(condition)
 
@@ -362,14 +382,14 @@ class Process:
         :param cell: cell indices
         :return:
         """
-        n_3d, _ = get_3d_slice(cell, self.__deposit_reduced_3d.shape, self.max_neib)
+        n_3d, _ = get_3d_slice(cell, self.__deposit_reduced_3d.shape, self.state.max_neib)
         neighbors_neighbs = self.__surface_neighbors_reduced_3d[n_3d]
         deposit_neighbs = self.__deposit_reduced_3d[n_3d]
         surface_neighbs = self.__surface_reduced_3d[n_3d]
-        self.structure.define_surface_neighbors(self.max_neib,
-                                                deposit_neighbs,
-                                                surface_neighbs,
-                                                neighbors_neighbs)
+        self.state.structure.define_surface_neighbors(self.state.max_neib,
+                                                       deposit_neighbs,
+                                                       surface_neighbs,
+                                                       neighbors_neighbs)
 
     def deposition(self):
         """
@@ -380,8 +400,8 @@ class Process:
         # Instead of processing cell by cell and on the whole surface, it is implemented to process only (effectively)
         # irradiated area and array-wise(thanks to Numpy)
         # np.float32 — ~1E-7, produced value — ~1E-10
-        const = (self.precursor.sigma * self.precursor.V * self.dt * 1e6 *
-                 self.deposition_scaling / self.cell_V * self.cell_size ** 2)  # multiplying by 1e6 to preserve accuracy
+        const = (self.state.precursor.sigma * self.state.precursor.V * self.dt * 1e6 *
+                 self.state.deposition_scaling / self.state.cell_V * self.state.cell_size ** 2)  # multiplying by 1e6 to preserve accuracy
         self.__deposit_reduced_3d[self.__deposition_index_3d] += (
                 self.__precursor_reduced_3d[self.__deposition_index_3d] * self.__beam_matrix_effective * const / 1e6)
 
@@ -434,12 +454,12 @@ class Process:
         precursor density, deposition and check cells filled are calculated on compute device at once
         """
         dt = self.dt
-        D = self.precursor.D
-        cell_size = self.cell_size
-        F = self.precursor.F
-        n0 = self.precursor.n0
+        D = self.state.precursor.D
+        cell_size = self.state.cell_size
+        F = self.state.precursor.F
+        n0 = self.state.precursor.n0
         tau = self._get_tau()
-        sigma = self.precursor.sigma
+        sigma = self.state.precursor.sigma
         out = self.knl.precur_den_gpu(0, dt * D / (cell_size ** 2), F * dt, (F * dt * tau + n0 * dt) / (tau * n0),
                                       sigma * dt, blocking)
 
@@ -448,10 +468,10 @@ class Process:
         precursor density, deposition and check cells filled are calculated on compute device at once
         """
         dt = self.dt
-        cell_size = self.cell_size
-        sigma = self.precursor.sigma
-        V = self.precursor.V
-        const = (sigma * V * dt * 1e6 * self.deposition_scaling / self.cell_V * cell_size ** 2)
+        cell_size = self.state.cell_size
+        sigma = self.state.precursor.sigma
+        V = self.state.precursor.V
+        const = (sigma * V * dt * 1e6 * self.state.deposition_scaling / self.state.cell_V * cell_size ** 2)
         out = self.knl.deposit_gpu(const, blocking)
         return out
 
@@ -477,12 +497,13 @@ class Process:
             # x_coord = cell - (z_coord * self.knl.ydim * self.knl.xdim) - (y_coord * self.knl.xdim)
             z_coord, y_coord, x_coord = self.knl.index_1d_to_3d(cell)
 
-            if z_coord + 4 > self.max_z:
-                self.max_z = z_coord + 4
+            if z_coord + 4 > self.state.max_z:
+                self.state.max_z = z_coord + 4
+                self.max_z = self.state.max_z  # Backward compatibility
                 self.knl.zdim_max = z_coord + 4
                 self.knl.len_lap = (z_coord + 4 - self.knl.zdim_min) * self.knl.xdim * self.knl.ydim
 
-            self.irradiated_area_2D = np.s_[self.structure.substrate_height - 1:self.max_z, :, :]
+            self.irradiated_area_2D = np.s_[self.state.substrate_height - 1:self.state.max_z, :, :]
 
             if z_coord - 3 < 0:
                 z_min = 0
@@ -523,12 +544,12 @@ class Process:
             # out = timeit.default_timer() - start
             deposit = deposit.reshape(z_max - z_min, y_max - y_min, x_max - x_min)
             surface = surface.reshape(z_max - z_min, y_max - y_min, x_max - x_min)
-            self.structure.define_surface_neighbors(self.max_neib,
-                                                    deposit,
-                                                    surface,
-                                                    self.structure.surface_neighbors_bool[n_3d])
+            self.structure.define_surface_neighbors(self.state.max_neib,
+                                                          deposit,
+                                                          surface,
+                                                          self.structure.surface_neighbors_bool[n_3d])
 
-        if self.max_z + 5 > self.structure.shape[0]:
+        if self.state.max_z + 5 > self.structure.shape[0]:
             # Here the Structure is extended in height
             # and all the references to the data arrays are renewed
             self.offload_structure_from_gpu_all()
@@ -581,8 +602,8 @@ class Process:
 
         """
         self.knl.update_structure(self.structure.precursor, self.structure.deposit, self._surface_all,
-                                self.structure.surface_bool, self.structure.semi_surface_bool,
-                                self.structure.ghosts_bool, self._irr_ind_2D, blocking=blocking)
+                                  self.structure.surface_bool, self.structure.semi_surface_bool,
+                                  self.structure.ghosts_bool, self._irr_ind_2D, blocking=blocking)
 
     def update_structure_to_gpu(self, blocking=True):
         """
@@ -591,8 +612,8 @@ class Process:
         :param blocking: wait until the operation is finished
         """
         self.knl.update_structure(self.structure.precursor, self.structure.deposit, self._surface_all,
-                                self.structure.surface_bool, self.structure.semi_surface_bool,
-                                self.structure.ghosts_bool, self._irr_ind_2D, cells=self.last_full_cells, blocking=blocking)
+                                  self.structure.surface_bool, self.structure.semi_surface_bool,
+                                  self.structure.ghosts_bool, self._irr_ind_2D, cells=self.last_full_cells, blocking=blocking)
 
     def get_data(self):
         """
@@ -655,8 +676,8 @@ class Process:
         tau = self._get_tau()
         n_d = diffusion_matrix
         return ne.re_evaluate('rde_temp',
-                              local_dict={'F': self.precursor.F, 'dt': dt, 'n0': self.precursor.n0,
-                                          'sigma': self.precursor.sigma, 'n': precursor + addon, 'tau': tau,
+                              local_dict={'F': self.state.precursor.F, 'dt': dt, 'n0': self.state.precursor.n0,
+                                          'sigma': self.state.precursor.sigma, 'n': precursor + addon, 'tau': tau,
                                           'se_flux': beam_matrix, 'n_d' : n_d}, casting='same_kind')
 
     def _diffusion(self, grid, surface, dt=0.0, add=0, flat=False):
@@ -671,7 +692,7 @@ class Process:
         if not dt:
             dt = self.dt
         D = self._get_D()
-        return diffusion.diffusion_ftcs(grid, surface, D, dt, self.cell_size, self.__surface_all_index_2d, flat=flat,
+        return diffusion.diffusion_ftcs(grid, surface, D, dt, self.state.cell_size, self.__surface_all_index_2d, flat=flat,
                                         add=add)
 
     def heat_transfer(self, heating):
@@ -682,7 +703,7 @@ class Process:
         :return:
         """
         # Calculating temperature profile
-        if self.max_z - self.substrate_height - 3 > 2:
+        if self.state.max_z - self.state.substrate_height - 3 > 2:
             if self.request_temp_recalc:
                 self._temp_calc_count += 1
                 slice_2d = self.__irradiated_area_2D_no_sub  # using only top layer of the substrate
@@ -694,11 +715,11 @@ class Process:
                 start = df()
                 print(f'Current max. temperature: {self.max_T} K')
                 print(f'Total heating power: {heat.sum() / 1e6:.3f} W/nm/K/1e6')
-                heat_transfer.heat_transfer_steady_sor(self.structure.temperature[slice_2d], self.heat_cond,
-                                                       self.cell_size, heat, self.solution_accuracy)
+                heat_transfer.heat_transfer_steady_sor(self.structure.temperature[slice_2d], self.state.heat_cond,
+                                                       self.state.cell_size, heat, self.solution_accuracy)
                 print(f'New max. temperature {self.structure.temperature.max():.3f} K')
                 print(f'Temperature recalculation took {df() - start:.4f} s')
-        self.structure.temperature[self.substrate_height] = self.room_temp
+        self.structure.temperature[self.state.substrate_height] = self.state.room_temp
         self.__get_surface_temp()  # estimating surface temperature
         self._diffusion_coefficient_profile()  # calculating surface diffusion coefficients
         self._residence_time_profile()  # calculating residence times
@@ -709,7 +730,7 @@ class Process:
 
         :return:
         """
-        self._D_temp[self._surface_all] = self.precursor.diffusion_coefficient_at_T(self.surface_temp[self._surface_all])
+        self._D_temp[self._surface_all] = self.state.precursor.diffusion_coefficient_at_T(self.state.surface_temp[self._surface_all])
 
     def _residence_time_profile(self):
         """
@@ -717,7 +738,7 @@ class Process:
 
         :return:
         """
-        self.__tau_flat = self.precursor.residence_time_at_T(self.__surface_temp_reduced_2d[self.__surface_reduced_2d])
+        self.__tau_flat = self.state.precursor.residence_time_at_T(self.__surface_temp_reduced_2d[self.__surface_reduced_2d])
         self.__tau_temp_reduced_2d[self.__surface_reduced_2d] = self.__tau_flat
 
     def set_beam_matrix(self, beam_matrix):
@@ -727,11 +748,11 @@ class Process:
         :param beam_matrix: flux matrix array
         :return:
         """
-        self._beam_matrix[:, :, :] = beam_matrix
+        self.state.beam_matrix[:, :, :] = beam_matrix
         if type(beam_matrix) is not np.ndarray:
             beam_matrix = np.array(beam_matrix)
         else:
-            self.beam.f0 = beam_matrix.max()
+            self.state.beam.f0 = beam_matrix.max()
         index = index_where(self.__semi_surface_reduced_2d)
         self.__semi_surface_index_2d = index = (np.intc(index[0]), np.intc(index[1]), np.intc(index[2]))
         beam_matrix_semi_surface_av(self.__beam_matrix_reduced_2d, self.__beam_matrix_reduced_2d, *index)
@@ -765,14 +786,14 @@ class Process:
         #  on the necessary array.
         # '3D view' mentioned here can be referred to as a volume that encapsulates all cells that have been irradiated
         self._irradiated_area_3d = slice3d = self.__irradiated_area_3d
-        self.__deposit_reduced_3d = self.structure.deposit[slice3d]
-        self.__precursor_reduced_3d = self.structure.precursor[slice3d]
-        self.__surface_reduced_3d = self.structure.surface_bool[slice3d]
-        self.__semi_surface_reduced_3d = self.structure.semi_surface_bool[slice3d]
-        self.__ghosts_reduced_3d = self.structure.ghosts_bool[slice3d]
-        self.__temp_reduced_3d = self.structure.temperature[slice3d]
-        self.__beam_matrix_reduced_3d = self._beam_matrix[slice3d]
-        self.__surface_neighbors_reduced_3d = self.structure.surface_neighbors_bool[slice3d]
+        self.__deposit_reduced_3d = self.state.structure.deposit[slice3d]
+        self.__precursor_reduced_3d = self.state.structure.precursor[slice3d]
+        self.__surface_reduced_3d = self.state.structure.surface_bool[slice3d]
+        self.__semi_surface_reduced_3d = self.state.structure.semi_surface_bool[slice3d]
+        self.__ghosts_reduced_3d = self.state.structure.ghosts_bool[slice3d]
+        self.__temp_reduced_3d = self.state.structure.temperature[slice3d]
+        self.__beam_matrix_reduced_3d = self.state.beam_matrix[slice3d]
+        self.__surface_neighbors_reduced_3d = self.state.structure.surface_neighbors_bool[slice3d]
 
     def __update_views_2d(self):
         """
@@ -786,16 +807,16 @@ class Process:
         # '2D view' taken here can be referred to as a volume that encapsulates
         #  the whole surface of the deposited structure. This means it takes a view only along the z-axis.
         slice2d = self._irradiated_area_2d
-        self.__deposit_reduced_2d = self.structure.deposit[slice2d]
-        self.__precursor_reduced_2d = self.structure.precursor[slice2d]
-        self.__surface_reduced_2d = self.structure.surface_bool[slice2d]
-        self.__semi_surface_reduced_2d = self.structure.semi_surface_bool[slice2d]
+        self.__deposit_reduced_2d = self.state.structure.deposit[slice2d]
+        self.__precursor_reduced_2d = self.state.structure.precursor[slice2d]
+        self.__surface_reduced_2d = self.state.structure.surface_bool[slice2d]
+        self.__semi_surface_reduced_2d = self.state.structure.semi_surface_bool[slice2d]
         self.__surface_all_reduced_2d = self._surface_all[slice2d]
-        self.__beam_matrix_reduced_2d = self._beam_matrix[slice2d]
-        self.__temp_reduced_2d = self.structure.temperature[slice2d]
-        self.__surface_temp_reduced_2d = self.surface_temp[slice2d]
-        self.__D_temp_reduced_2d = self._D_temp[slice2d]
-        self.__tau_temp_reduced_2d = self._tau_temp[slice2d]
+        self.__beam_matrix_reduced_2d = self.state.beam_matrix[slice2d]
+        self.__temp_reduced_2d = self.state.structure.temperature[slice2d]
+        self.__surface_temp_reduced_2d = self.state.surface_temp[slice2d]
+        self.__D_temp_reduced_2d = self.state.D_temp[slice2d]
+        self.__tau_temp_reduced_2d = self.state.tau_temp[slice2d]
 
     def __generate_deposition_index(self):
         """
@@ -851,7 +872,8 @@ class Process:
 
         :return:
         """
-        self.max_z = self.structure.deposit.nonzero()[0].max() + 3
+        self.state.max_z = self.structure.deposit.nonzero()[0].max() + 3
+        self.max_z = self.state.max_z  # Backward compatibility
 
     def __get_surface_temp(self):
         self.__surface_temp_reduced_2d[...] = 0
@@ -886,7 +908,7 @@ class Process:
 
         :return:
         """
-        return (self.filled_cells + self.__deposit_reduced_2d[self.__surface_reduced_2d].sum()) * self.cell_V
+        return (self.filled_cells + self.__deposit_reduced_2d[self.__surface_reduced_2d].sum()) * self.state.cell_V
 
     @property
     def precursor_min(self):
@@ -903,9 +925,9 @@ class Process:
         or returns an array of values otherwise
         """
         if self.temperature_tracking:
-            tau = self.__tau_flat
+            tau = self.__tau_flat  # Cached flattened array for surface
         else:
-            tau = self.precursor.tau
+            tau = self.state.precursor.tau
         return tau
 
     def _get_D(self):
@@ -914,9 +936,9 @@ class Process:
         or returns an array of values otherwise
         """
         if self.temperature_tracking:
-            D = self.__D_temp_reduced_2d
+            D = self.__D_temp_reduced_2d  # View on temperature-dependent D
         else:
-            D = self.precursor.D
+            D = self.state.precursor.D
         return D
 
     @property
@@ -928,7 +950,7 @@ class Process:
         if type(D) is np.ndarray:
             D = D.max()
         if D > 0:
-            return diffusion.get_diffusion_stability_time(D, self.cell_size)
+            return diffusion.get_diffusion_stability_time(D, self.state.cell_size)
         else:
             return 1
 
@@ -947,7 +969,7 @@ class Process:
         """
         Return dissociation time step, s
         """
-        return self.model.dt_diss
+        return self.state.model.dt_diss
 
     @property
     def dt(self):
@@ -1001,7 +1023,7 @@ class Process:
         """
         Returns a slice encapsulating the whole surface
         """
-        return np.s_[self.structure.substrate_height - 1:self.max_z, :, :]  # a volume encapsulating the whole surface
+        return np.s_[self.state.substrate_height - 1:self.state.max_z, :, :]  # a volume encapsulating the whole surface
 
     @property
     def __irradiated_area_3d(self):
@@ -1019,7 +1041,7 @@ class Process:
         """
         Returns a slice encapsulating the whole surface without the substrate
         """
-        return np.s_[self.substrate_height + 1:self.max_z, :, :]
+        return np.s_[self.state.substrate_height + 1:self.max_z, :, :]
 
     @property
     def _irr_ind_2D(self):
@@ -1029,6 +1051,34 @@ class Process:
         zero_dim = self._irradiated_area_2d[0]
         return (zero_dim.start, zero_dim.stop)
 
+    @property
+    def max_neib(self):
+        """
+        Get maximum number of neighbors for surface cells.
+        The number of surface nearest neighbors that could be escaped by a SE
+
+        :return:
+        """
+        return self.state.max_neib
+
+    @max_neib.setter
+    def max_neib(self, val):
+        """
+        Set maximum number of neighbors for surface cells.
+
+        :param val: new maximum number of neighbors
+        :return:
+        """
+        self.state.max_neib = val
+        self.structure.define_surface_neighbors(val)
+
+    @property
+    def structure(self):
+        """
+        Returns the structure instance.
+        For backward compatability.
+        """
+        return self.state.structure
 
 if __name__ == '__main__':
     print("Current script does not have an entry point.....")
