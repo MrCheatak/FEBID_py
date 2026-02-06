@@ -510,19 +510,73 @@ class DataViewManager:
             irradiated_area_3d=slice_3d  # For converting local to global indices
         )
 
-    def invalidate_and_rebuild(self):
+    def update_after_cell_filling(self):
         """
-        Invalidates and rebuilds all cached indices and flattened arrays.
+        Phase 1 update: Updates surface-related indices after cell filling.
 
-        This should be called when the structure changes:
-        - After cell filling (structure topology changed)
-        - After beam matrix update (irradiated regions changed)
-        - After structure extension (dimensions changed)
+        This method updates only the elements that depend on structure topology
+        (max_z, surface_bool, semi_surface_bool). Does NOT touch beam-dependent
+        indices or flattened arrays.
 
-        If acceleration_enabled=False, this is essentially a no-op
-        (only updates slices, skips expensive index generation).
+        Call this after:
+        - cell_filled_routine() completes
+        - extend_structure() completes
+
+        Phase 1 updates:
+        - Recalculate 2D slices (depend on max_z)
+        - Regenerate surface indices (depend on surface_bool, semi_surface_bool)
         """
-        self._recalculate_views_and_indices()
+        # 1. Calculate the 2D slice that covers the entire structure height (always needed)
+        self._slice_irradiated_2d = self._define_irradiated_slice_2d()
+        # 1a. Calculate the 2D slice that covers the entire structure height without substrate
+        self._slice_irradiated_2d_no_sub = self._define_irradiated_slice_2d_no_sub()
+
+        # 2. Generate surface-related indices (ALWAYS needed for diffusion algorithm)
+        surface_2d_view = self.structure.surface_bool[self._slice_irradiated_2d]
+        semi_surface_2d_view = self.structure.semi_surface_bool[self._slice_irradiated_2d]
+
+        self._index_surface_2d = self.get_index(surface_2d_view)
+        self._index_semi_surface_2d = self.get_index(semi_surface_2d_view)
+        self._index_surface_all_2d_prev = self._index_surface_all_2d
+        self._index_surface_all_2d = concat_index(self._index_surface_2d, self._index_semi_surface_2d)
+
+    def update_after_beam_matrix(self):
+        """
+        Phase 2 update: Updates beam-dependent indices after MC simulation.
+
+        This method updates only the elements that depend on beam_matrix pattern.
+        Surface indices from Phase 1 are assumed to be already up-to-date.
+
+        Call this after:
+        - set_beam_matrix() completes (MC simulation finished)
+
+        Phase 2 updates:
+        - Regenerate deposition indices (depend on beam_matrix pattern)
+        - Recalculate 3D slice (depends on deposition indices)
+        - Regenerate flattened beam arrays
+        """
+        # Only generate deposition indices and flattened arrays if acceleration is enabled
+        if self.acceleration_enabled:
+            # 3. Get the view of the beam matrix within that 2D slice
+            beam_matrix_2d_view = self.beam_matrix[self._slice_irradiated_2d]
+
+            # 4. Find the indices of irradiated cells within the 2D view
+            self._index_deposition_2d = self.get_index(beam_matrix_2d_view)
+
+            # 5. Based on those indices, calculate the tighter 3D slice
+            self._slice_irradiated_3d = self._define_irradiated_slice_3d()
+
+            # 6. Transform the 2D deposition index into the coordinate system of the 3D slice
+            self._index_deposition_3d = self._transform_deposition_index_to_3d()
+
+            # 7. Get the flattened effective beam flux for deposition
+            self.get_effective_beam_flux_for_deposition()
+            # 8. Get the flattened beam flux for surface and semi-surface cells
+            self.get_beam_flux_for_surface()
+        else:
+            # Acceleration disabled: compute simple 3D slice, no fancy indices for deposition
+            self._slice_irradiated_3d = np.s_[self.substrate_height:self.max_z, :, :]
+
 
     # --- Convenience properties for cleaner internal access ---
     @property
