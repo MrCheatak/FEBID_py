@@ -1,5 +1,6 @@
 import unittest
 import pytest
+from timeit import default_timer as timer
 import numpy as np
 from ruamel.yaml import YAML
 from tqdm import tqdm
@@ -182,6 +183,10 @@ class SimulationResults3D(SimulationResults):
         l = self.structure.shape[1]
         return self.structure.precursor[s, l // 2, :]
 
+    @property
+    def filled_cells(self):
+        return self.process.filled_cells
+
 
 @dataclass
 class MetricResult:
@@ -208,6 +213,11 @@ class TestSimulationVolume:
         ("D=0", 0.0),
         ("D=1", 1.0),
         ("D=from_file", None),
+    ]
+
+    ACCELERATION_GRID_SETUPS = [
+        ("ON", True),
+        ("OFF", False),
     ]
 
     # Cache for simulation results
@@ -286,6 +296,31 @@ class TestSimulationVolume:
         # Assess edge coverage metric (index 2)
         self._assert_metric(metrics[2])
 
+    @pytest.mark.parametrize("case_name,acceleration_enabled", ACCELERATION_GRID_SETUPS)
+    def test_acceleration_grid(self, case_name, acceleration_enabled):
+        """Test acceleration grid consistency by running the simulation with and without acceleration"""
+        ca = True
+        params = self.params
+        # print(f"Reduced exposure time: default is 0.03, current 0.0 s")
+        params["dwell_time"] = 300
+
+        # Load settings and precursor using ruamel.yaml
+        settings = load_yaml(params['settings_filename'])
+        precursor = load_yaml(params['precursor_filename'])
+
+        # Generate point exposure pattern
+        printing_path = create_pattern(params)
+
+        # Run simulation with cellular automata enabled
+        start = timer()
+        results_3d = self.run_3d_sim(ca, params, precursor, printing_path, settings, case_name, acceleration_enabled=acceleration_enabled)
+        end = timer()
+
+        # Print simulation results
+        print(f"\nCA-enabled Simulation Results:")
+        print(f"  - Total number of filled cells: {results_3d.process.filled_cells}")
+        print(f"    Total run time: {(end - start):.2f} s")
+
     def examine_ca(self):
         """Utility method to run a CA-enabled simulation for manual examination (not a test)."""
         case_name = "CA_enabled"
@@ -311,9 +346,7 @@ class TestSimulationVolume:
 
         # Print simulation results
         print(f"\nCA-enabled Simulation Results:")
-        print(f"  - Total deposited volume: {results_3d.V:.3f} nm³")
-        print(f"  - Precursor coverage at center: {results_3d.theta_center:.4f} molecules/nm²")
-        print(f"  - Precursor coverage at edge: {results_3d.theta_edge:.4f} molecules/nm²")
+        print(f"  - Total number of filled cells: {results_3d.process.filled_cells}")
 
     # ==================== CORE WORKFLOW METHODS ====================
 
@@ -453,7 +486,7 @@ class TestSimulationVolume:
         # Return both results
         return results_1d, results_3d
 
-    def run_3d_sim(self, ca, params, precursor, printing_path, settings, case_name: str = "") -> SimulationResults3D:
+    def run_3d_sim(self, ca, params, precursor, printing_path, settings, case_name: str = "", acceleration_enabled=True) -> SimulationResults3D:
         print("\n" + "=" * 60)
         print("3D FEBID SIMULATION")
         print("=" * 60)
@@ -462,7 +495,7 @@ class TestSimulationVolume:
         structure = self.setup_domain(params)
 
         # Prepare equation values for Process and MC_Simulation
-        process = self.setup_rde_sim(params, precursor, settings, structure)
+        process = self.setup_rde_sim(params, precursor, settings, structure, acceleration_enabled=acceleration_enabled)
 
         # Create MC_Simulation
         sim = self.setup_mc_sim(precursor, settings, structure)
@@ -793,10 +826,10 @@ class TestSimulationVolume:
         sim = MC_Simulation(structure, mc_config)
         return sim
 
-    def setup_rde_sim(self, params, precursor, settings, structure):
+    def setup_rde_sim(self, params, precursor, settings, structure, acceleration_enabled=True):
         equation_values = prepare_equation_values(precursor, settings)
         process = Process(structure, equation_values, deposition_scaling=settings.get('deposition_scaling', 1),
-                          temp_tracking=params['temperature_tracking'])
+                          temp_tracking=params['temperature_tracking'], acceleration_enabled=acceleration_enabled)
         return process
 
     def setup_domain(self, params):
