@@ -312,7 +312,7 @@ class Process:
             structure_extended = self.extend_structure()
 
         # Phase 1 update - surface topology changed
-        self.view_manager.update_after_cell_filling()
+        self.view_manager.update_after_cell_filling(structure_extended)
         self.n_surface_cells = self.view_manager.n_surface_cells
         self.n_semi_surface_cells = self.view_manager.n_semi_surface_cells
         return structure_extended

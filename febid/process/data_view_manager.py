@@ -469,7 +469,7 @@ class DataViewManager:
             irradiated_area_3d=slice_3d  # For converting local to global indices
         )
 
-    def update_after_cell_filling(self):
+    def update_after_cell_filling(self, structure_extended=False):
         """
         Phase 1 update: Updates surface-related indices after cell filling.
 
@@ -485,6 +485,8 @@ class DataViewManager:
         - Recalculate 2D slices (depend on max_z)
         - Regenerate surface indices (depend on surface_bool, semi_surface_bool)
         """
+        if structure_extended:
+            self._surface_all = np.zeros_like(self.structure.surface_bool)
         # 1. Calculate the 2D slice that covers the entire structure height (always needed)
         self._slice_irradiated_2d = self._define_irradiated_slice_2d()
         # 1a. Calculate the 2D slice that covers the entire structure height without substrate
