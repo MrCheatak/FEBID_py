@@ -127,6 +127,7 @@ class TimeStepper:
 
 class SimulationPipeline:
     def __init__(self, context: SimulationContext):
+        self.logger = setup_logger("febid.simulation")
         self.context = context
         self.deposition_engine = DepositionEngineExecutor(context.process)
         self.mc_executor = MonteCarloExecutor(context.process, context.mcSimulation)
@@ -137,6 +138,35 @@ class SimulationPipeline:
         self.context.process.start_time = datetime.datetime.now()
         self.context.process.x0, self.context.process.y0 = self.context.printingPath[0, 0:2]
         self.stepper = TimeStepper(self.context.process, self.context.printingPath, self.context.syncHelper)
+        self.initialized = True
+        self.logger.info("SimulationPipeline Initialization complete.")
+
+    def run(self):
+        if not self.initialized:
+            self.initialize()
+        pr = self.context.process
+        path = self.context.printingPath
+        run_flag = self.context.syncHelper
+
+        self.logger.info("Simulation started.")
+        for i, (x, y, dwell_time) in enumerate(path):
+            if run_flag.is_stopped:
+                self.logger.warning(f"Simulation stopped at step {i}/{len(path)}.")
+                break
+            self.mc_executor.step(y, x)
+            self.heat_solver.step()
+            if pr.device:
+                pr.knl.load_beam_matrix(self.mc_executor.beam_matrix, blocking=False)
+                print_step_GPU(y, x, dwell_time, pr, self.context.mcSimulation, self.stepper.progress_bar, run_flag)
+            else:
+                self.run_step(x, y, dwell_time)
+
+        run_flag.is_success = not run_flag.is_stopped
+        run_flag.run_flag = True
+        run_flag.notify()
+        run_flag.event.set()
+
+        self.logger.info("Simulation finished successfully." if run_flag.is_success else "Simulation ended early.")
 
     def run_step(self, x, y, dwell_time):
         """
@@ -170,48 +200,6 @@ class SimulationPipeline:
         self.mc_executor.step(y, x)  # run MC sim. and retrieve SE surface flux and update beam matrix
         self.heat_solver.step()  # recalculate temperature profile
 
-
-class Simulation:
-    def __init__(self, context: SimulationContext):
-        self.context = context
-        self.pipeline = SimulationPipeline(context)
-        self.logger = setup_logger("febid.simulation")
-        self.initialized = False
-
-    def initialize(self):
-        self.logger.info("Initializing simulation pipeline...")
-        self.pipeline.initialize()
-        self.initialized = True
-        self.logger.info("Initialization complete.")
-
-
-    def run(self):
-        if not self.initialized:
-            self.initialize()
-        pr = self.context.process
-        path = self.context.printingPath
-        run_flag = self.context.syncHelper
-
-        self.logger.info("Simulation started.")
-        for i, (x, y, dwell_time) in enumerate(path):
-            if run_flag.is_stopped:
-                self.logger.warning(f"Simulation stopped at step {i}/{len(path)}.")
-                break
-            self.pipeline.mc_executor.step(y, x)
-            self.pipeline.heat_solver.step()
-            if pr.device:
-                pr.knl.load_beam_matrix(self.pipeline.mc_executor.beam_matrix, blocking=False)
-                print_step_GPU(y, x, dwell_time, pr, self.context.mcSimulation, self.pipeline.stepper.progress_bar, run_flag)
-            else:
-                self.pipeline.run_step(x, y, dwell_time)
-
-        run_flag.is_success = not run_flag.is_stopped
-        run_flag.run_flag = True
-        run_flag.notify()
-        run_flag.event.set()
-
-        self.logger.info("Simulation finished successfully." if run_flag.is_success else "Simulation ended early.")
-
     def stop(self):
         self.logger.info("Stop requested.")
         self.context.syncHelper.is_stopped = True
@@ -224,15 +212,10 @@ def print_all(context: SimulationContext):
     """
     Main event loop, that iterates through consequent points in a stream-file.
 
-    :param path: patterning path from a stream file
-    :param pr: Process class instance
-    :param sim: Monte Carlo simulation object
-    :param stats: Statistics object, responsible for recording process statistics
-    :param struc: StructureSaver object, responsible for saving structure snapshots
-    :param run_flag:
+    :param context: SimulationContext object that has all necessary data to start a simulation.
     :return:
     """
-    sim = Simulation(context)
+    sim = SimulationPipeline(context)
     sim.initialize()
     sim.run()
 
