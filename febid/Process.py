@@ -18,6 +18,9 @@ from .expressions import cache_numexpr_expressions
 from .kernel_modules import GPU
 from .process.simulation_state import SimulationState
 from .process.data_view_manager import DataViewManager
+from febid.logging_config import setup_logger
+# Setup logger
+logger = setup_logger(__name__)
 
 from timeit import default_timer as df
 
@@ -46,8 +49,8 @@ class Process:
     # The deposited volume is though calculated and stored as a fraction of the cell's volume.
     # Thus, the precursor density has to be multiplied by the cell's base area divided by the cell volume.
 
-    def __init__(self, structure: Structure, equation_values, deposition_scaling=1, temp_tracking=True, device=None,
-                 name=None):
+    def __init__(self, structure: Structure, equation_values, deposition_scaling=1, temp_tracking=True,
+                 acceleration_enabled=True, device=None, name=None):
         super().__init__()
         if not name:
             self.name = str(np.random.randint(000000, 999999, 1)[0])
@@ -143,6 +146,9 @@ class Process:
         self.y0 = 0
         self.full_cells = None  # indices of the filled cells, used for beam matrix update
         self.last_full_cells = None # indices of the last filled cells
+        self.n_surface_cells = 0  # current number of surface cells
+        self.n_semi_surface_cells = 0  # current number of semi-surface cells
+        self.n_beam_matrix_points = 0  # current number of cells with non-zero electron beam flux
 
         self.lock = Lock()
         self.device = device
@@ -157,7 +163,7 @@ class Process:
         self.__set_constants(equation_values)
 
         # Initialize DataViewManager (Stage 2 refactoring)
-        self.view_manager = DataViewManager(self.state, acceleration_enabled=True)
+        self.view_manager = DataViewManager(self.state, acceleration_enabled=acceleration_enabled)
 
         # OLD: Keep for backward compatibility during migration
         self.__update_views_2d()
@@ -273,8 +279,8 @@ class Process:
             nd = dep_view.index[0][nd], dep_view.index[1][nd], dep_view.index[2][nd]
         else:
             # Acceleration OFF: use boolean masking on full view
-            filled_mask = dep_view.deposit >= 1
-            nd = index_where(filled_mask, '>=', 1)[0]
+            nd = index_where(dep_view.deposit, '>=', 1)
+
 
         new_deposits = [(nd[0][i], nd[1][i], nd[2][i]) for i in range(nd[0].shape[0])]
 
@@ -287,7 +293,7 @@ class Process:
         for cell in new_deposits:
             self._update_cell_config(cell, surf_view)
             # Updating temperature in the new cell
-            self.update_cell_temperature(cell)
+            self.update_cell_temperature(cell, surf_view)
             # Updating nearest neighbors profile
             self.update_nearest_neighbors(cell, surf_view)
         # Post cell update routines
@@ -307,6 +313,8 @@ class Process:
 
         # Phase 1 update - surface topology changed
         self.view_manager.update_after_cell_filling()
+        self.n_surface_cells = self.view_manager.n_surface_cells
+        self.n_semi_surface_cells = self.view_manager.n_semi_surface_cells
         return structure_extended
 
     def _update_cell_config(self, cell, surf_view):
@@ -391,18 +399,18 @@ class Process:
         # Basically, none of the slices have to be updated, because they use indexes, not references.
         return True
 
-    def update_cell_temperature(self, cell):
+    def update_cell_temperature(self, cell, data_view):
         """
         Update temperature of the cell by assigning it an average of the surrounding cells.
 
         :param cell: cell indices
         :return:
         """
-        temp_slice, _ = get_3d_slice(cell, self.__temp_reduced_3d.shape, 2)
-        temp_kern = self.__temp_reduced_3d[temp_slice]
+        temp_slice, _ = get_3d_slice(cell, data_view.temp.shape, 2)
+        temp_kern = data_view.temp[temp_slice]
         condition = (temp_kern > self.state.room_temp)
         if np.any(condition):
-            self.__temp_reduced_3d[cell] = temp_kern[condition].sum() / np.count_nonzero(condition)
+            data_view.temp[cell] = temp_kern[condition].sum() / np.count_nonzero(condition)
 
     def update_nearest_neighbors(self, cell, data_view):
         """
@@ -413,7 +421,7 @@ class Process:
         :param cell: cell indices
         :return:
         """
-        n_3d, _ = get_3d_slice(cell, data_view.shape, self.state.max_neib)
+        n_3d, _ = get_3d_slice(cell, data_view.deposit.shape, self.state.max_neib)
         neighbors_neighbs = data_view.surface_neighbors[n_3d]
         deposit_neighbs = data_view.deposit[n_3d]
         surface_neighbs = data_view.surface[n_3d]
@@ -452,7 +460,7 @@ class Process:
 
         # Here, surface_all represents surface+semi_surface cells.
         # Boolean indexing: precursor[surface_all] extracts values at surface cells (1D flat array)
-        view.precursor[view.surface_all] += self.__rk4_with_ftcs(view.beam_matrix)
+        view.precursor[view.surface_all] += self.__rk4_with_ftcs(view)
 
     def equilibrate(self, max_it=10000, eps=1e-8):
         """
@@ -683,9 +691,10 @@ class Process:
         k4 = self.__precursor_density_increment(precursor, beam_matrix, self.dt, k3)
         return ne.re_evaluate("rk4", casting='same_kind', local_dict={'k1': k1, 'k2': k2, 'k3': k3, 'k4': k4})
 
-    def __rk4_with_ftcs(self, beam_matrix):
-        surface_all = self.__surface_all_reduced_2d
-        precursor = self.__precursor_reduced_2d
+    def __rk4_with_ftcs(self, view):
+        beam_matrix = view.beam_matrix
+        surface_all = view.surface_all
+        precursor = view.precursor
         prec_flat = precursor[surface_all]
         if self._get_D() == 0:
             return self.__rk4(prec_flat, beam_matrix)
@@ -713,10 +722,22 @@ class Process:
         """
         tau = self._get_tau()
         n_d = diffusion_matrix
-        return ne.re_evaluate('rde_temp',
+        try:
+            return ne.re_evaluate('rde_temp',
                               local_dict={'F': self.state.precursor.F, 'dt': dt, 'n0': self.state.precursor.n0,
                                           'sigma': self.state.precursor.sigma, 'n': precursor + addon, 'tau': tau,
                                           'se_flux': beam_matrix, 'n_d' : n_d}, casting='same_kind')
+        except ValueError as e:
+            logger.error(f"Failed numexpr.re_evaluate() in Process.__precursor_density_increment due to array size mismatch. \n"
+                         f"Filled cells count: {self.filled_cells} \n"
+                         f"Surface cells: {self.n_surface_cells} \n"
+                         f"Semi-surface cells: {self.n_semi_surface_cells} \n"
+                         f"Beam flux points: {self.n_beam_matrix_points} \n"
+                         f"Precursor array size: {precursor.size} \n"
+                         f"Beam matrix size: {beam_matrix.size} \n"
+                         f"Diffusion matrix size: {n_d.size} \n"
+                         )
+            raise e
 
     def _diffusion(self, grid, surface, dt=0.0, add=0, flat=False):
         """
@@ -802,6 +823,7 @@ class Process:
 
         # Stage 2: Phase 2 update - beam pattern changed
         self.view_manager.update_after_beam_matrix()
+        self.n_beam_matrix_points = self.view_manager.n_beam_flux_points
 
     # Data maintenance methods
     # These methods support an optimization path that provides up to 100x speed up
