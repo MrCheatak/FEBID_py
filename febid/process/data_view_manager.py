@@ -127,6 +127,9 @@ class DataViewManager:
         self._slice_irradiated_3d = None
         self._slice_irradiated_2d_no_sub = None
 
+        # Surface + semi-surface array
+        self._surface_all = np.zeros_like(state.structure.surface_bool)
+
         # Cached index tuples (only populated when acceleration_enabled=True)
         self._index_deposition_2d: tuple = None
         self._index_deposition_3d: tuple = None
@@ -134,6 +137,11 @@ class DataViewManager:
         self._index_semi_surface_2d: tuple = None
         self._index_surface_all_2d: tuple = None
         self._index_surface_all_2d_prev: tuple = None
+
+        # Metrics
+        self.n_surface_cells: int = 0
+        self.n_semi_surface_cells: int = 0
+        self.n_beam_flux_points: int = 0
 
         # Initialize slices (always needed, regardless of acceleration mode)
         self._slice_irradiated_2d = self._define_irradiated_slice_2d()
@@ -144,8 +152,11 @@ class DataViewManager:
         semi_surface_2d_view = self.structure.semi_surface_bool[self._slice_irradiated_2d]
 
         self._index_surface_2d = self.get_index(surface_2d_view)
+        self.n_surface_cells = self._index_surface_2d[0].size
         self._index_semi_surface_2d = self.get_index(semi_surface_2d_view)
+        self.n_semi_surface_cells = self._index_semi_surface_2d[0].size
         self._index_surface_all_2d = concat_index(self._index_surface_2d, self._index_semi_surface_2d)
+        self._surface_all[self._slice_irradiated_2d][self._index_surface_all_2d] = True
         self._index_surface_all_2d_prev = self._index_surface_all_2d
 
     def update_roi(self, beam_matrix: np.ndarray = None):
@@ -353,7 +364,7 @@ class DataViewManager:
             )
         else:
             # Acceleration OFF: full-array operations
-            slice_2d = np.s_[self.substrate_height:self.max_z, :, :]
+            slice_2d = self._slice_irradiated_2d
             return DepositionView(
                 deposit=self.structure.deposit[slice_2d],
                 precursor=self.structure.precursor[slice_2d],
@@ -382,33 +393,21 @@ class DataViewManager:
         Returns:
             PrecursorDensityView with appropriate arrays for current mode.
         """
-        if self.acceleration_enabled:
-            # Acceleration ON: optimized with tight slicing
-            precursor_2d = self.structure.precursor[self._slice_irradiated_2d]
-            surface_2d = self.structure.surface_bool[self._slice_irradiated_2d]
-            semi_surface_2d = self.structure.semi_surface_bool[self._slice_irradiated_2d]
-            surface_all = surface_2d | semi_surface_2d
+        # Acceleration ON: optimized with tight slicing
+        slice_2d = self._slice_irradiated_2d
+        precursor_2d = self.structure.precursor[slice_2d]
+        surface_2d = self.structure.surface_bool[slice_2d]
+        semi_surface_2d = self.structure.semi_surface_bool[slice_2d]
+        surface_all = self._surface_all[slice_2d]
 
-            return PrecursorDensityView(
-                precursor=precursor_2d,
-                surface_all=surface_all,
-                beam_matrix=self.beam_matrix_surface,  # 1D flattened array (surface cells only)
-                acceleration_enabled=True
-            )
-        else:
-            # Acceleration OFF: full-array operations
-            slice_2d = np.s_[self.substrate_height:self.max_z, :, :]
-            precursor_2d = self.structure.precursor[slice_2d]
-            surface_2d = self.structure.surface_bool[slice_2d]
-            semi_surface_2d = self.structure.semi_surface_bool[slice_2d]
-            surface_all = surface_2d | semi_surface_2d
-
-            return PrecursorDensityView(
-                precursor=precursor_2d,
-                surface_all=surface_all,
-                beam_matrix=self.beam_matrix[slice_2d],  # Full 3D array
-                acceleration_enabled=False
-            )
+        return PrecursorDensityView(
+            precursor=precursor_2d,
+            surface_all=surface_all,
+            beam_matrix=self.beam_matrix_surface,  # 1D flattened array (surface cells only)
+            tau=None,
+            D=None,
+            acceleration_enabled=True
+        )
 
     def get_diffusion_view(self) -> DiffusionView:
         """
@@ -429,18 +428,18 @@ class DataViewManager:
         Returns:
             DiffusionView with appropriate arrays and surface indices.
         """
-        slice_2d = self._slice_irradiated_2d if self.acceleration_enabled else np.s_[self.substrate_height:self.max_z, :, :]
-
+        slice_2d = self._slice_irradiated_2d
         precursor_2d = self.structure.precursor[slice_2d]
         surface_2d = self.structure.surface_bool[slice_2d]
         semi_surface_2d = self.structure.semi_surface_bool[slice_2d]
-        surface_all = surface_2d | semi_surface_2d
+        surface_all = self._surface_all[slice_2d]
 
         # ALWAYS use the actual fancy index tuple for surface cells (diffusion needs this)
         return DiffusionView(
             precursor=precursor_2d,
             surface_all=surface_all,
             surface_all_index=self._index_surface_all_2d,  # Always fancy index tuple
+            D=None,
             acceleration_enabled=self.acceleration_enabled
         )
 
@@ -459,15 +458,14 @@ class DataViewManager:
 
         # Get temperature array if temperature tracking is enabled
         temp = self.state.surface_temp if hasattr(self.state, 'surface_temp') else None
-
         return SurfaceUpdateView(
             deposit=self.structure.deposit[slice_3d],
             precursor=self.structure.precursor[slice_3d],
             surface=self.structure.surface_bool[slice_3d],
             semi_surface=self.structure.semi_surface_bool[slice_3d],
-            ghosts=self.structure.ghost_cells[slice_3d],
+            ghosts=self.structure.ghosts_bool[slice_3d],
             temp=temp[slice_3d] if temp is not None else None,
-            surface_neighbors=self.structure.surface_neighbors[slice_3d],
+            surface_neighbors=self.structure.surface_neighbors_bool[slice_3d],
             irradiated_area_3d=slice_3d  # For converting local to global indices
         )
 
@@ -496,10 +494,21 @@ class DataViewManager:
         surface_2d_view = self.structure.surface_bool[self._slice_irradiated_2d]
         semi_surface_2d_view = self.structure.semi_surface_bool[self._slice_irradiated_2d]
 
+        # Sequence is important
+        # 1. Erasing previous combined surface array
+        self._surface_all[self._slice_irradiated_2d][self._index_surface_all_2d] = False
+        if self._surface_all[self._slice_irradiated_2d].max():
+            raise IndexError("Array mask and index inconsistency. Previous index did not address all expected aray cells!")
+        # 2. Getting two new indexes
         self._index_surface_2d = self.get_index(surface_2d_view)
+        self.n_surface_cells = self._index_surface_2d[0].size
         self._index_semi_surface_2d = self.get_index(semi_surface_2d_view)
+        self.n_semi_surface_cells = self._index_semi_surface_2d[0].size
         self._index_surface_all_2d_prev = self._index_surface_all_2d
+        # 3. Combining indexes
         self._index_surface_all_2d = concat_index(self._index_surface_2d, self._index_semi_surface_2d)
+        # 4. Writing to surface array using new index
+        self._surface_all[self._slice_irradiated_2d][self._index_surface_all_2d] = True
 
     def update_after_beam_matrix(self):
         """
@@ -516,13 +525,17 @@ class DataViewManager:
         - Recalculate 3D slice (depends on deposition indices)
         - Regenerate flattened beam arrays
         """
+        # 3. Get the view of the beam matrix within that 2D slice
+        beam_matrix_2d_view = self.beam_matrix[self._slice_irradiated_2d]
+        # 8. Get the flattened beam flux for surface and semi-surface cells
+        self.get_beam_flux_for_surface()
         # Only generate deposition indices and flattened arrays if acceleration is enabled
         if self.acceleration_enabled:
-            # 3. Get the view of the beam matrix within that 2D slice
-            beam_matrix_2d_view = self.beam_matrix[self._slice_irradiated_2d]
+
 
             # 4. Find the indices of irradiated cells within the 2D view
             self._index_deposition_2d = self.get_index(beam_matrix_2d_view)
+            self.n_beam_flux_points = self._index_deposition_2d[0].size
 
             # 5. Based on those indices, calculate the tighter 3D slice
             self._slice_irradiated_3d = self._define_irradiated_slice_3d()
@@ -532,11 +545,11 @@ class DataViewManager:
 
             # 7. Get the flattened effective beam flux for deposition
             self.get_effective_beam_flux_for_deposition()
-            # 8. Get the flattened beam flux for surface and semi-surface cells
-            self.get_beam_flux_for_surface()
+
         else:
             # Acceleration disabled: compute simple 3D slice, no fancy indices for deposition
-            self._slice_irradiated_3d = np.s_[self.substrate_height:self.max_z, :, :]
+            self._slice_irradiated_3d = self._define_irradiated_slice_2d()
+            self.n_beam_flux_points = np.count_nonzero(beam_matrix_2d_view)
 
 
     # --- Convenience properties for cleaner internal access ---
