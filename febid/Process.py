@@ -127,7 +127,7 @@ class Process:
         self._get_solid_index()
         self._temp_step_cells = self._temp_step / self.state.cell_V
         self.state.structure.precursor[self.state.structure.surface_bool] = self.state.model.nr
-        if self.temperature_tracking:
+        if self.state.temperature_tracking:
             self.__get_surface_temp()
             self._residence_time_profile()
             self._diffusion_coefficient_profile()
@@ -135,6 +135,7 @@ class Process:
 
     # Initialization methods
     def __set_structure(self, structure: Structure):
+        self.state.max_z = self.structure.deposit.nonzero()[0].max() + 3
         if self.device:
             self.load_kernel()
 
@@ -192,7 +193,7 @@ class Process:
         """
         # Searching in reverse is faster because growth is typically from the bottom to the top
         view = self.view_manager.get_deposition_view()
-        surface_cells = view.deposit[self.index]
+        surface_cells = view.deposit[view.index]
         cells_filled = any_where(surface_cells, '>=', 1, reverse=True)
         return cells_filled
 
@@ -239,10 +240,9 @@ class Process:
         # Post cell update routines
         cell_abs_arr = np.array(cells_abs)
         if np.any(cell_abs_arr[:, 0] + 4 > self.state.max_z):
-            self.__set_max_z()
-        self.__update_views_2d()
+            self.state.max_z += 1
 
-        if self.temperature_tracking and self.state.max_z - self.state.substrate_height - 3 > 2:
+        if self.state.temperature_tracking and self.state.max_z - self.state.substrate_height - 3 > 2:
             self.request_temp_recalc = self.filled_cells > self._temp_calc_count * self._temp_step_cells
             if self.request_temp_recalc:
                 self._get_solid_index()
@@ -485,7 +485,6 @@ class Process:
 
             if z_coord + 4 > self.state.max_z:
                 self.state.max_z = z_coord + 4
-                self.max_z = self.state.max_z  # Backward compatibility
                 self.knl.zdim_max = z_coord + 4
                 self.knl.len_lap = (z_coord + 4 - self.knl.zdim_min) * self.knl.xdim * self.knl.ydim
 
@@ -832,7 +831,7 @@ class Process:
         Returns single value of the residence time if temperature tracking is off
         or returns an array of values otherwise
         """
-        if self.temperature_tracking:
+        if self.state.temperature_tracking:
             tau = self.__tau_flat  # Cached flattened array for surface
         else:
             tau = self.state.precursor.tau
@@ -843,7 +842,7 @@ class Process:
         Returns single value of the diffusion coefficient if temperature tracking is off
         or returns an array of values otherwise
         """
-        if self.temperature_tracking:
+        if self.state.temperature_tracking:
             s = self.view_manager._slice_irradiated_2d
             D_temp = self.state.D_temp
             D = D_temp[s]  # View on temperature-dependent D
@@ -963,6 +962,19 @@ class Process:
         For backward compatability.
         """
         return self.state.structure
+
+    @property
+    def cell_size(self):
+        return self.state.cell_size
+
+    @property
+    def max_z(self):
+        return self.state.max_z
+
+    @property
+    def substrate_height(self):
+        return self.state.substrate_height
+
 
 if __name__ == '__main__':
     print("Current script does not have an entry point.....")

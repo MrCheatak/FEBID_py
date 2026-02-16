@@ -56,7 +56,7 @@ class HeatSolverExecutor:
         self.mc_sim = mc_sim
 
     def step(self):
-        if self.process.temperature_tracking:
+        if self.process.state.temperature_tracking:
             self.process.heat_transfer(self.mc_sim.beam_heating)
             self.process.request_temp_recalc = False
 
