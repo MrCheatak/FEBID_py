@@ -317,7 +317,7 @@ class DataViewManager:
         (Logic from Process.__flatten_beam_matrix_surface)
         """
         beam_matrix_2d_view = self.beam_matrix[self._slice_irradiated_2d]
-        self.beam_matrix_surface = beam_matrix_2d_view[self._index_surface_all_2d]
+        self.beam_matrix_surface = beam_matrix_2d_view[self._surface_all[self._slice_irradiated_2d]]
         return self.beam_matrix_surface
 
     def get_surface_all_indices_2d(self) -> tuple:
