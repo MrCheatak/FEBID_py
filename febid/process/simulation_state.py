@@ -50,8 +50,8 @@ class SimulationState:
         self.cell_V = structure.cell_size ** 3
 
         # Structural metadata
-        self.substrate_height = structure.substrate_height
-        self.n_substrate_cells = structure.deposit[:structure.substrate_height].size
+        self.substrate_height = structure.substrate_height  # Thickness of the substrate
+        self.n_substrate_cells = structure.deposit[:structure.substrate_height].size  # the number of the cells in the substrate
         self.max_neib = 0  # Maximum number of surface nearest neighbors
         self.max_z = 0  # Maximum height of deposited structure (in cells)
 
@@ -62,7 +62,7 @@ class SimulationState:
         self.tau_temp = np.zeros_like(structure.precursor)  # Temperature-dependent residence times
 
         # Scaling factor
-        self.deposition_scaling = 1.0  # Will be set during Process initialization
+        self.deposition_scaling = 1.0  # multiplier of the deposit increment; used to speed up the process
 
         # Temperature tracking flag
         self.temperature_tracking = False  # Will be set during Process initialization
