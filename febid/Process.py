@@ -67,49 +67,14 @@ class Process:
         self.state.deposition_scaling = deposition_scaling
         self.state.temperature_tracking = temp_tracking  # Set temperature tracking flag in state
 
-        # Temporary: Keep references for backward compatibility during migration
-        self.cell_size = None
-        self.cell_V = 0
-        self.heat_cond = 0
         # Main arrays
         # Semi-surface cells are virtual cells that can hold precursor density value, but cannot create deposit.
         # Their role is to serve as pipes on steps, where regular surface cells are not in contact.
         # Therefore, these cells take part in diffusion process, but are not taken into account when calculating
         # other terms in the FEBID equation or deposit increment.
-        self._beam_matrix = None  # contains values of the SE surface flux
-        self.surface_temp = None
 
         # Cellular automata engine
         self._local_mcca: MLCCA = MLCCA()
-
-        # Working arrays
-        self.__deposit_reduced_3d = None
-        self.__precursor_reduced_3d = None
-        self.__surface_reduced_3d = None
-        self.__semi_surface_reduced_3d = None
-        self.__ghosts_reduced_3d = None
-        self.__temp_reduced_3d = None
-        self.__beam_matrix_reduced_2d = None
-        self._D_temp = None
-        self._tau_temp = None
-
-        # Helpers
-        self._surface_all = None
-        self.__beam_matrix_surface = None
-        self.__beam_matrix_effective = None
-        self.__deposition_index_3d = None
-        self.__surface_index_2d = None
-        self.__semi_surface_index_2d = None
-        self._solid_index = None
-        self.__surface_all_index_2d = None
-        self.__tau_flat = None
-        self._irradiated_area_3d = None
-
-        # Monte Carlo simulation instance
-        self.sim = None
-
-        # Physical variables
-        self.room_temp = 294  # room temperature
 
         # Timings
         self.t = 0
@@ -120,22 +85,16 @@ class Process:
         self.solution_accuracy = 1e-8
 
         # Utility variables
-        self.deposition_scaling = deposition_scaling  # multiplier of the deposit increment; used to speed up the process
         self.redraw = True  # flag for external functions saying that surface has been updated
         self._t_prev = 0
         self._vol_prev = 0
         self.growth_rate = 0
-        self.temperature_tracking = temp_tracking
         self.request_temp_recalc = temp_tracking
         self._temp_step = 10000  # amount of volume to be deposited before next temperature calculation
         self._temp_step_cells = 0  # number of cells to be filled before next temperature calculation
         self._temp_calc_count = 0  # counting number of times temperature has been calculated
 
         # Statistics
-        self.substrate_height = 0  # Thickness of the substrate
-        self.n_substrate_cells = 0  # the number of the cells in the substrate
-        self.max_z = 0  # maximum height of the deposited structure, cells
-        self.max_z_prev = 0
         self.filled_cells = 0  # current number of filled cells
         self.growth_rate = 0  # average growth rate
         self.dep_vol = 0  # deposited volume
@@ -165,10 +124,6 @@ class Process:
         # Initialize DataViewManager (Stage 2 refactoring)
         self.view_manager = DataViewManager(self.state, acceleration_enabled=acceleration_enabled)
 
-        # OLD: Keep for backward compatibility during migration
-        self.__update_views_2d()
-        self.__semi_surface_index_2d = index_where(self.__semi_surface_reduced_2d)  # has to be generated here in abscence of a beam matrix
-        self.__generate_surface_index()
         self._get_solid_index()
         self._temp_step_cells = self._temp_step / self.state.cell_V
         self.state.structure.precursor[self.state.structure.surface_bool] = self.state.model.nr
@@ -180,22 +135,6 @@ class Process:
 
     # Initialization methods
     def __set_structure(self, structure: Structure):
-        # State arrays are already initialized in SimulationState.__init__
-        # Just need to set max_z and update derived arrays
-        self._surface_all = np.logical_or(self.structure.surface_bool, self.structure.semi_surface_bool)
-
-        # Backward compatibility: Keep references to state arrays
-        self._beam_matrix = self.state.beam_matrix
-        self.surface_temp = self.state.surface_temp
-        self._D_temp = self.state.D_temp
-        self._tau_temp = self.state.tau_temp
-        self.cell_size = self.state.cell_size
-        self.cell_V = self.state.cell_V
-        self.__set_max_z()
-
-        # Backward compatibility: Keep references to state properties
-        self.substrate_height = self.state.substrate_height
-        self.n_substrate_cells = self.state.n_substrate_cells
         if self.device:
             self.load_kernel()
 
@@ -220,7 +159,7 @@ class Process:
         self.kb = self.state.kb
         self.heat_cond = self.state.heat_cond
         self.deposition_scaling = self.state.deposition_scaling
-        if self.temperature_tracking:
+        if self.state.temperature_tracking:
             if not all([self.state.precursor.k0, self.state.precursor.Ea, self.state.precursor.D0, self.state.precursor.Ed]):
                 warnings.warn('Some of the temperature dependent parameters were not found! \n '
                               'Switch to static temperature mode? y/n')
@@ -252,7 +191,8 @@ class Process:
         :return: bool
         """
         # Searching in reverse is faster because growth is typically from the bottom to the top
-        surface_cells = self.__deposit_reduced_3d[self.__deposition_index_3d]
+        view = self.view_manager.get_deposition_view()
+        surface_cells = view.deposit[self.index]
         cells_filled = any_where(surface_cells, '>=', 1, reverse=True)
         return cells_filled
 
@@ -446,8 +386,7 @@ class Process:
         # UNIFORM EXPRESSION: Works for both acceleration ON and OFF
         # When acceleration ON: view.index is fancy tuple (z,y,x), beam_matrix is 1D
         # When acceleration OFF: view.index is np.s_[:], beam_matrix is 3D
-        view.deposit[view.index] += (
-                view.precursor[view.index] * view.beam_matrix * const / 1e6)
+        view.deposit[view.index] += view.precursor[view.index] * view.beam_matrix * const / 1e6
 
     def precursor_density(self):
         """
@@ -472,11 +411,12 @@ class Process:
         :param max_it: number of iterations
         :param eps: desired accuracy
         """
+        view = self.view_manager.get_precursor_density_view()
         start = df()
         for i in range(max_it):
-            p_prev = self.__precursor_reduced_2d.copy()
+            p_prev = view.precursor.copy()
             self.precursor_density()
-            norm = np.linalg.norm(self.__precursor_reduced_2d - p_prev)/ np.linalg.norm(self.__precursor_reduced_2d)
+            norm = np.linalg.norm(view.precursor - p_prev)/ np.linalg.norm(view.precursor)
             if norm < eps:
                 print(f'Took {i+1} iteration(s) to equilibrate, took {df() - start}')
                 return 1
@@ -769,7 +709,7 @@ class Process:
         if self.state.max_z - self.state.substrate_height - 3 > 2:
             if self.request_temp_recalc:
                 self._temp_calc_count += 1
-                slice_2d = self.__irradiated_area_2D_no_sub  # using only top layer of the substrate
+                slice_2d = self.view_manager._slice_irradiated_2d_no_sub  # using only top layer of the substrate
                 if type(heating) is np.ndarray:
                     heat = heating[slice_2d]
                 else:
@@ -793,7 +733,7 @@ class Process:
 
         :return:
         """
-        self._D_temp[self._surface_all] = self.state.precursor.diffusion_coefficient_at_T(self.state.surface_temp[self._surface_all])
+        self._D_temp[self.view_manager._surface_all] = self.state.precursor.diffusion_coefficient_at_T(self.state.surface_temp[self.view_manager._surface_all])
 
     def _residence_time_profile(self):
         """
@@ -801,8 +741,11 @@ class Process:
 
         :return:
         """
-        self.__tau_flat = self.state.precursor.residence_time_at_T(self.__surface_temp_reduced_2d[self.__surface_reduced_2d])
-        self.__tau_temp_reduced_2d[self.__surface_reduced_2d] = self.__tau_flat
+        view = self.view_manager.get_precursor_density_view()
+        temp_2d = self.state.surface_temp[self.view_manager._slice_irradiated_2d]
+        surface_2d = view.surface_all
+        self.__tau_flat = self.state.precursor.residence_time_at_T(temp_2d[surface_2d])
+        self.__tau_temp_reduced_2d[surface_2d] = self.__tau_flat
 
     def set_beam_matrix(self, beam_matrix):
         """
@@ -816,136 +759,27 @@ class Process:
             beam_matrix = np.array(beam_matrix)
         else:
             self.state.beam.f0 = beam_matrix.max()
-        index = index_where(self.__semi_surface_reduced_2d)
-        self.__semi_surface_index_2d = index = (np.intc(index[0]), np.intc(index[1]), np.intc(index[2]))
-        beam_matrix_semi_surface_av(self.__beam_matrix_reduced_2d, self.__beam_matrix_reduced_2d, *index)
-        self._update_helper_arrays()
-
         # Stage 2: Phase 2 update - beam pattern changed
         self.view_manager.update_after_beam_matrix()
         self.n_beam_matrix_points = self.view_manager.n_beam_flux_points
-
-    # Data maintenance methods
-    # These methods support an optimization path that provides up to 100x speed up
-    # 1. By selecting and processing chunks of arrays (views) that are effectively changing
-    # 2. By preparing indexes for arrays
-    def _update_helper_arrays(self):
-        """
-        Define new views to data arrays, create axillary indexes and flatten beam_matrix array
-
-        :return:
-        """
-        # Basically, procedure provided by this method is optional and serves as an optimisation.
-        self.__update_views_3d()
-        self.__generate_deposition_index()
-        self.__generate_surface_index()
-        self.__flatten_beam_matrix_effective()
-        self.__flatten_beam_matrix_surface()
-
-    def __update_views_3d(self):
-        """
-        Update view-arrays in accordance with the currently irradiated area
-
-        :return:
-        """
-        # This is a part of a helper routine destined to reduce the number of cells processed on every iteration
-        # All the methods operating on main arrays (deposit, precursor, etc.) use a corresponding view
-        #  on the necessary array.
-        # '3D view' mentioned here can be referred to as a volume that encapsulates all cells that have been irradiated
-        self._irradiated_area_3d = slice3d = self.__irradiated_area_3d
-        self.__deposit_reduced_3d = self.state.structure.deposit[slice3d]
-        self.__precursor_reduced_3d = self.state.structure.precursor[slice3d]
-        self.__surface_reduced_3d = self.state.structure.surface_bool[slice3d]
-        self.__semi_surface_reduced_3d = self.state.structure.semi_surface_bool[slice3d]
-        self.__ghosts_reduced_3d = self.state.structure.ghosts_bool[slice3d]
-        self.__temp_reduced_3d = self.state.structure.temperature[slice3d]
-        self.__beam_matrix_reduced_3d = self.state.beam_matrix[slice3d]
-        self.__surface_neighbors_reduced_3d = self.state.structure.surface_neighbors_bool[slice3d]
-
-    def __update_views_2d(self):
-        """
-        Update view-arrays in accordance with the current max height of the structure
-
-        :return:
-        """
-        # This is a part of a helper routine destined to reduce the number of cells processed on every iteration
-        # All the methods operating on main arrays (deposit, precursor, etc.) use a corresponding view
-        #  on the necessary array.
-        # '2D view' taken here can be referred to as a volume that encapsulates
-        #  the whole surface of the deposited structure. This means it takes a view only along the z-axis.
-        slice2d = self._irradiated_area_2d
-        self.__deposit_reduced_2d = self.state.structure.deposit[slice2d]
-        self.__precursor_reduced_2d = self.state.structure.precursor[slice2d]
-        self.__surface_reduced_2d = self.state.structure.surface_bool[slice2d]
-        self.__semi_surface_reduced_2d = self.state.structure.semi_surface_bool[slice2d]
-        self.__surface_all_reduced_2d = self._surface_all[slice2d]
-        self.__beam_matrix_reduced_2d = self.state.beam_matrix[slice2d]
-        self.__temp_reduced_2d = self.state.structure.temperature[slice2d]
-        self.__surface_temp_reduced_2d = self.state.surface_temp[slice2d]
-        self.__D_temp_reduced_2d = self.state.D_temp[slice2d]
-        self.__tau_temp_reduced_2d = self.state.tau_temp[slice2d]
-
-    def __generate_deposition_index(self):
-        """
-        Generate a tuple of indices of the cells that are irradiated for faster indexing in 'deposition' method
-
-        :return:
-        """
-        # Basically, transforming indices from 2D slice to 3D slice
-        z, y, x = self.__deposition_index_2d
-        y -= self._irradiated_area_3d[1].start
-        x -= self._irradiated_area_3d[2].start
-        index = (z, y, x)
-        self.__deposition_index_3d = index
-
-    def __generate_surface_index(self):
-        """
-        Generate a tuple of indices for faster indexing in 'laplace_term' method
-
-        :return:
-        """
-        # For efficiency reasons, surface_all_reduced_2d is operated in-place only
-        index = index_where(self.__surface_reduced_2d)
-        self.__surface_index_2d = (np.intc(index[0]), np.intc(index[1]), np.intc(index[2]))
-        self.__surface_all_reduced_2d[self.__surface_all_index_2d] = False
-        self.__surface_all_index_2d = concat_index(self.__surface_index_2d, self.__semi_surface_index_2d)
-        self.__surface_all_reduced_2d[self.__surface_all_index_2d] = True
-
-    def __flatten_beam_matrix_effective(self):
-        """
-        Extract a flattened array of non-zero elements from beam_matrix array. Used for deposition only.
-
-        :return:
-        """
-        self.__beam_matrix_effective = self.__beam_matrix_reduced_3d[self.__deposition_index_3d]
-
-    def __flatten_beam_matrix_surface(self):
-        """
-        Extract a flattened array of beam_matrix array. Used for precursor density calculation only.
-
-        :return:
-        """
-        self.__beam_matrix_surface = self.__beam_matrix_reduced_2d[self.__surface_all_reduced_2d]
+        beam_matrix_2d = self.state.beam_matrix[self.view_manager._slice_irradiated_2d]
+        index = self.view_manager._index_semi_surface_2d
+        beam_matrix_semi_surface_av(beam_matrix_2d, beam_matrix_2d, *index)
 
     def _get_solid_index(self):
-        index = self.structure.deposit[self.__irradiated_area_2D_no_sub]
+        index = self.structure.deposit[self.view_manager._slice_irradiated_2d_no_sub]
         index = (index < 0).nonzero()
         self._solid_index = (np.intc(index[0]), np.intc(index[1]), np.intc(index[2]))
         return self._solid_index
 
-    def __set_max_z(self):
-        """
-        Set z position of the highest not empty cell in the structure
-
-        :return:
-        """
-        self.state.max_z = self.structure.deposit.nonzero()[0].max() + 3
-        self.max_z = self.state.max_z  # Backward compatibility
-
     def __get_surface_temp(self):
-        self.__surface_temp_reduced_2d[...] = 0
-        surface_temp_av(self.__surface_temp_reduced_2d, self.__temp_reduced_2d, *self.__surface_index_2d)
-        surface_temp_av(self.__surface_temp_reduced_2d, self.__surface_temp_reduced_2d, *self.__semi_surface_index_2d)
+        surface_index = self.view_manager._index_surface_2d
+        semi_surface_index = self.view_manager._index_semi_surface_2d
+        surface_temp = self.state.surface_temp[self.view_manager._slice_irradiated_2d]
+        temp = self.structure.temperature[self.view_manager._slice_irradiated_2d]
+        surface_temp[...] = 0
+        surface_temp_av(surface_temp, temp, *surface_index)
+        surface_temp_av(surface_temp, surface_temp, *semi_surface_index)
         self.max_T = self.max_temperature
 
     # Miscellaneous
@@ -966,7 +800,8 @@ class Process:
 
         :return:
         """
-        return self.__surface_temp_reduced_2d.max()
+        temp_2d = self.state.surface_temp[self.view_manager._slice_irradiated_2d]
+        return temp_2d.max()
 
     @property
     def _deposited_vol(self):
@@ -975,7 +810,10 @@ class Process:
 
         :return:
         """
-        return (self.filled_cells + self.__deposit_reduced_2d[self.__surface_reduced_2d].sum()) * self.state.cell_V
+        s = self.view_manager._slice_irradiated_2d
+        deposit = self.structure.deposit[s]
+        surface = self.structure.surface_bool[s]
+        return (self.filled_cells + deposit[surface].sum()) * self.state.cell_V
 
     @property
     def precursor_min(self):
@@ -984,7 +822,10 @@ class Process:
 
         :return:
         """
-        return self.__precursor_reduced_3d[self.__surface_reduced_3d].min()
+        s = self.view_manager._slice_irradiated_3d
+        precursor = self.structure.precursor[s]
+        surface = self.structure.surface_bool[s]
+        return precursor[surface].min()
 
     def _get_tau(self):
         """
@@ -1003,7 +844,9 @@ class Process:
         or returns an array of values otherwise
         """
         if self.temperature_tracking:
-            D = self.__D_temp_reduced_2d  # View on temperature-dependent D
+            s = self.view_manager._slice_irradiated_2d
+            D_temp = self.state.D_temp
+            D = D_temp[s]  # View on temperature-dependent D
         else:
             D = self.state.precursor.D
         return D
@@ -1091,32 +934,6 @@ class Process:
         Returns a slice encapsulating the whole surface
         """
         return np.s_[self.state.substrate_height - 1:self.state.max_z, :, :]  # a volume encapsulating the whole surface
-
-    @property
-    def __irradiated_area_3d(self):
-        """
-        Returns a slice of the currently irradiated area
-        """
-        self.__deposition_index_2d = index_where(self.__beam_matrix_reduced_2d)
-        ymin, ymax = self.__deposition_index_2d[1].min(), self.__deposition_index_2d[1].max()
-        xmin, xmax = self.__deposition_index_2d[2].min(), self.__deposition_index_2d[2].max()
-        irradiated_area_3d = np.s_[self._irradiated_area_2d[0], ymin:ymax + 1, xmin:xmax + 1]
-        return irradiated_area_3d  # a slice of the currently irradiated area
-
-    @property
-    def __irradiated_area_2D_no_sub(self):
-        """
-        Returns a slice encapsulating the whole surface without the substrate
-        """
-        return np.s_[self.state.substrate_height + 1:self.max_z, :, :]
-
-    @property
-    def _irr_ind_2D(self):
-        """
-        Returns the indices of the irradiated area along z-dimension.
-        """
-        zero_dim = self._irradiated_area_2d[0]
-        return (zero_dim.start, zero_dim.stop)
 
     @property
     def max_neib(self):
