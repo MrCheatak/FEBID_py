@@ -254,12 +254,12 @@ get_precursor_density_view() -> PrecursorDensityView
 get_diffusion_view() -> DiffusionView
 get_surface_update_view() -> SurfaceUpdateView
 
-# Index generation and update (only called when acceleration_enabled=True)
-update_indices() -> None  # Regenerates all cached indices (no-op if acceleration off)
-update_flattened_arrays() -> None  # Regenerates flattened beam matrices (no-op if acceleration off)
+# Two-Phase Update System (Phase 1: Surface, Phase 2: Beam)
+update_after_cell_filling() -> None  # Phase 1: Updates surface indices after topology changes
+update_after_beam_matrix() -> None   # Phase 2: Updates beam-dependent indices after MC simulation
 
-# Invalidation (when structure changes)
-invalidate_and_rebuild() -> None  # Called after cell filling, beam matrix update
+# Note: Previous single invalidate_and_rebuild() was inefficient (double-call issue)
+# Now split into two phases matching natural control flow
 ```
 
 **Acceleration On/Off Behavior**:
@@ -357,6 +357,48 @@ class SurfaceUpdateView:
 - **DataViewManager** decides internally what to populate in the view based on `acceleration_enabled` flag
 - Views carry `acceleration_enabled` property to signal which code path to use
 - This keeps the decision logic centralized while keeping view generation separate from physics
+
+**Two-Phase Update System**:
+
+DataViewManager uses a two-phase update strategy matching the natural control flow:
+
+**Phase 1: After Cell Filling** (`update_after_cell_filling()`)
+- Triggered when: Cells fill and surface topology changes
+- What changed: `max_z`, `surface_bool`, `semi_surface_bool`, `ghosts_bool`
+- What's updated:
+  - `_slice_irradiated_2d` (depends on `max_z`)
+  - `_index_surface_2d` (depends on `surface_bool`)
+  - `_index_semi_surface_2d` (depends on `semi_surface_bool`)
+  - `_index_surface_all_2d` (concatenation of above - required for diffusion)
+- Beam matrix: Still has OLD values from previous MC run
+
+**Phase 2: After Beam Matrix Update** (`update_after_beam_matrix()`)
+- Triggered when: MC simulation completes and new beam pattern available
+- What changed: `beam_matrix` (NEW electron flux distribution)
+- What's updated (only if `acceleration_enabled=True`):
+  - `_index_deposition_2d` (depends on `beam_matrix`)
+  - `_slice_irradiated_3d` (tight 3D box around irradiated area)
+  - `_index_deposition_3d` (transformation of 2D indices to 3D coordinates)
+  - `beam_matrix_effective` (1D flattened for deposition)
+  - `beam_matrix_surface` (1D flattened for precursor density)
+- Surface indices: Already updated in Phase 1, not regenerated
+
+**Why Two Phases?**
+1. **Efficiency**: Avoids double regeneration - each phase updates only what changed
+2. **Semantic correctness**: Update logic matches what actually changed
+3. **Independence**: Surface indices don't depend on beam_matrix (can update separately)
+4. **Control flow alignment**: Matches natural sequence of cell filling → MC run
+5. **Solves double-call issue**: Previous single `invalidate_and_rebuild()` was called twice unnecessarily
+
+**Call Sequence in Practice**:
+```python
+# In engine.py _handle_cell_filled():
+pr.cell_filled_routine()           # Phase 1 called internally
+if flag_resize:
+    sim.update_structure()
+mc_executor.step(y, x)              # Phase 2 called in set_beam_matrix()
+heat_solver.step()
+```
 
 ---
 
@@ -849,11 +891,22 @@ def cell_filled_routine(self):
         # Delegate temperature update to TemperatureManager
         self.temp_manager.update_cell_temperature(cell)
 
-    # Invalidate cached indices (structure changed)
-    self.view_manager.invalidate_and_rebuild()
+    # Phase 1 Update: Surface topology changed (max_z, surface_bool, semi_surface_bool)
+    # This updates surface indices immediately after cell filling
+    self.view_manager.update_after_cell_filling()
 
     # Check if structure needs extension
     return self.extend_structure() if self.max_z + 5 > self.structure.shape[0] else False
+
+# Later in engine.py, after MC simulation:
+# mc_executor.step(y, x) calls set_beam_matrix() which triggers Phase 2:
+def set_beam_matrix(self, beam_matrix):
+    self.state.beam_matrix[:] = beam_matrix
+    # ... semi_surface averaging ...
+
+    # Phase 2 Update: Beam pattern changed (beam_matrix updated)
+    # This updates deposition indices and flattened beam arrays
+    self.view_manager.update_after_beam_matrix()
 ```
 
 ### Example 5: Switching Between CPU and GPU
@@ -1235,7 +1288,7 @@ PhysicsEngine applies deposition formula using view
     deposit_3d[deposition_index] += precursor_3d[deposition_index] * beam_matrix_flat * const
 ```
 
-### Cell Filling Flow
+### Cell Filling Flow (Two-Phase Update)
 
 ```
 SimulationPipeline detects cells_filled
@@ -1253,27 +1306,50 @@ For each filled cell:
     Process.update_cell_temperature(cell)  # Delegates to TemperatureManager
     Process.update_nearest_neighbors(cell)
     ↓
-DataViewManager.invalidate_and_rebuild()  # Regenerate cached indices
+DataViewManager.update_after_cell_filling()  # Phase 1: Surface indices updated
     ↓
 Process.extend_structure() if needed
+    ↓
+SimulationPipeline.mc_executor.step(y, x)  # Run MC simulation
+    ↓
+Process.set_beam_matrix(new_beam_matrix)  # Update beam with MC results
+    ↓
+DataViewManager.update_after_beam_matrix()  # Phase 2: Beam-dependent indices updated
 ```
+
+**Note**: Previous design had single `invalidate_and_rebuild()` call which was inefficient.
+New two-phase design splits updates:
+- Phase 1: After cell filling (surface topology changes)
+- Phase 2: After MC simulation (beam pattern changes)
+
+This eliminates redundant regeneration of surface indices during beam update.
 
 ---
 
 ## Migration Strategy
 
-### Phase 1: Extract SimulationState
-1. Create SimulationState class
-2. Move all data arrays and parameters to it
-3. Update Process to hold a SimulationState instance
-4. Update all references to use `self.state.array_name`
+### Phase 1: Extract SimulationState ✅ COMPLETE
+1. ✅ Create SimulationState class
+2. ✅ Move all data arrays and parameters to it
+3. ✅ Update Process to hold a SimulationState instance
+4. ✅ Update all references to use `self.state.array_name`
 
-### Phase 2: Extract DataViewManager
-1. Create DataViewManager with view object definitions
-2. Move all view generation logic (`__update_views_2d`, `__update_views_3d`)
-3. Move all index generation logic
-4. Update Physics methods to accept views as parameters
-5. Replace direct array access with view-based access
+### Phase 2: Extract DataViewManager ✅ COMPLETE
+1. ✅ Create DataViewManager with view object definitions (4 dataclass views created)
+2. ✅ Move all view generation logic (slice generation, index caching implemented)
+3. ✅ Move all index generation logic (cached when acceleration ON, zero overhead when OFF)
+4. ✅ Update Physics methods to use views (uniform expression pattern implemented)
+5. ✅ Replace direct array access with view-based access (all physics calculations refactored)
+6. ✅ Implement two-phase update system (Phase 1: after cell filling, Phase 2: after beam matrix)
+7. ✅ Remove obsolete view/index generation code from Process
+8. ✅ Test both acceleration modes (ON and OFF validated)
+
+**Key Achievements**:
+- Uniform expression approach: `view.deposit[view.index] += ...` works for both acceleration modes
+- Zero conditionals in physics code - NumPy handles fancy vs basic indexing transparently
+- When acceleration OFF: `index = np.s_[:]` (slice all) with full 3D beam_matrix
+- When acceleration ON: `index = (z_arr, y_arr, x_arr)` fancy index with 1D flattened beam_matrix
+- Two-phase update eliminates double-call inefficiency from previous design
 
 ### Phase 3: Extract PhysicsEngine
 1. Create PhysicsEngine class
@@ -1454,6 +1530,7 @@ Based on the corrections provided:
 9. **✅ Time step calculation in Process** (dt components calculated and managed by Process)
 10. **✅ Unified view dataclasses** - Single view class (not polymorphic types) with `acceleration_enabled` property
 11. **✅ Uniform expression with smart setup** - `index = np.s_[:]` (acceleration off) or fancy index tuple (acceleration on), `beam_matrix` shaped appropriately, PhysicsEngine uses single expression with zero conditionals
+12. **✅ Two-phase update system** - DataViewManager splits updates into Phase 1 (after cell filling - surface indices) and Phase 2 (after beam matrix update - deposition indices). Eliminates double-call inefficiency where both phases were unnecessarily regenerating all indices.
 
 **All architectural decisions have been resolved.**
 
