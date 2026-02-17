@@ -74,8 +74,6 @@ class TemperatureManager:
         This prevents shape mismatches when surface_all changes but temperature hasn't
         been recalculated yet.
         """
-        if not self.enabled:
-            return
 
         # Recalculate D and tau for NEW surface_all using CURRENT temperatures
         # This ensures arrays match new topology even before temperature recalculation
@@ -95,19 +93,9 @@ class TemperatureManager:
         heating : np.ndarray
             Volumetric heat source array from MC simulation
         """
-        if not self.enabled:
-            return
 
         # Check structure height threshold
         if self.state.max_z - self.state.substrate_height - 3 <= 2:
-            return
-
-        if not self._recalc_requested:
-            # No temperature recalc needed, but still update coefficients
-            # in case surface topology changed since last call
-            self._update_surface_temperatures()
-            self._update_diffusion_coefficients()
-            self._update_residence_times()
             return
 
         # Full recalculation requested
@@ -115,9 +103,7 @@ class TemperatureManager:
         self._solve_heat_equation(heating)
 
         # Update derived quantities with new temperatures
-        self._update_surface_temperatures()
-        self._update_diffusion_coefficients()
-        self._update_residence_times()
+        self.update_after_cell_filling()
 
         # Update tracking
         self._calc_count += 1
