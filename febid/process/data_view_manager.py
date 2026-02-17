@@ -3,6 +3,7 @@ from dataclasses import dataclass
 from typing import Union, Tuple
 from febid.slice_trics import index_where, get_index_in_parent, concat_index, cast_index_to_int
 from febid.process.simulation_state import SimulationState
+from febid.thermal.temperature_manager import TemperatureManager
 
 
 @dataclass
@@ -372,7 +373,7 @@ class DataViewManager:
                 acceleration_enabled=False
             )
 
-    def get_precursor_density_view(self) -> PrecursorDensityView:
+    def get_precursor_density_view(self, temp_manager: 'TemperatureManager' = None) -> PrecursorDensityView:
         """
         Returns a PrecursorDensityView for precursor density (RDE) calculations.
 
@@ -389,26 +390,59 @@ class DataViewManager:
             - beam_matrix is full 3D array
             - tau is full array (if temp tracking) or scalar
 
+        Parameters:
+            temp_manager: TemperatureManager for temperature-dependent coefficients.
+                         If None, tau and D will be None (backward compatibility).
+
         Returns:
             PrecursorDensityView with appropriate arrays for current mode.
         """
-        # Acceleration ON: optimized with tight slicing
+        # Get temperature-dependent coefficients from TemperatureManager
+        if temp_manager is not None:
+            # Get full arrays from temp_manager (raw data, no slicing)
+            tau_full = temp_manager.get_tau()  # Scalar or full array
+            D_full = temp_manager.get_D()      # Scalar or full array
+
+            # Slice to irradiated region if arrays
+            slice_2d = self._slice_irradiated_2d
+            if isinstance(tau_full, np.ndarray):
+                tau_2d = tau_full[slice_2d]
+            else:
+                tau_2d = tau_full  # Scalar
+
+            if isinstance(D_full, np.ndarray):
+                D_2d = D_full[slice_2d]
+            else:
+                D_2d = D_full  # Scalar
+
+            # Flatten for acceleration mode if needed
+            if self.acceleration_enabled and isinstance(tau_2d, np.ndarray):
+                # Flatten tau to 1D for surface cells
+                tau = tau_2d[self._surface_all[slice_2d]]
+            else:
+                tau = tau_2d
+
+            D = D_2d  # D stays 2D or scalar for RDE view
+        else:
+            # Backward compatibility: None if no temp_manager provided
+            tau = None
+            D = None
+
+        # Build view
         slice_2d = self._slice_irradiated_2d
         precursor_2d = self.structure.precursor[slice_2d]
-        surface_2d = self.structure.surface_bool[slice_2d]
-        semi_surface_2d = self.structure.semi_surface_bool[slice_2d]
         surface_all = self._surface_all[slice_2d]
 
         return PrecursorDensityView(
             precursor=precursor_2d,
             surface_all=surface_all,
             beam_matrix=self.beam_matrix_surface,  # 1D flattened array (surface cells only)
-            tau=None,
-            D=None,
-            acceleration_enabled=True
+            tau=tau,
+            D=D,
+            acceleration_enabled=self.acceleration_enabled
         )
 
-    def get_diffusion_view(self) -> DiffusionView:
+    def get_diffusion_view(self, temp_manager: 'TemperatureManager' = None) -> DiffusionView:
         """
         Returns a DiffusionView for diffusion (FTCS) calculations.
 
@@ -424,21 +458,35 @@ class DataViewManager:
             - Uses full 2D slice (substrate_height:max_z)
             - D is full array (if temp tracking) or scalar
 
+        Parameters:
+            temp_manager: TemperatureManager for temperature-dependent coefficients.
+                         If None, D will be None (backward compatibility).
+
         Returns:
             DiffusionView with appropriate arrays and surface indices.
         """
         slice_2d = self._slice_irradiated_2d
         precursor_2d = self.structure.precursor[slice_2d]
-        surface_2d = self.structure.surface_bool[slice_2d]
-        semi_surface_2d = self.structure.semi_surface_bool[slice_2d]
         surface_all = self._surface_all[slice_2d]
+
+        # Get temperature-dependent diffusion coefficient
+        if temp_manager is not None:
+            D_full = temp_manager.get_D()  # Scalar or full array
+
+            # Slice to irradiated region if array
+            if isinstance(D_full, np.ndarray):
+                D = D_full[slice_2d]
+            else:
+                D = D_full  # Scalar
+        else:
+            # Backward compatibility
+            D = None
 
         # ALWAYS use the actual fancy index tuple for surface cells (diffusion needs this)
         return DiffusionView(
-            precursor=precursor_2d,
             surface_all=surface_all,
             surface_all_index=self._index_surface_all_2d,  # Always fancy index tuple
-            D=None,
+            D=D,
             acceleration_enabled=self.acceleration_enabled
         )
 
