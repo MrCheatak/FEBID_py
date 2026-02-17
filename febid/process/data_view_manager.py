@@ -54,7 +54,6 @@ class DiffusionView:
         D: 2D view (restricted if acceleration on) or full array or scalar (acceleration off)
         acceleration_enabled: Flag indicating which mode is active
     """
-    precursor: np.ndarray
     surface_all: np.ndarray
     surface_all_index: Union[Tuple[np.ndarray, np.ndarray, np.ndarray], slice]
     D: Union[np.ndarray, float]

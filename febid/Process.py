@@ -17,7 +17,7 @@ from .slice_trics import get_3d_slice, get_index_in_parent, index_where, any_whe
 from .expressions import cache_numexpr_expressions
 from .kernel_modules import GPU
 from .process.simulation_state import SimulationState
-from .process.data_view_manager import DataViewManager
+from .process.data_view_manager import DataViewManager, DiffusionView, PrecursorDensityView, DepositionView, SurfaceUpdateView
 from febid.logging_config import setup_logger
 # Setup logger
 logger = setup_logger(__name__)
@@ -211,7 +211,7 @@ class Process:
         structure_extended = False
 
         # Get deposition view to find filled cells (deposit >= 1)
-        dep_view = self.view_manager.get_deposition_view()
+        dep_view: DepositionView = self.view_manager.get_deposition_view()
 
         # Find cells that are filled using the view's deposit array and index
         if dep_view.acceleration_enabled:
@@ -226,7 +226,7 @@ class Process:
         new_deposits = [(nd[0][i], nd[1][i], nd[2][i]) for i in range(nd[0].shape[0])]
 
         # Get surface update view for cell configuration updates
-        surf_view = self.view_manager.get_surface_update_view()
+        surf_view: SurfaceUpdateView = self.view_manager.get_surface_update_view()
         cells_abs = [get_index_in_parent(cell, surf_view.irradiated_area_3d) for cell in new_deposits]
         self.last_full_cells = cells_abs
         self.full_cells = (self.full_cells or []) + self.last_full_cells
@@ -377,7 +377,7 @@ class Process:
         :return:
         """
         # Stage 2: Use DataViewManager for uniform expression approach
-        view = self.view_manager.get_deposition_view()
+        view: DepositionView = self.view_manager.get_deposition_view()
 
         # Calculate constant (multiplying by 1e6 to preserve accuracy, np.float32 — ~1E-7, produced value — ~1E-10)
         const = (self.state.precursor.sigma * self.state.precursor.V * self.dt * 1e6 *
@@ -395,7 +395,7 @@ class Process:
         :return:
         """
         # Stage 2: Use DataViewManager for precursor density view
-        view = self.view_manager.get_precursor_density_view()
+        view: PrecursorDensityView = self.view_manager.get_precursor_density_view()
 
         # Here, surface_all represents surface+semi_surface cells.
         # Boolean indexing: precursor[surface_all] extracts values at surface cells (1D flat array)
@@ -691,7 +691,7 @@ class Process:
             dt = self.dt
 
         # Stage 2: Use DataViewManager for surface_all_index (always needed for diffusion)
-        view = self.view_manager.get_diffusion_view()
+        view: DiffusionView = self.view_manager.get_diffusion_view()
         D = self._get_D()
 
         return diffusion.diffusion_ftcs(grid, surface, D, dt, self.state.cell_size, view.surface_all_index, flat=flat,
