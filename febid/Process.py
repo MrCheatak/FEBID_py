@@ -8,16 +8,16 @@ import numexpr_mod as ne
 
 # Local packages
 from febid.Structure import Structure
-from febid.continuum_model_base import BeamSettings, PrecursorParams, ContinuumModel
+from febid.continuum_model_base import ContinuumModel
 import febid.diffusion as diffusion
-import febid.heat_transfer as heat_transfer
-from febid.libraries.rolling.roll import surface_temp_av, beam_matrix_semi_surface_av
+from febid.libraries.rolling.roll import beam_matrix_semi_surface_av
 from febid.mlcca import MultiLayerdCellCellularAutomata as MLCCA
-from .slice_trics import get_3d_slice, get_index_in_parent, index_where, any_where, concat_index
+from .slice_trics import get_3d_slice, get_index_in_parent, index_where, any_where
 from .expressions import cache_numexpr_expressions
 from .kernel_modules import GPU
 from .process.simulation_state import SimulationState
 from .process.data_view_manager import DataViewManager, DiffusionView, PrecursorDensityView, DepositionView, SurfaceUpdateView
+from febid.thermal.temperature_manager import TemperatureManager
 from febid.logging_config import setup_logger
 # Setup logger
 logger = setup_logger(__name__)
@@ -124,13 +124,16 @@ class Process:
         # Initialize DataViewManager (Stage 2 refactoring)
         self.view_manager = DataViewManager(self.state, acceleration_enabled=acceleration_enabled)
 
-        self._get_solid_index()
+        # Initialize TemperatureManager (Stage 5 refactoring)
+        self.temp_manager = TemperatureManager(self.state, self.view_manager)
+
         self._temp_step_cells = self._temp_step / self.state.cell_V
         self.state.structure.precursor[self.state.structure.surface_bool] = self.state.model.nr
+
+        # Initialize temperature if tracking enabled
         if self.state.temperature_tracking:
-            self.__get_surface_temp()
-            self._residence_time_profile()
-            self._diffusion_coefficient_profile()
+            self.temp_manager.update_temperature_field(heating=0)
+
         self.__expressions()
 
     # Initialization methods
@@ -164,7 +167,7 @@ class Process:
             if not all([self.state.precursor.k0, self.state.precursor.Ea, self.state.precursor.D0, self.state.precursor.Ed]):
                 warnings.warn('Some of the temperature dependent parameters were not found! \n '
                               'Switch to static temperature mode? y/n')
-                self.temperature_tracking = False
+                self.state.temperature_tracking = False
 
     def print_dt(self, units='µs'):
         m = 1E6
@@ -233,19 +236,14 @@ class Process:
         self.filled_cells += len(new_deposits)
         for cell in new_deposits:
             self._update_cell_config(cell, surf_view)
-            # Updating temperature in the new cell
-            self.update_cell_temperature(cell, surf_view)
+            # Updating temperature in the new cell (Stage 5: use TemperatureManager)
+            self.temp_manager.initialize_cell_temperature(cell, surf_view)
             # Updating nearest neighbors profile
             self.update_nearest_neighbors(cell, surf_view)
         # Post cell update routines
         cell_abs_arr = np.array(cells_abs)
         if np.any(cell_abs_arr[:, 0] + 4 > self.state.max_z):
             self.state.max_z += 1
-
-        if self.state.temperature_tracking and self.state.max_z - self.state.substrate_height - 3 > 2:
-            self.request_temp_recalc = self.filled_cells > self._temp_calc_count * self._temp_step_cells
-            if self.request_temp_recalc:
-                self._get_solid_index()
 
         if self.state.max_z + 5 > self.structure.shape[0]:
             # Here the Structure is extended in height
@@ -255,6 +253,16 @@ class Process:
         self.view_manager.update_after_cell_filling(structure_extended)
         self.n_surface_cells = self.view_manager.n_surface_cells
         self.n_semi_surface_cells = self.view_manager.n_semi_surface_cells
+
+        if self.state.temperature_tracking:
+            # Stage 5: Check if temperature recalculation needed (sets flag)
+            self.temp_manager.check_and_request_recalculation(self.filled_cells)
+            # Update local tracking for backward compatibility
+            self.request_temp_recalc = self.temp_manager.requires_recalculation
+            # Stage 5: Phase 1 temperature update - coefficients for NEW topology with CURRENT temps
+            if not self.request_temp_recalc:  # skipping coeffs update if temperature recalculation is pending
+                self.temp_manager.update_after_cell_filling()
+
         return structure_extended
 
     def _update_cell_config(self, cell, surf_view):
@@ -339,19 +347,6 @@ class Process:
         # Basically, none of the slices have to be updated, because they use indexes, not references.
         return True
 
-    def update_cell_temperature(self, cell, data_view):
-        """
-        Update temperature of the cell by assigning it an average of the surrounding cells.
-
-        :param cell: cell indices
-        :return:
-        """
-        temp_slice, _ = get_3d_slice(cell, data_view.temp.shape, 2)
-        temp_kern = data_view.temp[temp_slice]
-        condition = (temp_kern > self.state.room_temp)
-        if np.any(condition):
-            data_view.temp[cell] = temp_kern[condition].sum() / np.count_nonzero(condition)
-
     def update_nearest_neighbors(self, cell, data_view):
         """
         Update surface nearest neighbors surrounding the cell.
@@ -395,7 +390,8 @@ class Process:
         :return:
         """
         # Stage 2: Use DataViewManager for precursor density view
-        view: PrecursorDensityView = self.view_manager.get_precursor_density_view()
+        # Stage 5: Pass TemperatureManager to populate tau and D coefficients
+        view: PrecursorDensityView = self.view_manager.get_precursor_density_view(self.temp_manager)
 
         # Here, surface_all represents surface+semi_surface cells.
         # Boolean indexing: precursor[surface_all] extracts values at surface cells (1D flat array)
@@ -411,7 +407,8 @@ class Process:
         :param max_it: number of iterations
         :param eps: desired accuracy
         """
-        view = self.view_manager.get_precursor_density_view()
+        # Stage 5: Pass TemperatureManager to view
+        view = self.view_manager.get_precursor_density_view(self.temp_manager)
         start = df()
         for i in range(max_it):
             p_prev = view.precursor.copy()
@@ -440,11 +437,11 @@ class Process:
         precursor density, deposition and check cells filled are calculated on compute device at once
         """
         dt = self.dt
-        D = self.state.precursor.D
+        D = self.temp_manager.get_D()
         cell_size = self.state.cell_size
         F = self.state.precursor.F
         n0 = self.state.precursor.n0
-        tau = self._get_tau()
+        tau = self.temp_manager.get_tau()
         sigma = self.state.precursor.sigma
         out = self.knl.precur_den_gpu(0, dt * D / (cell_size ** 2), F * dt, (F * dt * tau + n0 * dt) / (tau * n0),
                                       sigma * dt, blocking)
@@ -635,7 +632,7 @@ class Process:
         surface_all = view.surface_all
         precursor = view.precursor
         prec_flat = precursor[surface_all]
-        if self._get_D() == 0:
+        if view.D == 0:
             return self.__rk4(prec_flat, beam_matrix)
         diff_flat = self._diffusion(precursor, surface_all, flat=True) # 3D
         k1 = self.__precursor_density_increment(prec_flat, beam_matrix, self.dt, diff_flat)
@@ -659,7 +656,8 @@ class Process:
         :param addon: Runge Kutta term
         :return:
         """
-        tau = self._get_tau()
+        view: PrecursorDensityView = self.view_manager.get_precursor_density_view(self.temp_manager)
+        tau = view.tau
         n_d = diffusion_matrix
         try:
             return ne.re_evaluate('rde_temp',
@@ -691,8 +689,9 @@ class Process:
             dt = self.dt
 
         # Stage 2: Use DataViewManager for surface_all_index (always needed for diffusion)
-        view: DiffusionView = self.view_manager.get_diffusion_view()
-        D = self._get_D()
+        # Stage 5: Use TemperatureManager for D coefficient
+        view: DiffusionView = self.view_manager.get_diffusion_view(self.temp_manager)
+        D = view.D  # Get D from view (already sliced and shaped appropriately)
 
         return diffusion.diffusion_ftcs(grid, surface, D, dt, self.state.cell_size, view.surface_all_index, flat=flat,
                                         add=add)
@@ -701,50 +700,16 @@ class Process:
         """
         Define heating effect on the process
 
+        Delegates to TemperatureManager for all temperature calculations.
+
         :param heating: volumetric heat sources distribution
         :return:
         """
-        # Calculating temperature profile
-        if self.state.max_z - self.state.substrate_height - 3 > 2:
-            if self.request_temp_recalc:
-                self._temp_calc_count += 1
-                slice_2d = self.view_manager._slice_irradiated_2d_no_sub  # using only top layer of the substrate
-                if type(heating) is np.ndarray:
-                    heat = heating[slice_2d]
-                else:
-                    heat = heating
-                # Running solution of the heat equation
-                start = df()
-                print(f'Current max. temperature: {self.max_T} K')
-                print(f'Total heating power: {heat.sum() / 1e6:.3f} W/nm/K/1e6')
-                heat_transfer.heat_transfer_steady_sor(self.structure.temperature[slice_2d], self.state.heat_cond,
-                                                       self.state.cell_size, heat, self.solution_accuracy)
-                print(f'New max. temperature {self.structure.temperature.max():.3f} K')
-                print(f'Temperature recalculation took {df() - start:.4f} s')
-        self.structure.temperature[self.state.substrate_height] = self.state.room_temp
-        self.__get_surface_temp()  # estimating surface temperature
-        self._diffusion_coefficient_profile()  # calculating surface diffusion coefficients
-        self._residence_time_profile()  # calculating residence times
+        # Stage 5: Delegate to TemperatureManager
+        self.temp_manager.update_temperature_field(heating)
 
-    def _diffusion_coefficient_profile(self):
-        """
-        Calculate surface diffusion coefficient for every surface cell.
-
-        :return:
-        """
-        self._D_temp[self.view_manager._surface_all] = self.state.precursor.diffusion_coefficient_at_T(self.state.surface_temp[self.view_manager._surface_all])
-
-    def _residence_time_profile(self):
-        """
-        Calculate residence time for every surface cell.
-
-        :return:
-        """
-        view = self.view_manager.get_precursor_density_view()
-        temp_2d = self.state.surface_temp[self.view_manager._slice_irradiated_2d]
-        surface_2d = view.surface_all
-        self.__tau_flat = self.state.precursor.residence_time_at_T(temp_2d[surface_2d])
-        self.__tau_temp_reduced_2d[surface_2d] = self.__tau_flat
+        # Update local tracking (backward compatibility)
+        self.max_T = self.temp_manager.max_temperature
 
     def set_beam_matrix(self, beam_matrix):
         """
@@ -764,22 +729,6 @@ class Process:
         beam_matrix_2d = self.state.beam_matrix[self.view_manager._slice_irradiated_2d]
         index = self.view_manager._index_semi_surface_2d
         beam_matrix_semi_surface_av(beam_matrix_2d, beam_matrix_2d, *index)
-
-    def _get_solid_index(self):
-        index = self.structure.deposit[self.view_manager._slice_irradiated_2d_no_sub]
-        index = (index < 0).nonzero()
-        self._solid_index = (np.intc(index[0]), np.intc(index[1]), np.intc(index[2]))
-        return self._solid_index
-
-    def __get_surface_temp(self):
-        surface_index = self.view_manager._index_surface_2d
-        semi_surface_index = self.view_manager._index_semi_surface_2d
-        surface_temp = self.state.surface_temp[self.view_manager._slice_irradiated_2d]
-        temp = self.structure.temperature[self.view_manager._slice_irradiated_2d]
-        surface_temp[...] = 0
-        surface_temp_av(surface_temp, temp, *surface_index)
-        surface_temp_av(surface_temp, surface_temp, *semi_surface_index)
-        self.max_T = self.max_temperature
 
     # Miscellaneous
     def __expressions(self):
@@ -826,36 +775,12 @@ class Process:
         surface = self.structure.surface_bool[s]
         return precursor[surface].min()
 
-    def _get_tau(self):
-        """
-        Returns single value of the residence time if temperature tracking is off
-        or returns an array of values otherwise
-        """
-        if self.state.temperature_tracking:
-            tau = self.__tau_flat  # Cached flattened array for surface
-        else:
-            tau = self.state.precursor.tau
-        return tau
-
-    def _get_D(self):
-        """
-        Returns single value of the diffusion coefficient if temperature tracking is off
-        or returns an array of values otherwise
-        """
-        if self.state.temperature_tracking:
-            s = self.view_manager._slice_irradiated_2d
-            D_temp = self.state.D_temp
-            D = D_temp[s]  # View on temperature-dependent D
-        else:
-            D = self.state.precursor.D
-        return D
-
     @property
     def dt_diff(self):
         """
         Returns a time step for diffusion process, s
         """
-        D = self._get_D()
+        D = self.temp_manager.get_D()
         if type(D) is np.ndarray:
             D = D.max()
         if D > 0:
@@ -868,7 +793,7 @@ class Process:
         """
         Returns a time step for desorption process, s
         """
-        tau = self._get_tau()
+        tau = self.temp_manager.get_tau()
         if type(tau) is np.ndarray:
             tau = tau.max()
         return tau
