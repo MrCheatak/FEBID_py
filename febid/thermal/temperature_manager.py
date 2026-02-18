@@ -21,6 +21,7 @@ from febid.process.simulation_state import SimulationState
 from febid.process.data_view_manager import DataViewManager
 import febid.thermal.heat_transfer as heat_transfer
 from febid.libraries.rolling.roll import surface_temp_av
+from febid.slice_trics import get_3d_slice
 from febid.logging_config import setup_logger
 
 logger = setup_logger(__name__)
@@ -33,7 +34,7 @@ class TemperatureManager:
     IMPORTANT: Acceleration-agnostic - provides raw data only, no shape selection.
     """
 
-    def __init__(self, state: SimulationState, view_manager: DataViewManager):
+    def __init__(self, state: SimulationState, view_manager: DataViewManager, step_volume=10000.0) -> None:
         """
         Initialize TemperatureManager.
 
@@ -43,6 +44,8 @@ class TemperatureManager:
             Simulation state containing structure and arrays
         view_manager : DataViewManager
             View manager for spatial slices and indices
+        step_volume : float, optional
+            Temperature recalculation interval based on deposited volume
         """
         self.state = state
         self.view_manager = view_manager
@@ -50,7 +53,7 @@ class TemperatureManager:
         # Configuration
         self.enabled = state.temperature_tracking
         self._temp_step = 10000.0  # nm³ volume threshold
-        self._temp_step_cells = self._temp_step / state.cell_V
+        self._temp_step_cells = self._temp_step / state.cell_V  # temperature recalculation interval normalized by volume
         self._solution_accuracy = 0.01  # Heat solver accuracy
 
         # Tracking
@@ -93,22 +96,18 @@ class TemperatureManager:
         heating : np.ndarray
             Volumetric heat source array from MC simulation
         """
-
-        # Check structure height threshold
-        if self.state.max_z - self.state.substrate_height - 3 <= 2:
-            return
+        self._update_solid_index()  # Pre-cache indices for solver
 
         # Full recalculation requested
-        logger.info(f'Current max. temperature: {self._max_temperature} K')
         self._solve_heat_equation(heating)
 
         # Update derived quantities with new temperatures
         self.update_after_cell_filling()
 
+        logger.info(f'Current max. temperature: {self._max_temperature} K')
         # Update tracking
         self._calc_count += 1
         self._recalc_requested = False
-        logger.info(f'New max. temperature {self.max_temperature:.3f} K')
 
     def check_and_request_recalculation(self, filled_cells: int) -> None:
         """
@@ -121,14 +120,13 @@ class TemperatureManager:
         filled_cells : int
             Total number of filled cells so far
         """
-        if not self.enabled:
-            return
-
         # Trigger recalc if more cells filled than threshold
-        self._recalc_requested = (filled_cells > self._calc_count * self._temp_step_cells)
+        # Structure should be at least 5 cells high to avoid early recalcs during initial growth phase
+        structure_min_volume_condition = self.state.max_z - self.state.substrate_height - 3 > 2
+        # Use normalized cell count to trigger recalculation at consistent volume intervals
+        step_volume_condition = filled_cells > self._calc_count * self._temp_step_cells
+        self._recalc_requested = structure_min_volume_condition and step_volume_condition
 
-        if self._recalc_requested:
-            self._update_solid_index()  # Pre-cache indices for solver
 
     def initialize_cell_temperature(self, cell: tuple, temp_array: np.ndarray) -> None:
         """
