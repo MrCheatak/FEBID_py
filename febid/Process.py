@@ -633,7 +633,7 @@ class Process:
         surface_all = view.surface_all
         precursor = view.precursor
         prec_flat = precursor[surface_all]
-        if view.D == 0:
+        if np.any(view.D) == 0:
             return self.__rk4(prec_flat, beam_matrix)
         diff_flat = self._diffusion(precursor, surface_all, flat=True) # 3D
         k1 = self.__precursor_density_increment(prec_flat, beam_matrix, self.dt, diff_flat)
