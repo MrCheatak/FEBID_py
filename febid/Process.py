@@ -4,7 +4,6 @@
 import warnings
 from threading import Lock
 import numpy as np
-import numexpr_mod as ne
 
 # Local packages
 from febid.Structure import Structure
@@ -12,18 +11,16 @@ from febid.continuum_model_base import ContinuumModel
 import febid.diffusion as diffusion
 from febid.libraries.rolling.roll import beam_matrix_semi_surface_av
 from febid.mlcca import MultiLayerdCellCellularAutomata as MLCCA
-from .slice_trics import get_3d_slice, get_index_in_parent, index_where, any_where
+from .slice_trics import get_3d_slice, get_index_in_parent, index_where
 from .expressions import cache_numexpr_expressions
 from .kernel_modules import GPU
 from .process.simulation_state import SimulationState
-from .process.data_view_manager import DataViewManager, DiffusionView, PrecursorDensityView, DepositionView, SurfaceUpdateView
+from .process.data_view_manager import DataViewManager, DepositionView, SurfaceUpdateView
+from .process.physics_engine import PhysicsEngine
 from febid.thermal.temperature_manager import TemperatureManager
 from febid.logging_config import setup_logger
 # Setup logger
 logger = setup_logger(__name__)
-
-from timeit import default_timer as df
-
 
 # TODO: look into k-d trees
 
@@ -127,14 +124,15 @@ class Process:
         # Initialize TemperatureManager (Stage 5 refactoring)
         self.temp_manager = TemperatureManager(self.state, self.view_manager)
 
+        # Initialize PhysicsEngine (Stage 3 refactoring)
+        self.physics_engine = PhysicsEngine(self.state, self.view_manager, self.temp_manager)
+
         self._temp_step_cells = self._temp_step / self.state.cell_V
         self.state.structure.precursor[self.state.structure.surface_bool] = self.state.model.nr
 
         # Initialize temperature if tracking enabled
         if self.state.temperature_tracking:
             self.temp_manager.update_full()
-
-        self.__expressions()
 
     # Initialization methods
     def __set_structure(self, structure: Structure):
@@ -194,11 +192,8 @@ class Process:
 
         :return: bool
         """
-        # Searching in reverse is faster because growth is typically from the bottom to the top
-        view = self.view_manager.get_deposition_view()
-        surface_cells = view.deposit[view.index]
-        cells_filled = any_where(surface_cells, '>=', 1, reverse=True)
-        return cells_filled
+        # Stage 3: Delegate to PhysicsEngine
+        return self.physics_engine.check_cells_filled()
 
     def cell_filled_routine(self):
         """
@@ -378,17 +373,8 @@ class Process:
 
         :return:
         """
-        # Stage 2: Use DataViewManager for uniform expression approach
-        view: DepositionView = self.view_manager.get_deposition_view()
-
-        # Calculate constant (multiplying by 1e6 to preserve accuracy, np.float32 — ~1E-7, produced value — ~1E-10)
-        const = (self.state.precursor.sigma * self.state.precursor.V * self.dt * 1e6 *
-                 self.state.deposition_scaling / self.state.cell_V * self.state.cell_size ** 2)
-
-        # UNIFORM EXPRESSION: Works for both acceleration ON and OFF
-        # When acceleration ON: view.index is fancy tuple (z,y,x), beam_matrix is 1D
-        # When acceleration OFF: view.index is np.s_[:], beam_matrix is 3D
-        view.deposit[view.index] += view.precursor[view.index] * view.beam_matrix * const / 1e6
+        # Stage 3: Delegate to PhysicsEngine (CPU only, no conditionals)
+        self.physics_engine.compute_deposition(self.dt)
 
     def precursor_density(self):
         """
@@ -396,39 +382,10 @@ class Process:
 
         :return:
         """
-        # Stage 2: Use DataViewManager for precursor density view
-        # Stage 5: Pass TemperatureManager to populate tau and D coefficients
-        view: PrecursorDensityView = self.view_manager.get_precursor_density_view(self.temp_manager)
+        # Stage 3: Delegate to PhysicsEngine (CPU only, no conditionals)
+        self.physics_engine.compute_precursor_density(self.dt)
 
-        # Here, surface_all represents surface+semi_surface cells.
-        # Boolean indexing: precursor[surface_all] extracts values at surface cells (1D flat array)
-        view.precursor[view.surface_all] += self.__rk4_with_ftcs(view)
 
-    def equilibrate(self, max_it=10000, eps=1e-8):
-        """
-        Bring precursor coverage to a steady state with a given accuracy
-
-        It is advised to run this method after updating the surface in order to determine a more accurate precursor
-        density value for newly acquired cells
-
-        :param max_it: number of iterations
-        :param eps: desired accuracy
-        """
-        # Stage 5: Pass TemperatureManager to view
-        view = self.view_manager.get_precursor_density_view(self.temp_manager)
-        start = df()
-        for i in range(max_it):
-            p_prev = view.precursor.copy()
-            self.precursor_density()
-            norm = np.linalg.norm(view.precursor - p_prev)/ np.linalg.norm(view.precursor)
-            if norm < eps:
-                print(f'Took {i+1} iteration(s) to equilibrate, took {df() - start}')
-                return 1
-        else:
-            acc = str(norm)[:int(3-np.log10(eps))]
-            warnings.warn(f'Failed to reach {eps} accuracy in {max_it} iterations in Process.equilibrate. Achieved accuracy: {acc} \n'
-                          f'Terminating loop.', RuntimeWarning)
-            print(f'Took {i + 1} iteration(s) to equilibrate, took {df() - start}')
 
     # GPU methods
     def load_kernel(self):
@@ -618,90 +575,7 @@ class Process:
             [self.offload_from_gpu_partial(data) for data in necessary_data]
 
     ###
-
-    def __rk4(self, precursor, beam_matrix):
-        """
-        Calculates increment of precursor density by Runge-Kutta method
-
-        :param precursor: flat precursor array
-        :param beam_matrix: flat surface electron flux array
-        :return:
-        """
-        k1 = self.__precursor_density_increment(precursor, beam_matrix,
-                                                self.dt)  # this is actually an array of k1 coefficients
-        k2 = self.__precursor_density_increment(precursor, beam_matrix, self.dt / 2, k1 / 2)
-        k3 = self.__precursor_density_increment(precursor, beam_matrix, self.dt / 2, k2 / 2)
-        k4 = self.__precursor_density_increment(precursor, beam_matrix, self.dt, k3)
-        return ne.re_evaluate("rk4", casting='same_kind', local_dict={'k1': k1, 'k2': k2, 'k3': k3, 'k4': k4})
-
-    def __rk4_with_ftcs(self, view):
-        beam_matrix = view.beam_matrix
-        surface_all = view.surface_all
-        precursor = view.precursor
-        prec_flat = precursor[surface_all]
-        if np.any(view.D) == 0:
-            return self.__rk4(prec_flat, beam_matrix)
-        diff_flat = self._diffusion(precursor, surface_all, flat=True) # 3D
-        k1 = self.__precursor_density_increment(prec_flat, beam_matrix, self.dt, diff_flat)
-        k1_div = k1 / 2
-        diff_flat = self._diffusion(precursor, surface_all, add=k1_div, flat=True)
-        k2 = self.__precursor_density_increment(prec_flat, beam_matrix, self.dt / 2, diff_flat, k1_div)
-        k2_div = k2 / 2
-        diff_flat = self._diffusion(precursor, surface_all, add=k2_div, flat=True)
-        k3 = self.__precursor_density_increment(prec_flat, beam_matrix, self.dt / 2, diff_flat, k2_div)
-        diff_flat = self._diffusion(precursor, surface_all, add=k3, flat=True)
-        k4 = self.__precursor_density_increment(prec_flat, beam_matrix, self.dt, diff_flat, k3)
-        return ne.re_evaluate("rk4", casting='same_kind', local_dict={'k1': k1, 'k2': k2, 'k3': k3, 'k4': k4})
-
-    def __precursor_density_increment(self, precursor, beam_matrix, dt, diffusion_matrix=0, addon=0.0):
-        """
-        Calculates increment of the precursor density without a diffusion term
-
-        :param precursor: flat precursor array
-        :param beam_matrix: flat surface electron flux array
-        :param dt: time step
-        :param addon: Runge Kutta term
-        :return:
-        """
-        view: PrecursorDensityView = self.view_manager.get_precursor_density_view(self.temp_manager)
-        tau = view.tau
-        n_d = diffusion_matrix
-        try:
-            return ne.re_evaluate('rde_temp',
-                              local_dict={'F': self.state.precursor.F, 'dt': dt, 'n0': self.state.precursor.n0,
-                                          'sigma': self.state.precursor.sigma, 'n': precursor + addon, 'tau': tau,
-                                          'se_flux': beam_matrix, 'n_d' : n_d}, casting='same_kind')
-        except ValueError as e:
-            logger.error(f"Failed numexpr.re_evaluate() in Process.__precursor_density_increment due to array size mismatch. \n"
-                         f"Filled cells count: {self.filled_cells} \n"
-                         f"Surface cells: {self.n_surface_cells} \n"
-                         f"Semi-surface cells: {self.n_semi_surface_cells} \n"
-                         f"Beam flux points: {self.n_beam_matrix_points} \n"
-                         f"Precursor array size: {precursor.size} \n"
-                         f"Beam matrix size: {beam_matrix.size} \n"
-                         f"Diffusion matrix size: {n_d.size} \n"
-                         )
-            raise e
-
-    def _diffusion(self, grid, surface, dt=0.0, add=0, flat=False):
-        """
-        Calculates diffusion term of the reaction-diffusion equation for all surface cells.
-
-        :param grid: precursor coverage array
-        :param surface: boolean surface array
-        :param add: Runge-Kutta intermediate member
-        :return: flat ndarray
-        """
-        if not dt:
-            dt = self.dt
-
-        # Stage 2: Use DataViewManager for surface_all_index (always needed for diffusion)
-        # Stage 5: Use TemperatureManager for D coefficient
-        view: DiffusionView = self.view_manager.get_diffusion_view(self.temp_manager)
-        D = view.D  # Get D from view (already sliced and shaped appropriately)
-
-        return diffusion.diffusion_ftcs(grid, surface, D, dt, self.state.cell_size, view.surface_all_index, flat=flat,
-                                        add=add)
+    # Physics methods have been moved to PhysicsEngine (Stage 3)
 
     def heat_transfer(self, heating):
         """
@@ -736,16 +610,6 @@ class Process:
         beam_matrix_2d = self.state.beam_matrix[self.view_manager._slice_irradiated_2d]
         index = self.view_manager._index_semi_surface_2d
         beam_matrix_semi_surface_av(beam_matrix_2d, beam_matrix_2d, *index)
-
-    # Miscellaneous
-    def __expressions(self):
-        """
-        Prepare math expressions for faster calculations. Expression are stored in the package.
-        This method should be called only once.
-
-        :return:
-        """
-        cache_numexpr_expressions()
 
     # Properties
     @property
