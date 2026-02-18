@@ -89,7 +89,7 @@ class Process:
         self._t_prev = 0
         self._vol_prev = 0
         self.growth_rate = 0
-        self.request_temp_recalc = temp_tracking
+        self.request_temp_recalc = False
         self._temp_step = 10000  # amount of volume to be deposited before next temperature calculation
         self._temp_step_cells = 0  # number of cells to be filled before next temperature calculation
         self._temp_calc_count = 0  # counting number of times temperature has been calculated

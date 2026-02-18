@@ -56,7 +56,7 @@ class HeatSolverExecutor:
         self.mc_sim = mc_sim
 
     def step(self):
-        if self.process.state.temperature_tracking and self.process.request_temp_recalc:
+        if self.process.request_temp_recalc:
             # Stage 5: Delegate to TemperatureManager via Process.heat_transfer()
             # which internally calls temp_manager.update_temperature_field()
             self.process.heat_transfer(self.mc_sim.beam_heating)
@@ -189,7 +189,8 @@ class SimulationPipeline:
             pr.deposition()  # depositing on a selected area
             if pr.check_cells_filled():
                 self._handle_cell_filled(y, x)
-            self.heat_solver.step()
+                if pr.state.temperature_tracking:
+                    self.heat_solver.step()
             pr.precursor_density()  # recalculate precursor coverage
             stepper.update_timer()  # update timer, progress bar and trigger timed events
         stepper.reset_dt_loop()  # reset the loop parameters for the next iteration
@@ -201,7 +202,6 @@ class SimulationPipeline:
         if flag_resize:  # update references if the allocated simulation volume was increased
             sim.update_structure(pr.structure)
         self.mc_executor.step(y, x)  # run MC sim. and retrieve SE surface flux and update beam matrix
-        self.heat_solver.step()  # recalculate temperature profile
 
     def stop(self):
         self.logger.info("Stop requested.")
