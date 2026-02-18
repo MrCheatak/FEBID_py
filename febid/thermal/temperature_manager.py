@@ -216,11 +216,12 @@ class TemperatureManager:
         """
         from timeit import default_timer as df
 
-        slice_2d = self.view_manager._slice_irradiated_2d_no_sub
+        view = self.view_manager.get_temperature_recalc_view()
+        slice_no_sub = view.slice_no_sub
 
         # Extract heating for irradiated region
         if isinstance(heating, np.ndarray):
-            heat = heating[slice_2d]
+            heat = heating[slice_no_sub]
         else:
             heat = heating
 
@@ -230,16 +231,13 @@ class TemperatureManager:
         # Solve heat equation (modifies temperature in-place)
         start = df()
         heat_transfer.heat_transfer_steady_sor(
-            self.state.structure.temperature[slice_2d],
+            view.temp,
             self.state.heat_cond,
             self.state.cell_size,
             heat,
             self._solution_accuracy
         )
         logger.info(f'Temperature recalculation took {df() - start:.4f} s')
-
-        # Reset substrate boundary condition
-        self.state.structure.temperature[self.state.substrate_height] = self.state.room_temp
 
     def _update_surface_temperatures(self) -> None:
         """Calculate surface temperatures by averaging neighboring solid cells."""
@@ -307,7 +305,7 @@ class TemperatureManager:
 
     def _update_solid_index(self) -> None:
         """Generate and cache indices of solid cells for heat solver."""
-        slice_2d = self.view_manager._slice_irradiated_2d_no_sub
-        deposit = self.state.structure.deposit[slice_2d]
+        view = self.view_manager.get_temperature_recalc_view()
+        deposit = view.deposit
         index = (deposit < 0).nonzero()
         self._solid_index = (np.intc(index[0]), np.intc(index[1]), np.intc(index[2]))
