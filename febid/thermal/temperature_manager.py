@@ -68,7 +68,7 @@ class TemperatureManager:
 
     # ===== Main Update Methods (Two-Phase System) =====
 
-    def update_after_cell_filling(self) -> None:
+    def update_full(self) -> None:
         """
         Phase 1: Update coefficient arrays for NEW topology with CURRENT temperatures.
 
@@ -83,6 +83,20 @@ class TemperatureManager:
         self._update_surface_temperatures()
         self._update_diffusion_coefficients()
         self._update_residence_times()
+
+    def update_local(self, cell) -> None:
+        """
+        Update surface temperatures and parameter values for NEW topology with CURRENT temperatures.
+
+        Called after cell_filled_routine() when surface topology changes.
+        Updates surface temperatures to reflect new surface cells before full recalculation.
+        This allows temperature-dependent coefficients to be more accurate in the next MC step,
+        even if full temperature solve hasn't run yet.
+        """
+        self.initialize_surface_cell_temperature(cell)
+        self.initialize_D_local(cell)
+        self.initialize_tau_local(cell)
+
 
     def update_temperature_field(self, heating: np.ndarray) -> None:
         """
@@ -102,7 +116,7 @@ class TemperatureManager:
         self._solve_heat_equation(heating)
 
         # Update derived quantities with new temperatures
-        self.update_after_cell_filling()
+        self.update_full()
 
         logger.info(f'Current max. temperature: {self._max_temperature} K')
         # Update tracking
@@ -128,7 +142,7 @@ class TemperatureManager:
         self._recalc_requested = structure_min_volume_condition and step_volume_condition
 
 
-    def initialize_cell_temperature(self, cell: tuple, temp_array: np.ndarray) -> None:
+    def initialize_cell_temperature(self, cell: tuple) -> None:
         """
         Initialize temperature of newly filled cell by averaging surroundings.
 
@@ -136,20 +150,88 @@ class TemperatureManager:
         ----------
         cell : tuple
             (z, y, x) cell coordinates
-        temp_array : np.ndarray
+        view : np.ndarray
             Temperature array view (from SurfaceUpdateView)
         """
-        if not self.enabled:
-            return
-
-        from febid.slice_trics import get_3d_slice
-
+        temp_array = self.state.structure.temperature
         temp_slice, _ = get_3d_slice(cell, temp_array.shape, 2)
         temp_kern = temp_array[temp_slice]
         condition = (temp_kern > self.state.room_temp)
 
         if np.any(condition):
             temp_array[cell] = temp_kern[condition].sum() / np.count_nonzero(condition)
+
+    def initialize_surface_cell_temperature(self, cell: tuple) -> None:
+        """
+        Initialize temperature of newly filled cell by averaging surroundings.
+
+        Parameters
+        ----------
+        cell : tuple
+            (z, y, x) cell coordinates
+        view : np.ndarray
+            Temperature array view (from SurfaceUpdateView)
+        """
+        temp_array = self.state.surface_temp
+        temp_array[cell] = 0
+        temp_slice, _ = get_3d_slice(cell, temp_array.shape, 2)
+        temp_kern = temp_array[temp_slice]
+        surf_all_kern = self.state.surface_all[temp_slice]
+        # Considering only neighboring surface cells with temperature above room temperature for initialization
+        condition = surf_all_kern & (temp_kern > self.state.room_temp)
+
+        if np.any(condition):
+            temp_kern[surf_all_kern] = temp_kern[condition].sum() / np.count_nonzero(condition)
+        else:
+            temp_kern[surf_all_kern] = self.state.room_temp  # Fallback to room temperature if no valid neighbors
+
+    def initialize_D_local(self, cell: tuple) -> None:
+        """
+        Initialize temperature of newly filled cell by averaging surroundings.
+
+        Parameters
+        ----------
+        cell : tuple
+            (z, y, x) absolute cell coordinates
+        view : np.ndarray
+            Temperature array view (from SurfaceUpdateView)
+        """
+        temp_array = self.state.surface_temp
+        D_array = self.state.D_temp
+        D_array[cell] = 0
+        temp_slice, _ = get_3d_slice(cell, temp_array.shape, 2)
+        temp_kern = temp_array[temp_slice]
+        D_kern = D_array[temp_slice]
+        surf_all_kern = self.state.surface_all[temp_slice]
+        # Considering only neighboring surface cells with temperature above room temperature for initialization
+        condition = surf_all_kern
+
+        if np.any(condition):
+            D_kern[surf_all_kern] = self.state.precursor.diffusion_coefficient_at_T(temp_kern[surf_all_kern])
+
+    def initialize_tau_local(self, cell: tuple) -> None:
+        """
+        Initialize temperature of newly filled cell by averaging surroundings.
+
+        Parameters
+        ----------
+        cell : tuple
+            (z, y, x) absolute cell coordinates
+        view : np.ndarray
+            Temperature array view (from SurfaceUpdateView)
+        """
+        temp_array = self.state.surface_temp
+        tau_array = self.state.tau_temp
+        tau_array[cell] = 0
+        temp_slice, _ = get_3d_slice(cell, temp_array.shape, 2)
+        temp_kern = temp_array[temp_slice]
+        tau_kern = tau_array[temp_slice]
+        surf_all_kern = self.state.surface_all[temp_slice]
+        # Considering only neighboring surface cells with temperature above room temperature for initialization
+        condition = surf_all_kern
+
+        if np.any(condition):
+            tau_kern[surf_all_kern] = self.state.precursor.residence_time_at_T(temp_kern[surf_all_kern])
 
     # ===== Coefficient Access (Raw Data - No Slicing, No Acceleration Logic) =====
 

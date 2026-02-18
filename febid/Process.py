@@ -132,7 +132,7 @@ class Process:
 
         # Initialize temperature if tracking enabled
         if self.state.temperature_tracking:
-            self.temp_manager.update_temperature_field(heating=0)
+            self.temp_manager.update_full()
 
         self.__expressions()
 
@@ -236,8 +236,6 @@ class Process:
         self.filled_cells += len(new_deposits)
         for cell in new_deposits:
             self._update_cell_config(cell, surf_view)
-            # Updating temperature in the new cell (Stage 5: use TemperatureManager)
-            self.temp_manager.initialize_cell_temperature(cell, surf_view)
             # Updating nearest neighbors profile
             self.update_nearest_neighbors(cell, surf_view)
         # Post cell update routines
@@ -255,13 +253,17 @@ class Process:
         self.n_semi_surface_cells = self.view_manager.n_semi_surface_cells
 
         if self.state.temperature_tracking:
+            for cell in cells_abs:
+                # Updating temperature in the new cell (Stage 5: use TemperatureManager)
+                self.temp_manager.initialize_cell_temperature(cell)
+                self.temp_manager.update_local(cell)
             # Stage 5: Check if temperature recalculation needed (sets flag)
             self.temp_manager.check_and_request_recalculation(self.filled_cells)
             # Update local tracking for backward compatibility
             self.request_temp_recalc = self.temp_manager.requires_recalculation
             # Stage 5: Phase 1 temperature update - coefficients for NEW topology with CURRENT temps
             if not self.request_temp_recalc:  # skipping coeffs update if temperature recalculation is pending
-                self.temp_manager.update_after_cell_filling()
+                self.temp_manager.update_full()
 
         return structure_extended
 
@@ -309,6 +311,10 @@ class Process:
         surf_diff = surf_bool_prev ^ surf_kern  # difference in surface
         semi_s_diff = semi_s_bool_prev ^ surf_semi_kern  # difference in semi-surface
         surf_resid_sum = np.count_nonzero(surf_diff)
+
+        # Update surface all array
+        surf_all_kern = self.state.surface_all[updated_slice]
+        surf_all_kern[:] = surf_kern | surf_semi_kern
         # This condition covers one specific case
         # Typically, a newly filled cells spawns at least one surface cell, but it is not always so.
         # If the new cell is located in the corner or at the corner edge, it will not spawn any new surface cells.
