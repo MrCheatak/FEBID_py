@@ -60,6 +60,7 @@ class SimulationState:
         self.surface_temp = np.zeros_like(structure.temperature)
         self.D_temp = np.zeros_like(structure.precursor)  # Temperature-dependent diffusion coefficients
         self.tau_temp = np.zeros_like(structure.precursor)  # Temperature-dependent residence times
+        self.surface_all = np.zeros_like(structure.deposit, dtype=bool)  # All surface cells (including semi-surface)
 
         # Scaling factor
         self.deposition_scaling = 1.0  # multiplier of the deposit increment; used to speed up the process

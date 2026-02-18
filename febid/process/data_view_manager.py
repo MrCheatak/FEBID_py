@@ -136,9 +136,6 @@ class DataViewManager:
         self._slice_irradiated_3d = None
         self._slice_irradiated_2d_no_sub = None
 
-        # Surface + semi-surface array
-        self._surface_all = np.zeros_like(state.structure.surface_bool)
-
         # Cached index tuples (only populated when acceleration_enabled=True)
         self._index_deposition_2d: tuple = None
         self._index_deposition_3d: tuple = None
@@ -555,8 +552,7 @@ class DataViewManager:
         - Recalculate 2D slices (depend on max_z)
         - Regenerate surface indices (depend on surface_bool, semi_surface_bool)
         """
-        if structure_extended:
-            self._surface_all = np.zeros_like(self.structure.surface_bool)
+
         # 1. Calculate the 2D slice that covers the entire structure height (always needed)
         self._slice_irradiated_2d = self._define_irradiated_slice_2d()
         # 1a. Calculate the 2D slice that covers the entire structure height without substrate
@@ -568,9 +564,6 @@ class DataViewManager:
 
         # Sequence is important
         # 1. Erasing previous combined surface array
-        self._surface_all[self._slice_irradiated_2d][self._index_surface_all_2d] = False
-        if self._surface_all[self._slice_irradiated_2d].max():
-            raise IndexError("Array mask and index inconsistency. Previous index did not address all expected aray cells!")
         # 2. Getting two new indexes
         self._index_surface_2d = self.get_index(surface_2d_view)
         self.n_surface_cells = self._index_surface_2d[0].size
@@ -579,8 +572,6 @@ class DataViewManager:
         self._index_surface_all_2d_prev = self._index_surface_all_2d
         # 3. Combining indexes
         self._index_surface_all_2d = concat_index(self._index_surface_2d, self._index_semi_surface_2d)
-        # 4. Writing to surface array using new index
-        self._surface_all[self._slice_irradiated_2d][self._index_surface_all_2d] = True
 
     def update_after_beam_matrix(self):
         """
@@ -644,3 +635,8 @@ class DataViewManager:
     def substrate_height(self):
         """Convenience property to access substrate_height from state."""
         return self.state.substrate_height
+
+    @property
+    def _surface_all(self):
+        """Convenience property to access surface_all from state."""
+        return self.state.surface_all

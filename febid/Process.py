@@ -338,6 +338,7 @@ class Process:
             self.state.surface_temp = np.zeros_like(self.structure.temperature)
             self.state.D_temp = np.zeros_like(self.structure.precursor)
             self.state.tau_temp = np.zeros_like(self.structure.precursor)
+            self.state.surface_all = np.logical_or(self.structure.surface_bool, self.structure.semi_surface_bool)
 
         self.__set_structure(self.structure)
         # Restore old beam matrix values
