@@ -3,7 +3,6 @@ from dataclasses import dataclass
 from typing import Union, Tuple
 from febid.slice_trics import index_where, get_index_in_parent, concat_index, cast_index_to_int
 from febid.process.simulation_state import SimulationState
-from febid.thermal.temperature_manager import TemperatureManager
 
 
 @dataclass
@@ -86,6 +85,16 @@ class SurfaceUpdateView:
     temp: Union[np.ndarray, None]
     surface_neighbors: np.ndarray
     irradiated_area_3d: slice
+
+@dataclass
+class TemperatureRecalcView:
+    """Everything needed for temperature profile recalculation.
+    Attributes:
+
+        """
+    deposit: np.ndarray
+    temp: np.ndarray
+    slice_no_sub: slice
 
 
 class DataViewManager:
@@ -373,7 +382,7 @@ class DataViewManager:
                 acceleration_enabled=False
             )
 
-    def get_precursor_density_view(self, temp_manager: 'TemperatureManager' = None) -> PrecursorDensityView:
+    def get_precursor_density_view(self, temp_manager = None) -> PrecursorDensityView:
         """
         Returns a PrecursorDensityView for precursor density (RDE) calculations.
 
@@ -442,7 +451,7 @@ class DataViewManager:
             acceleration_enabled=self.acceleration_enabled
         )
 
-    def get_diffusion_view(self, temp_manager: 'TemperatureManager' = None) -> DiffusionView:
+    def get_diffusion_view(self, temp_manager = None) -> DiffusionView:
         """
         Returns a DiffusionView for diffusion (FTCS) calculations.
 
@@ -504,7 +513,7 @@ class DataViewManager:
         slice_3d = self._slice_irradiated_3d
 
         # Get temperature array if temperature tracking is enabled
-        temp = self.state.surface_temp if hasattr(self.state, 'surface_temp') else None
+        temp = self.state.structure.temperature
         return SurfaceUpdateView(
             deposit=self.structure.deposit[slice_3d],
             precursor=self.structure.precursor[slice_3d],
@@ -514,6 +523,20 @@ class DataViewManager:
             temp=temp[slice_3d] if temp is not None else None,
             surface_neighbors=self.structure.surface_neighbors_bool[slice_3d],
             irradiated_area_3d=slice_3d  # For converting local to global indices
+        )
+
+    def get_temperature_recalc_view(self) -> TemperatureRecalcView:
+        """
+        Returns a TemperatureRecalcView for temperature profile recalculation.
+
+            This view is used when temperature tracking is enabled and we need to
+            recalculate the temperature profile after cell filling.
+        """
+        slice_2d_no_sub = self._slice_irradiated_2d_no_sub
+        return TemperatureRecalcView(
+            deposit=self.structure.deposit[slice_2d_no_sub],
+            temp=self.structure.temperature[slice_2d_no_sub],
+            slice_no_sub=slice_2d_no_sub
         )
 
     def update_after_cell_filling(self, structure_extended=False):
