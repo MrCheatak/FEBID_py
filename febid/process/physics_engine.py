@@ -58,6 +58,8 @@ class PhysicsEngine:
         self.view_manager = view_manager
         self.temp_manager = temp_manager
 
+        self.__expressions()  # Prepare numexpr expressions for faster calculations
+
     def compute_deposition(self, dt: float) -> None:
         """
         Calculate deposition increment for all irradiated cells over time step.
