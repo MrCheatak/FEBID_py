@@ -12,7 +12,6 @@ import febid.diffusion as diffusion
 from febid.libraries.rolling.roll import beam_matrix_semi_surface_av
 from febid.mlcca import MultiLayerdCellCellularAutomata as MLCCA
 from .slice_trics import get_3d_slice, get_index_in_parent, index_where
-from .expressions import cache_numexpr_expressions
 from .kernel_modules import GPU
 from .process.simulation_state import SimulationState
 from .process.data_view_manager import DataViewManager, DepositionView, SurfaceUpdateView
@@ -331,6 +330,7 @@ class Process:
         with Lock():  # blocks run with Lock should exclude calls of decorated functions, otherwise the thread will hang
             shape_old = self.structure.shape
             beam_matrix_old = self.state.beam_matrix.copy()  # Save old beam matrix
+            beam_matrix_surface_old = self.state.beam_matrix_surface.copy()  # Save old beam matrix surface
             self.structure.resize_structure(200)
             self.structure.define_surface_neighbors(self.state.max_neib)
 
@@ -344,6 +344,7 @@ class Process:
         self.__set_structure(self.structure)
         # Restore old beam matrix values
         self.state.beam_matrix[:shape_old[0], :shape_old[1], :shape_old[2]] = beam_matrix_old
+        self.state.beam_matrix_surface[:shape_old[0], :shape_old[1], :shape_old[2]] = beam_matrix_surface_old
         self.redraw = True
 
         # Basically, none of the slices have to be updated, because they use indexes, not references.
@@ -607,9 +608,6 @@ class Process:
         # Stage 2: Phase 2 update - beam pattern changed
         self.view_manager.update_after_beam_matrix()
         self.n_beam_matrix_points = self.view_manager.n_beam_flux_points
-        beam_matrix_2d = self.state.beam_matrix[self.view_manager._slice_irradiated_2d]
-        index = self.view_manager._index_semi_surface_2d
-        beam_matrix_semi_surface_av(beam_matrix_2d, beam_matrix_2d, *index)
 
     # Properties
     @property

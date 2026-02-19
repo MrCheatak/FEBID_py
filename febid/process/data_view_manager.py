@@ -1,6 +1,9 @@
 import numpy as np
 from dataclasses import dataclass
 from typing import Union, Tuple
+
+from febid.libraries.rolling.roll import beam_matrix_semi_surface_av
+
 from febid.slice_trics import index_where, get_index_in_parent, concat_index, cast_index_to_int
 from febid.process.simulation_state import SimulationState
 
@@ -128,8 +131,8 @@ class DataViewManager:
         # These will be updated by the `update_roi` method.
 
         # Cached flattened arrays (only populated when acceleration_enabled=True)
-        self.beam_matrix_surface = None
-        self.beam_matrix_effective = None
+        self.beam_matrix_surface_flat = None
+        self.beam_matrix_deposition_flat = None
 
         # Cached slice objects (always computed)
         self._slice_irradiated_2d = None
@@ -312,8 +315,8 @@ class DataViewManager:
         (Logic from Process.__flatten_beam_matrix_effective)
         """
         beam_matrix_3d_view = self.beam_matrix[self._slice_irradiated_3d]
-        self.beam_matrix_effective = beam_matrix_3d_view[self._index_deposition_3d]
-        return self.beam_matrix_effective
+        self.beam_matrix_deposition_flat = beam_matrix_3d_view[self._index_deposition_3d]
+        return self.beam_matrix_deposition_flat
 
     def get_beam_flux_for_surface(self) -> np.ndarray:
         """
@@ -323,8 +326,14 @@ class DataViewManager:
         (Logic from Process.__flatten_beam_matrix_surface)
         """
         beam_matrix_2d_view = self.beam_matrix[self._slice_irradiated_2d]
-        self.beam_matrix_surface = beam_matrix_2d_view[self._surface_all[self._slice_irradiated_2d]]
-        return self.beam_matrix_surface
+        beam_matrix_surface_2d_view = self.beam_matrix_surface[self._slice_irradiated_2d]
+        beam_matrix_surface_2d_view[:] = 0  # Clear previous values
+        index_surface_all = self._index_surface_all_2d
+        beam_matrix_surface_2d_view[index_surface_all] = beam_matrix_2d_view[index_surface_all]
+        index = self._index_semi_surface_2d
+        beam_matrix_semi_surface_av(beam_matrix_surface_2d_view, beam_matrix_surface_2d_view, *index)
+        self.beam_matrix_surface_flat = beam_matrix_surface_2d_view[index_surface_all]
+        return self.beam_matrix_surface_flat
 
     def get_surface_all_indices_2d(self) -> tuple:
         """Returns the combined indices for surface and semi-surface cells."""
@@ -364,7 +373,7 @@ class DataViewManager:
             return DepositionView(
                 deposit=self.structure.deposit[self._slice_irradiated_3d],
                 precursor=self.structure.precursor[self._slice_irradiated_3d],
-                beam_matrix=self.beam_matrix_effective,  # 1D flattened array
+                beam_matrix=self.beam_matrix_deposition_flat,  # 1D flattened array
                 index=self._index_deposition_3d,  # Fancy index tuple (z, y, x)
                 acceleration_enabled=True
             )
@@ -442,7 +451,7 @@ class DataViewManager:
         return PrecursorDensityView(
             precursor=precursor_2d,
             surface_all=surface_all,
-            beam_matrix=self.beam_matrix_surface,  # 1D flattened array (surface cells only)
+            beam_matrix=self.beam_matrix_surface_flat,  # 1D flattened array (surface cells only)
             tau=tau,
             D=D,
             acceleration_enabled=self.acceleration_enabled
@@ -625,6 +634,11 @@ class DataViewManager:
     def beam_matrix(self):
         """Convenience property to access beam_matrix from state."""
         return self.state.beam_matrix
+
+    @property
+    def beam_matrix_surface(self):
+        """Convenience property to access beam_matrix_surface from state."""
+        return self.state.beam_matrix_surface
 
     @property
     def max_z(self):

@@ -57,6 +57,7 @@ class SimulationState:
 
         # Additional arrays (managed locally, not in Structure)
         self.beam_matrix = np.zeros_like(structure.deposit, dtype=np.int32)
+        self.beam_matrix_surface = np.zeros_like(structure.deposit, dtype=np.int32)  # Surface and semmi-surface cells exposed to the beam
         self.surface_temp = np.zeros_like(structure.temperature)
         self.D_temp = np.zeros_like(structure.precursor)  # Temperature-dependent diffusion coefficients
         self.tau_temp = np.zeros_like(structure.precursor)  # Temperature-dependent residence times
