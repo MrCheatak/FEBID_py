@@ -361,6 +361,17 @@ class Structure(BaseSolidStructure):
         """
         self.precursor[self.surface_bool] = nr
 
+    def define_all(self):
+        """
+        Method to define all the auxiliary arrays. Can be used if the structure is changed and all the arrays have to be updated.
+
+        :return:
+        """
+        self.define_surface()
+        self.define_semi_surface()
+        self.define_surface_neighbors()
+        self.define_ghosts()
+
     def define_surface(self):
         """
         Determining surface of the initial structure
@@ -376,6 +387,7 @@ class Structure(BaseSolidStructure):
         #   it achieved by the intersection of 'positive' and convoluted arrays, as surface is ultimately not a solid
 
         logger.debug('Generating surface index...')
+        self.surface_bool[...] = False
         positive = np.full(self.deposit.shape, False, dtype=bool)
         positive[self.deposit >= 0] = True  # gas cells
         grid = np.copy(self.deposit)

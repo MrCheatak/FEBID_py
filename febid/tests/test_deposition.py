@@ -296,6 +296,74 @@ class TestSimulationVolume:
         # Assess edge coverage metric (index 2)
         self._assert_metric(metrics[2])
 
+    def test_semi_surface_cells(self):
+        """Test equivalence of deposited volume on a flat surface vs a surface with single layer square patch.
+        This test is designed to test consistency of the simulation's handling of semi-surface cells.
+        Running test with and without acceleration grid."""
+
+        ca = False
+        case_name = "Semi-surface cells test"
+        acceleration_enabled = True
+        params = self.params
+        # print(f"Reduced exposure time: default is 0.03, current 0.0 s")
+        params["dwell_time"] = 100
+
+        # Load settings and precursor using ruamel.yaml
+        settings = load_yaml(params['settings_filename'])
+        precursor = load_yaml(params['precursor_filename'])
+
+        # Generate point exposure pattern
+        printing_path = create_pattern(params)
+
+        # Run simulation with flat surface and cellular automata disabled to get baseline results
+        start = timer()
+        results_3d_flat = self.run_3d_sim(ca, params, precursor, printing_path, settings, case_name, acceleration_enabled=acceleration_enabled)
+        end = timer()
+        surface_deposit_cells_flat = (results_3d_flat.structure.deposit > 0).sum()
+        # Print simulation results
+        print(f"\nFlat surface without CA:")
+        print(f"    Total run time: {(end - start):.2f} s")
+
+        # Define a structure with a single layer patch to test the acceleration grid's handling of semi-surface cells
+        structure = self.setup_domain(params)
+        surface_cells_count_flat = np.count_nonzero(structure.surface_bool)
+        sub_height = structure.substrate_height
+        dep = structure.deposit
+        patch_size_abs = 10  # nm
+        patch_size_cells = int(patch_size_abs / structure.cell_size)
+        center = (structure.shape[1] // 2, structure.shape[2] // 2)
+        x1 = center[1] - patch_size_cells // 2
+        x2 = center[1] + patch_size_cells // 2
+        y1 = center[0] - patch_size_cells // 2
+        y2 = center[0] + patch_size_cells // 2
+        dep[sub_height, y1:y2, x1:x2] = -1
+        structure.define_all()
+        prec = structure.precursor
+        surface_mask = structure.surface_bool
+        semi_surface_mask = structure.semi_surface_bool
+        prec[:] = 0
+        prec[surface_mask] = structure.nr
+        prec[semi_surface_mask] = structure.nr
+        surface_cells_count = np.count_nonzero(structure.surface_bool)
+        assert surface_cells_count_flat == surface_cells_count
+        print(f"Surface cells count with flat surface: {surface_cells_count_flat}")
+        print(f"Surface cells count with single layer patch: {surface_cells_count}")
+
+        # Run simulation with cellular automata enabled
+        start = timer()
+        results_3d = self.run_3d_sim(ca, params, precursor, printing_path, settings, case_name,
+                                     acceleration_enabled=acceleration_enabled, structure=structure)
+        end = timer()
+        surface_deposit_cells = (results_3d_flat.structure.deposit > 0).sum()
+
+        # Print simulation results
+        print(f"\nSingle deposit layer without CA:")
+        print(f"    Total run time: {(end - start):.2f} s")
+
+        assert surface_deposit_cells_flat == surface_deposit_cells, "Number of cells with surface deposit should be the same for flat surface and single layer patch"
+        assert results_3d_flat.V == results_3d.V, "Deposited volume should be the same for flat surface and single layer patch"
+
+
     @pytest.mark.parametrize("case_name,acceleration_enabled", ACCELERATION_GRID_SETUPS)
     def test_acceleration_grid(self, case_name, acceleration_enabled):
         """Test acceleration grid consistency by running the simulation with and without acceleration"""
@@ -486,13 +554,14 @@ class TestSimulationVolume:
         # Return both results
         return results_1d, results_3d
 
-    def run_3d_sim(self, ca, params, precursor, printing_path, settings, case_name: str = "", acceleration_enabled=True) -> SimulationResults3D:
+    def run_3d_sim(self, ca, params, precursor, printing_path, settings, case_name: str = "", acceleration_enabled=True, structure=None) -> SimulationResults3D:
         print("\n" + "=" * 60)
         print("3D FEBID SIMULATION")
         print("=" * 60)
 
         # Setup simulation domain
-        structure = self.setup_domain(params)
+        if structure is None:
+            structure = self.setup_domain(params)
 
         # Prepare equation values for Process and MC_Simulation
         process = self.setup_rde_sim(params, precursor, settings, structure, acceleration_enabled=acceleration_enabled)
@@ -757,26 +826,6 @@ class TestSimulationVolume:
 
         plt.tight_layout()
         plt.show()
-
-    def _test_deposited_volume_no_ca(self):
-        """Legacy test - runs all diffusion cases for backward compatibility"""
-        print("\n" + "="*80)
-        print("LEGACY TEST: Running all diffusion cases")
-        print("="*80)
-
-        # Execute all 9 parameterized tests
-        for case_name, D_override in self.SIMULATION_SETUPS:
-            self.test_volume(case_name, D_override)
-            self.test_center_coverage(case_name, D_override)
-            self.test_edge_coverage(case_name, D_override)
-
-        print("\n" + "="*80)
-        print("LEGACY TEST: All cases completed successfully")
-        print("="*80)
-
-    def _testk_deposited_volume_ca(self):
-        """Disabled CA test"""
-        pass
 
     def run_sim(self, ca, printing_path, process, sim):
         """
