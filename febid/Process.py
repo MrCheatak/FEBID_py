@@ -630,7 +630,8 @@ class Process:
         s = self.view_manager._slice_irradiated_2d
         deposit = self.structure.deposit[s]
         surface = self.structure.surface_bool[s]
-        return (self.filled_cells + deposit[surface].sum()) * self.state.cell_V
+        self.dep_vol = (self.filled_cells + deposit[surface].sum()) * self.state.cell_V
+        return self.dep_vol
 
     @property
     def precursor_min(self):
@@ -768,6 +769,10 @@ class Process:
     @property
     def substrate_height(self):
         return self.state.substrate_height
+
+    @property
+    def beam_matrix(self):
+        return self.state.beam_matrix
 
 
 if __name__ == '__main__':
