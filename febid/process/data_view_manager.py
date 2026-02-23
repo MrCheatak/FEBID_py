@@ -282,31 +282,6 @@ class DataViewManager:
         return (z.copy(), y - y_offset, x - x_offset)
 
     # --- Public API for Retrieving Views and Data ---
-
-    def get_view(self, array_name: str, view_type: str = '3d'):
-        """
-        Returns a sliced view of a specified data array from the Structure.
-
-        Args:
-            array_name (str): The name of the array in the Structure object
-                              (e.g., 'deposit', 'precursor').
-            view_type (str): The type of view, '2d' or '3d'.
-
-        Returns:
-            A numpy array view.
-        """
-        if not hasattr(self.structure, array_name):
-            raise AttributeError(f"Structure has no attribute named '{array_name}'")
-
-        source_array = getattr(self.structure, array_name)
-
-        if view_type == '3d':
-            return source_array[self._slice_irradiated_3d]
-        elif view_type == '2d':
-            return source_array[self._slice_irradiated_2d]
-        else:
-            raise ValueError(f"Unknown view_type: '{view_type}'. Must be '2d' or '3d'.")
-
     def get_effective_beam_flux_for_deposition(self) -> np.ndarray:
         """
         Returns a flattened array of the beam flux values at the specific
@@ -334,14 +309,6 @@ class DataViewManager:
         beam_matrix_semi_surface_av(beam_matrix_surface_2d_view, beam_matrix_surface_2d_view, *index)
         self.beam_matrix_surface_flat = beam_matrix_surface_2d_view[index_surface_all]
         return self.beam_matrix_surface_flat
-
-    def get_surface_all_indices_2d(self) -> tuple:
-        """Returns the combined indices for surface and semi-surface cells."""
-        return self._index_surface_all_2d
-
-    def get_deposition_indices_3d(self) -> tuple:
-        """Returns the indices where deposition occurs, relative to the 3D view."""
-        return self._index_deposition_3d
 
     def get_index(self, view) -> tuple:
         """
