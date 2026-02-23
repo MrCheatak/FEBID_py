@@ -46,7 +46,7 @@ class Process:
     # Thus, the precursor density has to be multiplied by the cell's base area divided by the cell volume.
 
     def __init__(self, structure: Structure, equation_values, deposition_scaling=1, temp_tracking=True,
-                 acceleration_enabled=True, device=None, name=None):
+                 acceleration_enabled=True, device=None, n_init="full", name=None):
         super().__init__()
         if not name:
             self.name = str(np.random.randint(000000, 999999, 1)[0])
@@ -127,7 +127,15 @@ class Process:
         self.physics_engine = PhysicsEngine(self.state, self.view_manager, self.temp_manager)
 
         self._temp_step_cells = self._temp_step / self.state.cell_V
-        self.state.structure.precursor[self.state.structure.surface_bool] = self.state.model.nr
+        if n_init == "full":
+            self.state.structure.precursor[self.state.structure.surface_bool] = self.state.model.nr
+            self.state.structure.precursor[self.state.structure.semi_surface_bool] = self.state.model.nr
+        elif n_init == "empty":
+            self.state.structure.precursor[self.state.structure.surface_bool] = 1e-6
+            self.state.structure.precursor[self.state.structure.semi_surface_bool] = 1e-6
+        elif n_init is float:
+            self.state.structure.precursor[self.state.structure.surface_bool] = n_init
+            self.state.structure.precursor[self.state.structure.semi_surface_bool] = n_init
 
         # Initialize temperature if tracking enabled
         if self.state.temperature_tracking:

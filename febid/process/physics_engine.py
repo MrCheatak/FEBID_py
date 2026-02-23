@@ -99,7 +99,7 @@ class PhysicsEngine:
 
         # surface_all represents surface + semi_surface cells
         # Boolean indexing: precursor[surface_all] extracts values at surface cells (1D flat array)
-        view.precursor[view.surface_all] += self._rk4_with_ftcs(view, dt)
+        view.precursor[view.surface] += self._rk4_with_ftcs(view, dt)
 
     def check_cells_filled(self) -> bool:
         """
@@ -127,7 +127,7 @@ class PhysicsEngine:
         Parameters
         ----------
         view : PrecursorDensityView
-            View containing precursor, beam_matrix, surface_all, tau, D
+            View containing precursor, beam_matrix, surface, tau, D
         dt : float
             Time step in seconds
 
@@ -137,15 +137,15 @@ class PhysicsEngine:
             Precursor density increment (1D flat array)
         """
         beam_matrix = view.beam_matrix
-        surface_all = view.surface_all
+        surface = view.surface
         precursor = view.precursor
         tau = view.tau  # Extract tau from view
-        prec_flat = precursor[surface_all]
+        prec_flat = precursor[surface]
 
         # Extract tau at surface locations if it's an array (temperature tracking)
         if isinstance(tau, np.ndarray) and tau.shape != prec_flat.shape:
             # tau is 2D/3D array, extract surface values
-            tau_flat = tau[surface_all] if tau.ndim > 1 else tau
+            tau_flat = tau[surface] if tau.ndim > 1 else tau
         else:
             # tau is already flat or scalar
             tau_flat = tau
@@ -154,23 +154,38 @@ class PhysicsEngine:
         if np.any(view.D) == 0:
             return self._rk4(prec_flat, beam_matrix, dt, tau_flat)
 
+
+
         # k1
-        diff_flat = self._diffusion(precursor, surface_all, dt, flat=True)
-        k1 = self._precursor_density_increment(prec_flat, beam_matrix, dt, diff_flat, tau=tau_flat)
+        diff_flat = self._diffusion(precursor, dt, flat=True)
+        semi_surface_position = diff_flat.size - view.semi_surface_index[0].size
+        k1 = self._precursor_density_increment(prec_flat, beam_matrix, dt, diff_flat[:semi_surface_position], tau=tau_flat)
+        k1_semi = diff_flat[semi_surface_position:]
 
         # k2
         k1_div = k1 / 2
-        diff_flat = self._diffusion(precursor, surface_all, dt, add=k1_div, flat=True)
-        k2 = self._precursor_density_increment(prec_flat, beam_matrix, dt / 2, diff_flat, k1_div, tau=tau_flat)
+        k1_semi_div = k1_semi / 2
+        k1_full_div = np.concatenate([k1_div, k1_semi_div])
+        diff_flat = self._diffusion(precursor, dt / 2, add=k1_full_div, flat=True)
+        k2 = self._precursor_density_increment(prec_flat, beam_matrix, dt / 2, diff_flat[:semi_surface_position], k1_div, tau=tau_flat)
+        k2_semi = diff_flat[semi_surface_position:]
 
         # k3
         k2_div = k2 / 2
-        diff_flat = self._diffusion(precursor, surface_all, dt, add=k2_div, flat=True)
-        k3 = self._precursor_density_increment(prec_flat, beam_matrix, dt / 2, diff_flat, k2_div, tau=tau_flat)
+        k2_semi_div = k2_semi / 2
+        k2_full_div = np.concatenate([k2_div, k2_semi_div])
+        diff_flat = self._diffusion(precursor, dt / 2 , add=k2_full_div, flat=True)
+        k3 = self._precursor_density_increment(prec_flat, beam_matrix, dt / 2, diff_flat[:semi_surface_position], k2_div, tau=tau_flat)
+        k3_semi = diff_flat[semi_surface_position:]
 
         # k4
-        diff_flat = self._diffusion(precursor, surface_all, dt, add=k3, flat=True)
-        k4 = self._precursor_density_increment(prec_flat, beam_matrix, dt, diff_flat, k3, tau=tau_flat)
+        k3_full = np.concatenate([k3, k3_semi])
+        diff_flat = self._diffusion(precursor, dt , add=k3_full, flat=True)
+        k4 = self._precursor_density_increment(prec_flat, beam_matrix, dt, diff_flat[:semi_surface_position], k3, tau=tau_flat)
+        k4_semi = diff_flat[semi_surface_position:]
+
+        precursor[view.semi_surface_index] += ne.re_evaluate("rk4", casting='same_kind',
+                                                             local_dict={'k1': k1_semi, 'k2': k2_semi, 'k3': k3_semi, 'k4': k4_semi})
 
         # Combine RK4 coefficients
         return ne.re_evaluate("rk4", casting='same_kind',
@@ -265,7 +280,7 @@ class PhysicsEngine:
             )
             raise e
 
-    def _diffusion(self, grid: np.ndarray, surface: np.ndarray, dt: float,
+    def _diffusion(self, grid: np.ndarray, dt: float,
                    add: float = 0, flat: bool = False) -> np.ndarray:
         """
         Calculate diffusion term via FTCS scheme.
@@ -290,6 +305,7 @@ class PhysicsEngine:
         """
         # Get diffusion view with D coefficient from TemperatureManager
         view: DiffusionView = self.view_manager.get_diffusion_view(self.temp_manager)
+        surface = view.surface_all
         D = view.D
 
         return diffusion.diffusion_ftcs(

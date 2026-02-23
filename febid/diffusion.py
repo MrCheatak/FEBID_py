@@ -54,7 +54,7 @@ def diffusion_ftcs(grid, surface, D, dt, cell_size, surface_index=None, flat=Tru
     else:
         a = dt * D[surface] / (cell_size * cell_size)
     if flat:
-        return grid_out[surface] * a
+        return grid_out[surface_index] * a
     else:
         grid_out[surface] *= a
         return grid_out

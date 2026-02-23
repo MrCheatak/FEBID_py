@@ -32,14 +32,15 @@ class PrecursorDensityView:
 
     Attributes:
         precursor: 2D array view (restricted if acceleration on, full if off)
-        surface_all: Combined surface + semi_surface boolean array
+        surface: Combined surface + semi_surface boolean array
         beam_matrix: 1D flattened array (acceleration on) or full 3D array (acceleration off)
         tau: 1D flattened (acceleration on) or full array or scalar (acceleration off)
         D: 2D view (restricted if acceleration on) or full array or scalar (acceleration off)
         acceleration_enabled: Flag indicating which mode is active
     """
     precursor: np.ndarray
-    surface_all: np.ndarray
+    surface: np.ndarray
+    semi_surface_index: Union[Tuple[np.ndarray, np.ndarray, np.ndarray], None]
     beam_matrix: np.ndarray
     tau: Union[np.ndarray, float]
     D: Union[np.ndarray, float]
@@ -300,14 +301,15 @@ class DataViewManager:
 
         (Logic from Process.__flatten_beam_matrix_surface)
         """
+        # Get aligned views local and new beam matrix arrays
         beam_matrix_2d_view = self.beam_matrix[self._slice_irradiated_2d]
         beam_matrix_surface_2d_view = self.beam_matrix_surface[self._slice_irradiated_2d]
-        beam_matrix_surface_2d_view[:] = 0  # Clear previous values
-        index_surface_all = self._index_surface_all_2d
-        beam_matrix_surface_2d_view[index_surface_all] = beam_matrix_2d_view[index_surface_all]
-        index = self._index_semi_surface_2d
-        beam_matrix_semi_surface_av(beam_matrix_surface_2d_view, beam_matrix_surface_2d_view, *index)
-        self.beam_matrix_surface_flat = beam_matrix_surface_2d_view[index_surface_all]
+        # Clear previous values
+        beam_matrix_surface_2d_view[:] = 0
+        index_surface = self._index_surface_2d
+        self.beam_matrix_surface_flat = beam_matrix_surface_2d_view[index_surface] = beam_matrix_2d_view[index_surface]
+        # index = self._index_semi_surface_2d
+        # beam_matrix_semi_surface_av(beam_matrix_surface_2d_view, beam_matrix_surface_2d_view, *index)
         return self.beam_matrix_surface_flat
 
     def get_index(self, view) -> tuple:
@@ -413,11 +415,13 @@ class DataViewManager:
         # Build view
         slice_2d = self._slice_irradiated_2d
         precursor_2d = self.structure.precursor[slice_2d]
-        surface_all = self._surface_all[slice_2d]
+        surface = self.structure.surface_bool[slice_2d]
+        semi_surface_index = self._index_semi_surface_2d
 
         return PrecursorDensityView(
             precursor=precursor_2d,
-            surface_all=surface_all,
+            surface=surface,
+            semi_surface_index=semi_surface_index,
             beam_matrix=self.beam_matrix_surface_flat,  # 1D flattened array (surface cells only)
             tau=tau,
             D=D,
