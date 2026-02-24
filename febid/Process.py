@@ -9,10 +9,8 @@ import numpy as np
 from febid.Structure import Structure
 from febid.continuum_model_base import ContinuumModel
 import febid.diffusion as diffusion
-from febid.libraries.rolling.roll import beam_matrix_semi_surface_av
 from febid.mlcca import MultiLayerdCellCellularAutomata as MLCCA
 from .slice_trics import get_3d_slice, get_index_in_parent, index_where
-from .kernel_modules import GPU
 from .process.simulation_state import SimulationState
 from .process.data_view_manager import DataViewManager, DepositionView, SurfaceUpdateView
 from .process.physics_engine import PhysicsEngine
@@ -437,52 +435,6 @@ class Process:
             self.physics_engine.compute_precursor_density(dt)
 
 
-
-    # GPU methods (Stage 4: Proxy methods that delegate to GPUFacade)
-    # Note: deposition_gpu, precursor_density_gpu, load_kernel, update_surface_GPU are replaced
-    # by unified methods that delegate based on self.device
-
-    def offload_structure_from_gpu_all(self, blocking=True):
-        """
-        Offloads all data from compute device
-
-        Stage 4: Delegates to GPUFacade
-
-        :param blocking: wait until the operation is finished
-        """
-        self.gpu_facade.retrieve_structure(blocking=blocking)
-
-    def offload_from_gpu_partial(self, data_name, blocking=True):
-        """
-        Offloads data from compute device
-
-        Stage 4: Delegates to GPUFacade
-
-        :param data_name: name of the data to be offloaded
-        :param blocking: wait until the operation is finished
-        """
-        self.gpu_facade.retrieve_array(data_name, blocking=blocking)
-
-    def update_structure_to_gpu(self, blocking=True):
-        """
-        Updates structure data on the GPU
-
-        Stage 4: Delegates to GPUFacade
-
-        :param blocking: wait until the operation is finished
-        """
-        self.gpu_facade.update_structure_partial(cells=self.last_full_cells, blocking=blocking)
-
-    def get_data(self):
-        """
-        Offload data necessary for visualization and statistics from compute device.
-
-        Stage 4: Delegates to GPUFacade
-        """
-        self.gpu_facade.retrieve_for_visualization(
-            stats_gathering=self.stats_gathering,
-            displayed_data=self.displayed_data
-        )
 
     ###
     # Physics methods have been moved to PhysicsEngine (Stage 3)

@@ -22,7 +22,7 @@ import numpy as np
 from ruamel.yaml import YAML
 from tqdm import tqdm
 import matplotlib.pyplot as plt
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Dict, List, Tuple
 from abc import ABC, abstractmethod
 
@@ -685,6 +685,10 @@ class TestGPUFacade:
             # Enable stats gathering flag so get_data() retrieves necessary arrays
             process.stats_gathering = True
             process.get_data()  # Retrieve precursor and deposit arrays
+            process.gpu_facade.retrieve_for_visualization(
+                stats_gathering=process.stats_gathering,
+                displayed_data=process.displayed_data
+            )
 
         # Print results (after retrieving from GPU if needed)
         print(f"\n{device_type} Simulation Results:")
@@ -830,8 +834,8 @@ class TestGPUFacade:
 
                 if ca_enabled and process.check_cells_filled():
                     if process.device:
-                        process.offload_from_gpu_partial('deposit', blocking=False)
-                        process.offload_from_gpu_partial('precursor', blocking=True)
+                        process.gpu_facade.retrieve_array('deposit', blocking=False)
+                        process.gpu_facade.retrieve_array('precursor', blocking=True)
 
                     resized = process.cell_filled_routine()
 
@@ -840,7 +844,7 @@ class TestGPUFacade:
                         if process.device:
                             process.gpu_facade.reinitialize_after_resize()
                     elif process.device:
-                        process.update_structure_to_gpu(blocking=True)
+                        process.gpu_facade.update_structure_partial(cells=process.last_full_cells, blocking=True)
 
                     beam_matrix = beam_matrix_test(x, y, sim=sim, pr=process)
                     process.set_beam_matrix(beam_matrix)

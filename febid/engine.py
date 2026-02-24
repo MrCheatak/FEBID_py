@@ -104,7 +104,7 @@ class TimeStepper:
 
         # trigger stats (Stage 6: delegates to SimulationStats)
         if self.pr.stats_gathering and self.time_passed_total % self.pr.stats_frequency < self._dt * 1.5:
-            self.pr.stats.gather_stats()  # Delegates to SimulationStats.gather()
+            self.pr.stats.gather(t=self.pr.t, filled_cells=self.pr.filled_cells)
 
         # tick threads
         self.sync.timer = self.time_passed_total
@@ -195,17 +195,15 @@ class SimulationPipeline:
         pr = self.context.process
         sim = self.context.mcSimulation
         if pr.device:
-            pr.offload_from_gpu_partial('deposit', blocking=False)
-            pr.offload_from_gpu_partial('precursor', blocking=True)
+            pr.gpu_facade.retrieve_array('deposit', blocking=False)
+            pr.gpu_facade.retrieve_array('precursor', blocking=True)
         flag_resize = pr.cell_filled_routine()  # updating surface on a selected area
 
         if flag_resize:  # update references if the allocated simulation volume was increased
-            if pr.device:
-                pr.gpu_facade.reinitialize_after_resize()
             sim.update_structure(pr.structure)
         else:
             if pr.device:
-                pr.update_structure_to_gpu(blocking=True)
+                pr.gpu_facade.update_structure_partial(cells=pr.last_full_cells, blocking=True)
 
         self.mc_executor.step(y, x)  # run MC sim. and retrieve SE surface flux and update beam matrix
 
