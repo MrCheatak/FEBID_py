@@ -739,7 +739,12 @@ class Process:
         :return:
         """
         self.state.max_neib = val
-        self.structure.define_surface_neighbors(val)
+        self._local_mcca.compute_surface_neighbors(
+            self.structure.deposit,
+            self.structure.surface_bool,
+            n=val,
+            out=self.structure.surface_neighbors_bool
+        )
 
     @property
     def structure(self):

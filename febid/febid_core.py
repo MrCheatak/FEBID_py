@@ -61,7 +61,6 @@ class SimulationManager:
         self.process.max_neib = math.ceil(
             np.max([self.mc_sim.deponat.lambda_escape, self.mc_sim.substrate.lambda_escape])
         )
-        self.context.structure.define_surface_neighbors(self.process.max_neib)
 
         gather_stats = self.context.savingParams.get('gather_stats', False)
         save_snapshot = self.context.savingParams.get('save_snapshot', False)
