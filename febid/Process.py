@@ -17,6 +17,7 @@ from .process.simulation_state import SimulationState
 from .process.data_view_manager import DataViewManager, DepositionView, SurfaceUpdateView
 from .process.physics_engine import PhysicsEngine
 from febid.thermal.temperature_manager import TemperatureManager
+from febid.process.gpu_facade import GPUFacade
 from febid.logging_config import setup_logger
 # Setup logger
 logger = setup_logger(__name__)
@@ -107,8 +108,6 @@ class Process:
 
         self.lock = Lock()
         self.device = device
-        if device:
-            self.knl = GPU(device)
 
         self.displayed_data = None
         self.stats_gathering = None
@@ -125,6 +124,12 @@ class Process:
 
         # Initialize PhysicsEngine (Stage 3 refactoring)
         self.physics_engine = PhysicsEngine(self.state, self.view_manager, self.temp_manager)
+
+        # Initialize GPUFacade (Stage 4 refactoring)
+        if device:
+            self.gpu_facade = GPUFacade(self.state, self.view_manager, self.temp_manager, device)
+        else:
+            self.gpu_facade = None
 
         self._temp_step_cells = self._temp_step / self.state.cell_V
         if n_init == "full":
@@ -144,8 +149,7 @@ class Process:
     # Initialization methods
     def __set_structure(self, structure: Structure):
         self.state.max_z = self.structure.deposit.nonzero()[0].max() + 3
-        if self.device:
-            self.load_kernel()
+        # GPU initialization now handled by GPUFacade (Stage 4)
 
     def __set_constants(self, params):
         # Set precursor parameters (these are stored in self.state.precursor via self.model)
@@ -199,8 +203,13 @@ class Process:
 
         :return: bool
         """
-        # Stage 3: Delegate to PhysicsEngine
-        return self.physics_engine.check_cells_filled()
+        if self.device:
+            # Stage 4: Delegate to GPUFacade
+            # return self.gpu_facade.check_cells_filled()
+            return self.physics_engine.check_cells_filled()
+        else:
+            # Stage 3: Delegate to PhysicsEngine
+            return self.physics_engine.check_cells_filled()
 
     def cell_filled_routine(self):
         """
@@ -353,6 +362,11 @@ class Process:
         # Restore old beam matrix values
         self.state.beam_matrix[:shape_old[0], :shape_old[1], :shape_old[2]] = beam_matrix_old
         self.state.beam_matrix_surface[:shape_old[0], :shape_old[1], :shape_old[2]] = beam_matrix_surface_old
+
+        # Stage 4: Reinitialize GPU buffers after resize
+        if self.device:
+            self.gpu_facade.reinitialize_after_resize()
+
         self.redraw = True
 
         # Basically, none of the slices have to be updated, because they use indexes, not references.
@@ -382,8 +396,13 @@ class Process:
 
         :return:
         """
-        # Stage 3: Delegate to PhysicsEngine (CPU only, no conditionals)
-        self.physics_engine.compute_deposition(self.dt)
+        dt = self.dt
+        if self.device:
+            # Stage 4: Delegate to GPUFacade
+            self.gpu_facade.compute_deposition(dt)
+        else:
+            # Stage 3: Delegate to PhysicsEngine
+            self.physics_engine.compute_deposition(dt)
 
     def precursor_density(self):
         """
@@ -391,72 +410,45 @@ class Process:
 
         :return:
         """
-        # Stage 3: Delegate to PhysicsEngine (CPU only, no conditionals)
-        self.physics_engine.compute_precursor_density(self.dt)
-
-
-
-    # GPU methods
-    def load_kernel(self):
-        """
-        values are transfered to compute device
-        """
-        self.knl.load_structure(self.structure.precursor, self.structure.deposit, self._surface_all,
-                                self.structure.surface_bool, self.structure.semi_surface_bool,
-                                self.structure.ghosts_bool, self._irr_ind_2D)
-
-    def precursor_density_gpu(self, blocking=True):
-        """
-        precursor density, deposition and check cells filled are calculated on compute device at once
-        """
         dt = self.dt
-        D = self.temp_manager.get_D()
-        cell_size = self.state.cell_size
-        F = self.state.precursor.F
-        n0 = self.state.precursor.n0
-        tau = self.temp_manager.get_tau()
-        sigma = self.state.precursor.sigma
-        out = self.knl.precur_den_gpu(0, dt * D / (cell_size ** 2), F * dt, (F * dt * tau + n0 * dt) / (tau * n0),
-                                      sigma * dt, blocking)
+        if self.device:
+            # Stage 4: Delegate to GPUFacade
+            self.gpu_facade.compute_precursor_density(dt)
+        else:
+            # Stage 3: Delegate to PhysicsEngine
+            self.physics_engine.compute_precursor_density(dt)
 
-    def deposition_gpu(self, blocking=True):
-        """
-        precursor density, deposition and check cells filled are calculated on compute device at once
-        """
-        dt = self.dt
-        cell_size = self.state.cell_size
-        sigma = self.state.precursor.sigma
-        V = self.state.precursor.V
-        const = (sigma * V * dt * 1e6 * self.state.deposition_scaling / self.state.cell_V * cell_size ** 2)
-        out = self.knl.deposit_gpu(const, blocking)
-        return out
+
+
+    # GPU methods (Stage 4: Proxy methods that delegate to GPUFacade)
+    # Note: deposition_gpu, precursor_density_gpu, load_kernel are replaced by unified
+    # deposition(), precursor_density() methods that delegate based on self.device
 
     def update_surface_GPU(self):
         """
         Updates all data arrays on compute device
 
-        :return:
+        Stage 4: Delegates to GPUFacade for GPU operations
+
+        :return: True if structure was resized, False otherwise
         """
         # Here we use the beam matrix as an indicator for filled cells to avoid unnecessary data transfer.
         # Conventionally, the deposit array is used for this purpose, but it is float32 that takes longer to copy back, while the beam matrix is int32.
         # The cells are filled in the kernel, so the filled cells are marked with -1 in the beam matrix there.
-        beam_matrix = self.knl.return_beam_matrix()
+        beam_matrix = self.gpu_facade.return_beam_matrix()
         full_cells = np.argwhere(beam_matrix < 0)
         self.filled_cells += full_cells.size
         self.last_full_cells = np.argwhere(beam_matrix.reshape(self.structure.shape) < 0)
-        self.knl.update_surface(full_cells)
+        self.gpu_facade.update_surface(full_cells)
         # self.redraw = True
 
         for cell in full_cells[0]:
-            # z_coord = cell // (self.knl.ydim * self.knl.xdim)
-            # y_coord = (cell - z_coord * self.knl.ydim * self.knl.xdim) // self.knl.xdim
-            # x_coord = cell - (z_coord * self.knl.ydim * self.knl.xdim) - (y_coord * self.knl.xdim)
-            z_coord, y_coord, x_coord = self.knl.index_1d_to_3d(cell)
+            z_coord, y_coord, x_coord = self.gpu_facade.index_1d_to_3d(cell)
 
             if z_coord + 4 > self.state.max_z:
                 self.state.max_z = z_coord + 4
-                self.knl.zdim_max = z_coord + 4
-                self.knl.len_lap = (z_coord + 4 - self.knl.zdim_min) * self.knl.xdim * self.knl.ydim
+                self.gpu_facade.knl.zdim_max = z_coord + 4
+                self.gpu_facade.knl.len_lap = (z_coord + 4 - self.gpu_facade.knl.zdim_min) * self.gpu_facade.knl.xdim * self.gpu_facade.knl.ydim
 
             self.irradiated_area_2D = np.s_[self.state.substrate_height - 1:self.state.max_z, :, :]
 
@@ -464,24 +456,24 @@ class Process:
                 z_min = 0
             else:
                 z_min = z_coord - 3
-            if z_coord + 4 > self.knl.zdim:
-                z_max = self.knl.zdim
+            if z_coord + 4 > self.gpu_facade.knl.zdim:
+                z_max = self.gpu_facade.knl.zdim
             else:
                 z_max = z_coord + 4
             if y_coord - 3 < 0:
                 y_min = 0
             else:
                 y_min = y_coord - 3
-            if y_coord + 4 > self.knl.ydim:
-                y_max = self.knl.ydim
+            if y_coord + 4 > self.gpu_facade.knl.ydim:
+                y_max = self.gpu_facade.knl.ydim
             else:
                 y_max = y_coord + 4
             if x_coord - 3 < 0:
                 x_min = 0
             else:
                 x_min = x_coord - 3
-            if x_coord + 4 > self.knl.xdim:
-                x_max = self.knl.xdim
+            if x_coord + 4 > self.gpu_facade.knl.xdim:
+                x_max = self.gpu_facade.knl.xdim
             else:
                 x_max = x_coord + 4
             n_3d = np.s_[z_min:z_max, y_min:y_max, x_min:x_max]
@@ -518,70 +510,53 @@ class Process:
         """
         Offloads all data from compute device
 
+        Stage 4: Delegates to GPUFacade
+
         :param blocking: wait until the operation is finished
         """
-        data_dict = self.structure.data_dict
-        retrieved = self.knl.get_updated_structure(blocking)
-        names_retrieved  = set(retrieved.keys())
-        names_local= set(data_dict.keys())
-        names = set.intersection(names_retrieved, names_local)
-        if len(names) == 0:
-            raise ValueError('Got no common arrays to offload!')
-        for name in names:
-            try:
-                data_dict[name][...] = retrieved[name]
-            except KeyError as e:
-                print('Got an unknown array name in Structure from GPU kernel.')
-                raise e
-
+        self.gpu_facade.retrieve_structure(blocking=blocking)
 
     def offload_from_gpu_partial(self, data_name, blocking=True):
         """
         Offloads data from compute device
 
+        Stage 4: Delegates to GPUFacade
+
         :param data_name: name of the data to be offloaded
         :param blocking: wait until the operation is finished
         """
-        data_dict = self.structure.data_dict
-        if data_name in data_dict:
-            array = self.knl.get_structure_partial(data_name, blocking).reshape(self.structure.shape)
-            data_dict[data_name][...] = array
-        else:
-            raise ValueError('Got an array name that is not present in Structure.')
+        self.gpu_facade.retrieve_array(data_name, blocking=blocking)
 
     def onload_structure_to_gpu(self, blocking=True):
         """
         Loads structure data to the GPU
 
-        :param blocking: wait until the operation is finished
+        Stage 4: Delegates to GPUFacade
 
+        :param blocking: wait until the operation is finished
         """
-        self.knl.update_structure(self.structure.precursor, self.structure.deposit, self._surface_all,
-                                  self.structure.surface_bool, self.structure.semi_surface_bool,
-                                  self.structure.ghosts_bool, self._irr_ind_2D, blocking=blocking)
+        self.gpu_facade.upload_structure(blocking=blocking)
 
     def update_structure_to_gpu(self, blocking=True):
         """
         Updates structure data on the GPU
 
+        Stage 4: Delegates to GPUFacade
+
         :param blocking: wait until the operation is finished
         """
-        self.knl.update_structure(self.structure.precursor, self.structure.deposit, self._surface_all,
-                                  self.structure.surface_bool, self.structure.semi_surface_bool,
-                                  self.structure.ghosts_bool, self._irr_ind_2D, cells=self.last_full_cells, blocking=blocking)
+        self.gpu_facade.update_structure_partial(cells=self.last_full_cells, blocking=blocking)
 
     def get_data(self):
         """
         Offload data necessary for visualization and statistics from compute device.
+
+        Stage 4: Delegates to GPUFacade
         """
-        necessary_data = []
-        if self.stats_gathering:
-            necessary_data += ['precursor', 'deposit']
-        if self.displayed_data is not None:
-            necessary_data += [self.displayed_data]
-        necessary_data = set(necessary_data)  # removing duplicates
-        if necessary_data:
-            [self.offload_from_gpu_partial(data) for data in necessary_data]
+        self.gpu_facade.retrieve_for_visualization(
+            stats_gathering=self.stats_gathering,
+            displayed_data=self.displayed_data
+        )
 
     ###
     # Physics methods have been moved to PhysicsEngine (Stage 3)
@@ -616,6 +591,10 @@ class Process:
         # Stage 2: Phase 2 update - beam pattern changed
         self.view_manager.update_after_beam_matrix()
         self.n_beam_matrix_points = self.view_manager.n_beam_flux_points
+
+        # Stage 4: Update beam matrix on GPU if using GPU
+        if self.device:
+            self.gpu_facade.set_beam_matrix(beam_matrix)
 
     # Properties
     @property
