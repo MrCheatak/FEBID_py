@@ -337,7 +337,8 @@ class Statistics(MonitoringDaemon):
 
     def looped_func(self, end=False):
         pr = self.observed_obj
-        self.append(pr.t, pr.min_precursor_coverage, pr.dep_vol, pr.max_T, )
+        # Stage 6: Use SimulationStats interface directly
+        self.append(pr.t, pr.stats.min_precursor_coverage, pr.stats.deposited_volume, pr.max_T, )
         self.save_to_file(end)
 
     def __get_writer_args_and_kwargs(self):

@@ -145,18 +145,11 @@ class RenderWindow(QMainWindow):
             time_real = str(datetime.timedelta(seconds=int(time_spent)))
             speed = pr.t / time_spent
             height = (pr.max_z - pr.substrate_height) * pr.structure.cell_size
-            # total_V = int(pr.dep_vol)
-            total_V = int(pr._deposited_vol)
-            delta_t = pr.t - pr._t_prev
-            delta_V = total_V - pr._vol_prev
-            if delta_t == 0 or delta_V == 0:
-                growth_rate = pr.growth_rate
-            else:
-                growth_rate = delta_V / delta_t
-                growth_rate = int(growth_rate)
-                pr.growth_rate = growth_rate
-            pr._t_prev += delta_t
-            pr._vol_prev = total_V
+
+            # Stage 6: Use SimulationStats interface directly (read-only, thread-safe)
+            # SimulationStats handles all rate calculations and volume tracking
+            total_V = int(pr.stats.deposited_volume)
+            growth_rate = int(pr.stats.growth_rate) if pr.stats.growth_rate > 0 else 0
             max_T = pr.structure.temperature.max()
             # Updating displayed text
             time_text = (f'Time: {time_real} \n'  # showing real time passed

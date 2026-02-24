@@ -539,7 +539,7 @@ class Process:
         Get total deposited volume.
 
         NOTE: This is kept for backward compatibility with debug scripts.
-        For new code, use Process.dep_vol (delegates to SimulationStats).
+        For new code, use process.stats.deposited_volume directly.
 
         :return: Deposited volume (nm³)
         """
@@ -635,24 +635,9 @@ class Process:
         Collect statistics of the process.
 
         Stage 6: Delegates to SimulationStats for calculation and caching.
+        Access statistics via process.stats.growth_rate, process.stats.deposited_volume, etc.
         """
         self.stats.gather(t=self.t, filled_cells=self.filled_cells)
-
-    # Backward compatibility: Expose cached statistics as properties
-    @property
-    def growth_rate(self):
-        """Growth rate (cells/second). Cached value from last gather()."""
-        return self.stats.growth_rate
-
-    @property
-    def dep_vol(self):
-        """Deposited volume (nm³). Cached value from last gather()."""
-        return self.stats.deposited_volume
-
-    @property
-    def min_precursor_coverage(self):
-        """Minimum precursor coverage on surface (1/nm²). Cached value from last gather()."""
-        return self.stats.min_precursor_coverage
 
     @property
     def _irradiated_area_2d(self):
