@@ -16,6 +16,7 @@ from .kernel_modules import GPU
 from .process.simulation_state import SimulationState
 from .process.data_view_manager import DataViewManager, DepositionView, SurfaceUpdateView
 from .process.physics_engine import PhysicsEngine
+from .process.simulation_stats import SimulationStats
 from febid.thermal.temperature_manager import TemperatureManager
 from febid.process.gpu_facade import GPUFacade
 from febid.logging_config import setup_logger
@@ -83,21 +84,15 @@ class Process:
 
         # Utility variables
         self.redraw = True  # flag for external functions saying that surface has been updated
-        self._t_prev = 0
-        self._vol_prev = 0
-        self.growth_rate = 0
         self.request_temp_recalc = False
         self._temp_step = 10000  # amount of volume to be deposited before next temperature calculation
         self._temp_step_cells = 0  # number of cells to be filled before next temperature calculation
         self._temp_calc_count = 0  # counting number of times temperature has been calculated
 
-        # Statistics
+        # Statistics (delegated to SimulationStats - Stage 6 refactoring)
         self.filled_cells = 0  # current number of filled cells
-        self.growth_rate = 0  # average growth rate
-        self.dep_vol = 0  # deposited volume
-        self.max_T = 0
+        self.max_T = 0  # max temperature (legacy - TODO: migrate to stats)
         self._stats_frequency = 1e-3  # s, default calculation of stats and offloading from GPU for visualisation
-        self.min_precursor_coverage = 0
         self.x0 = 0
         self.y0 = 0
         self.full_cells = None  # indices of the filled cells, used for beam matrix update
@@ -121,6 +116,16 @@ class Process:
 
         # Initialize TemperatureManager (Stage 5 refactoring)
         self.temp_manager = TemperatureManager(self.state, self.view_manager)
+
+        # Initialize SimulationStats (Stage 6 refactoring)
+        stats_enabled = self.stats_gathering if self.stats_gathering is not None else True
+        stats_freq = getattr(self, '_stats_frequency', 1e-3)
+        self.stats = SimulationStats(
+            state=self.state,
+            temp_manager=self.temp_manager,
+            gathering_enabled=stats_enabled,
+            stats_frequency=stats_freq
+        )
 
         # Initialize PhysicsEngine (Stage 3 refactoring)
         self.physics_engine = PhysicsEngine(self.state, self.view_manager, self.temp_manager)
@@ -616,13 +621,15 @@ class Process:
         """
         Get total deposited volume.
 
-        :return:
+        NOTE: This is kept for backward compatibility with debug scripts.
+        For new code, use Process.dep_vol (delegates to SimulationStats).
+
+        :return: Deposited volume (nm³)
         """
         s = self.view_manager._slice_irradiated_2d
         deposit = self.structure.deposit[s]
         surface = self.structure.surface_bool[s]
-        self.dep_vol = (self.filled_cells + deposit[surface].sum()) * self.state.cell_V
-        return self.dep_vol
+        return (self.filled_cells + deposit[surface].sum()) * self.state.cell_V
 
     @property
     def precursor_min(self):
@@ -694,24 +701,41 @@ class Process:
         """
         self.__forced_dt = False
 
-    #Generate a setter and getter for self.stats_frequency
+    # ========== Statistics Properties (Stage 6: Delegation to SimulationStats) ==========
+
     @property
     def stats_frequency(self):
-        return self._stats_frequency
+        """Time interval between statistics gathering (seconds)."""
+        return self.stats.stats_frequency
 
     @stats_frequency.setter
     def stats_frequency(self, val):
-        self._stats_frequency = val
+        """Set time interval between statistics gathering."""
+        self.stats.stats_frequency = val
 
     def _gather_stats(self):
         """
-        Collect statistics of the process
+        Collect statistics of the process.
 
-        :return:
+        Stage 6: Delegates to SimulationStats for calculation and caching.
         """
-        self.growth_rate = (self.filled_cells - self._vol_prev) / (self.t - self._t_prev)
-        self.dep_vol = self._deposited_vol
-        self.min_precursor_coverage = self.precursor_min
+        self.stats.gather(t=self.t, filled_cells=self.filled_cells)
+
+    # Backward compatibility: Expose cached statistics as properties
+    @property
+    def growth_rate(self):
+        """Growth rate (cells/second). Cached value from last gather()."""
+        return self.stats.growth_rate
+
+    @property
+    def dep_vol(self):
+        """Deposited volume (nm³). Cached value from last gather()."""
+        return self.stats.deposited_volume
+
+    @property
+    def min_precursor_coverage(self):
+        """Minimum precursor coverage on surface (1/nm²). Cached value from last gather()."""
+        return self.stats.min_precursor_coverage
 
     @property
     def _irradiated_area_2d(self):
