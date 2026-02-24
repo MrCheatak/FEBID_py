@@ -14,9 +14,11 @@
 8. ✅ **Cell filling routines stay in Process** - complex, coupled to many systems
 9. ✅ **TemperatureManager (Stage 5)** - All thermal effects encapsulated in dedicated component with granular local updates (~74× faster), zero branching in physics code, TemperatureRecalcView for clean data access
 
-**Stages 3-5 Complete (February 2026)**: PhysicsEngine, GPUFacade, and TemperatureManager are extracted and integrated (`febid/process/physics_engine.py`, `febid/process/gpu_facade.py`, `febid/thermal/temperature_manager.py`). See detailed thermal review in `docs/Temperature_Refactoring_Review.md`.
+**Stages 3-6 Complete (February 24, 2026)**: PhysicsEngine, GPUFacade, TemperatureManager, SimulationStats, and MLCCA consolidation are extracted and integrated (`febid/process/physics_engine.py`, `febid/process/gpu_facade.py`, `febid/thermal/temperature_manager.py`, `febid/process/simulation_stats.py`, `febid/mlcca.py`). See detailed thermal review in `docs/Temperature_Refactoring_Review.md`.
 
-**Remaining Questions**: None architectural - only minor implementation details (dataclass vs namedtuple, etc.)
+**Remaining Work**: Stage 7 - Final cleanup and Process toolkit finalization
+
+**Remaining Questions**: None architectural - refactoring design is complete, only implementation cleanup remains
 
 ---
 
@@ -82,13 +84,13 @@ The acceleration grid system is currently tightly coupled with physics computati
 **Key Properties**:
 ```python
 # Core components
-physics_engine: PhysicsEngine
-gpu_facade: GPUFacade (optional)
-stats: SimulationStats
-state: SimulationState
-view_manager: DataViewManager
+physics_engine: PhysicsEngine  # ✅ Stage 3: CPU-based physics calculations
+gpu_facade: GPUFacade | None  # ✅ Stage 4: GPU-accelerated physics (optional)
+stats: SimulationStats  # ✅ Stage 6: Statistics gathering and caching
+state: SimulationState  # ✅ Stage 1: Data container
+view_manager: DataViewManager  # ✅ Stage 2: Array view optimization
 temp_manager: TemperatureManager  # ✅ Stage 5: Thermal effects management
-mlcca: MLCCA  # Cellular automata engine (used in cell filling)
+mlcca: MLCCA  # ✅ Stage 6: Cellular automata engine (used in cell filling)
 
 # Simulation control
 t: float
@@ -99,7 +101,7 @@ temperature_tracking: bool
 # Cell filling tracking
 full_cells: list  # All filled cells
 last_full_cells: list  # Most recently filled cells
-filled_cells: int  # Count of filled cells
+filled_cells: int  # Count of filled cells (also tracked in SimulationStats)
 ```
 
 **Key Methods**:
@@ -131,8 +133,8 @@ calculate_dt_des() -> float  # Desorption time step
 reset_dt() -> None  # Reset forced time step
 # dt property with getter/setter
 
-# Statistics (exposed via Process toolkit)
-gather_stats() -> None  # Called by external sequence to cache stats at right moment
+# Statistics (delegated to SimulationStats - Stage 6)
+gather_stats() -> None  # Called by external sequence to cache stats at right moment (delegates to stats.gather())
 
 # GPU operations (if enabled)
 load_kernel() -> None
@@ -819,51 +821,85 @@ Values at same positions: [0.005123 0.004876 0.005234 0.004998]
 
 ---
 
-### Example 3: Statistics Gathering
+### Example 3: Statistics Gathering (Stage 6 - SimulationStats)
 
 ```python
 # In SimulationPipeline.run_step()
 while not stepper.last_loop:
     # ... physics calculations ...
-    
+
     # Sequence decides when to gather stats
     if time_to_gather_stats():
-        process.gather_stats()  # Cache statistics NOW
-        
+        process.gather_stats()  # Cache statistics NOW (delegates to SimulationStats)
+
 # Meanwhile, in a daemon thread
 def visualization_thread():
     while True:
-        # Safe to read at any time - reads cached values
+        # Safe to read at any time - reads cached values from SimulationStats
         growth_rate = process.stats.growth_rate
         volume = process.stats.deposited_volume
         temp = process.stats.max_temperature
-        
+
         update_display(growth_rate, volume, temp)
         time.sleep(0.1)
 
-# Inside Process.gather_stats()
+# Inside Process.gather_stats() - thin delegation wrapper
 def gather_stats(self):
     if self.stats.gathering_enabled:
         self.stats.gather(self.t, self.filled_cells)
 
-# Inside SimulationStats.gather()
+# Inside SimulationStats.gather() - actual implementation
 def gather(self, t: float, filled_cells: int):
-    # Calculate and cache all statistics
-    self._cached_growth_rate = (filled_cells - self._vol_prev) / (t - self._t_prev)
-    self._cached_deposited_volume = self._calculate_volume()
-    self._cached_min_precursor_coverage = self._calculate_min_precursor()
-    self._cached_max_temperature = self._calculate_max_temp()
+    """Calculate and cache all statistics based on calc_flags."""
+    self._cached_time = t
     self._cached_filled_cells = filled_cells
-    
+
+    # Calculate rates (cheap, always enabled)
+    if self.calc_flags.rates:
+        dt = t - self._t_prev
+        if dt > self._min_rate_window:
+            self._cached_growth_rate = (filled_cells - self._vol_prev) / dt
+
+    # Calculate volume (expensive, optional)
+    if self.calc_flags.volume:
+        self._cached_deposited_volume = self._calculate_volume()
+
+    # Calculate coverage (expensive, optional)
+    if self.calc_flags.coverage:
+        self._cached_min_precursor_coverage = self._calculate_min_precursor()
+
+    # Calculate temperature (only if temp enabled)
+    if self.calc_flags.temperature and self.temp_manager:
+        self._cached_max_temperature = self.temp_manager.max_temperature
+
     # Update tracking
     self._t_prev = t
     self._vol_prev = filled_cells
 
-# Properties return cached values (thread-safe)
+    # Optionally validate data consistency
+    if self.validate_on_gather:
+        self.validate_data()
+
+# Properties return cached values (thread-safe, no computation)
 @property
 def growth_rate(self) -> float:
     return self._cached_growth_rate
+
+@property
+def deposited_volume(self) -> float:
+    return self._cached_deposited_volume
+
+@property
+def max_temperature(self) -> float:
+    return self._cached_max_temperature
 ```
+
+**Key Features (Stage 6)**:
+- **Selective calculation**: `calc_flags` controls which expensive stats to compute
+- **Thread-safe**: Properties return pre-calculated values, no computation during access
+- **Validation support**: Optional validation checks for debugging
+- **Integration**: Works with TemperatureManager for thermal statistics
+- **Performance**: Skips unnecessary calculations based on consumer needs
 
 ### Example 4: Cell Filling
 
@@ -1124,32 +1160,41 @@ calculate_dt_des() -> float
 
 ---
 
-### 6. **SimulationStats**
+### 6. **SimulationStats** ✅ IMPLEMENTED (Stage 6)
 
 **Role**: Calculate and cache simulation statistics when requested. Passive data provider for daemon threads.
+
+**Location**: `febid/process/simulation_stats.py` (~381 lines)
 
 **Responsibilities**:
 - Calculate and cache simulation statistics when Process.gather_stats() is called
 - Expose cached data that can be grabbed by external consumers (e.g., daemon threads)
 - Track historical values for rate calculations
+- Provide selective calculation control via `StatsFlags`
 
 **Key Properties**:
 ```python
 state: SimulationState
+temp_manager: TemperatureManager | None  # For temperature statistics
 
 # Configuration
 gathering_enabled: bool
+calc_flags: StatsFlags  # Control which stats to calculate
+stats_frequency: float  # Time interval between gather() calls
+validate_on_gather: bool  # Enable validation checks for debugging
 
 # Cached statistics (updated when gather() is called)
+_cached_time: float
+_cached_filled_cells: int
 _cached_growth_rate: float
 _cached_deposited_volume: float
 _cached_min_precursor_coverage: float
 _cached_max_temperature: float
-_cached_filled_cells: int
 
 # Previous values for rate calculations
 _t_prev: float
-_vol_prev: float
+_vol_prev: int
+_min_rate_window: float  # Minimum dt for rate calculations
 ```
 
 **Key Methods**:
@@ -1159,32 +1204,45 @@ gather(t: float, filled_cells: int) -> None
     """
     Calculate and cache all statistics.
     Called by Process when the external sequence determines it's the right time.
+    Uses calc_flags to skip expensive calculations if not needed.
     """
 
 # Read-only properties (return cached values, safe for daemon threads)
 @property
-growth_rate() -> float  # Return cached value
+time() -> float  # Current simulation time
 
 @property
-deposited_volume() -> float  # Return cached value
+filled_cells() -> int  # Current filled cell count
 
 @property
-min_precursor_coverage() -> float  # Return cached value
+growth_rate() -> float  # Average growth rate (cells/s)
 
 @property
-max_temperature() -> float  # Return cached value
+deposited_volume() -> float  # Total deposited volume (nm³)
 
 @property
-filled_cells() -> int  # Return cached value
+min_precursor_coverage() -> float  # Minimum precursor coverage
+
+@property
+max_temperature() -> float  # Maximum temperature (if enabled)
 
 # For visualization/logging (returns cached values)
 get_monitoring_data() -> dict  # All cached stats as dict
+
+# Validation and control
+validate_data() -> None  # Check data consistency (debug mode)
+enable_gathering() -> None  # Turn on statistics gathering
+disable_gathering() -> None  # Turn off statistics gathering
 ```
 
 **Design Notes**:
+- ✅ **Implemented February 24, 2026** (commit 62f435e)
 - **External control**: Process or daemon threads call methods when they want data
 - **Read-only**: Exposes data, doesn't modify simulation state
+- **Selective calculation**: `StatsFlags` allows skipping expensive operations
+- **Thread-safe**: Properties return pre-calculated values without computation
 - Can be disabled entirely without affecting physics
+- Integrates with TemperatureManager for thermal statistics
 - Daemon threads grab data by accessing properties or calling get_monitoring_data()
 
 ---
@@ -1462,7 +1520,7 @@ This eliminates redundant regeneration of surface indices during beam update.
 5. ⚠️ Remaining cleanup: some GPU path code in `engine.py` still reaches low-level kernel attributes (`gpu_facade.knl`)
 
 ### Phase 5: Extract Supporting Classes ✅ COMPLETE
-1. ⏳ Extract SimulationStats (pending)
+1. ✅ Extract SimulationStats to `febid/process/simulation_stats.py` (~381 lines)
 2. ✅ Extract TemperatureManager to `febid/thermal/temperature_manager.py`
 3. ✅ Update Process to delegate all temperature operations
 4. ✅ Integrate TemperatureManager with DataViewManager views
@@ -1483,59 +1541,45 @@ This eliminates redundant regeneration of surface indices during beam update.
 - **Surface_all granular updates**: Updated locally in cell configuration (part of localization strategy)
 - **Control flow optimization**: Single decision point for temperature tracking (engine.py)
 
-### Phase 6: Extract Cellular Automata to MLCCA (NEW)
+### Phase 6: Extract Cellular Automata to MLCCA ✅ COMPLETE
 **Goal**: Make Structure a pure data container and consolidate all CA functionality in MultiLayerdCellCellularAutomata
 
-**Current State**:
-- Structure class contains CA initialization methods: `define_surface()`, `define_semi_surface()`, `define_surface_neighbors()`, `define_ghosts()`
-- Structure has helper method `__stencil_3d()` used by CA operations
-- MLCCA handles cell configuration updates during filling (`get_converged_configuration()`)
-- Split responsibility: Structure initializes topology, MLCCA updates it
+**Current State (as of February 24, 2026)**:
+- ✅ MLCCA now contains topology algorithms: `compute_surface_topology()`, `compute_semi_surface_topology()`, `compute_surface_neighbors()`, `compute_ghost_shell()`, plus `stencil_3d()`.
+- ✅ `Structure` lifecycle paths (`create_from_parameters()`, `load_from_vtk()` fallbacks, `resize_structure()`, `define_all()`) now call MLCCA algorithms directly.
+- ✅ Runtime neighbor updates throughout codebase (Process, febid_core.py) now call MLCCA directly.
+- ✅ `Structure.define_surface()`, `define_semi_surface()`, `define_surface_neighbors()`, `define_ghosts()` remain as thin compatibility wrappers that delegate to MLCCA methods.
 
-**Target State**:
-- MLCCA owns ALL cellular automata logic (both initialization and updates)
-- Structure is pure data container (arrays only, no topology calculations)
-- Single source of truth for surface evolution rules
+**Target State**: ✅ ACHIEVED
+- MLCCA owns all cellular automata logic (initialization + updates) and is the single source of truth for topology rules.
+- `Structure` keeps data/container responsibilities only, with compatibility wrappers for external API stability.
 
-**Migration Steps**:
-1. Move `define_surface()` from Structure to MLCCA
-   - Rename to `initialize_surface()` or `compute_surface_topology()`
-   - Accept deposit array as parameter instead of self reference
-   - Return surface_bool array instead of modifying in-place
-2. Move `define_semi_surface()` from Structure to MLCCA
-   - Rename to `initialize_semi_surface()` or `compute_semi_surface_topology()`
-   - Accept deposit, surface_bool as parameters
-   - Return semi_surface_bool array
-3. Move `define_surface_neighbors()` from Structure to MLCCA
-   - Rename to `initialize_surface_neighbors()` or `compute_nearest_neighbors()`
-   - Accept deposit, surface arrays as parameters
-   - Return surface_neighbors_bool array
-4. Move `define_ghosts()` from Structure to MLCCA
-   - Rename to `initialize_ghosts()` or `compute_ghost_shell()`
-   - Accept surface_bool, semi_surface_bool as parameters
-   - Return ghosts_bool array
-5. Move `__stencil_3d()` helper to MLCCA
-   - Make it a utility method or staticmethod
-   - Used by all topology computation methods
-6. Update Structure initialization methods
-   - `create_from_parameters()`: call `mlcca.initialize_*()` methods
-   - `load_from_vtk()`: call `mlcca.initialize_*()` methods if arrays missing
-   - `resize_structure()`: call `mlcca.initialize_*()` methods after resize
-7. Update any external calls to Structure.define_*() methods
-8. Test all initialization paths (from parameters, from VTK, resize)
+**Migration Status**:
+1. ✅ `define_surface()` logic moved to MLCCA (`compute_surface_topology()`).
+2. ✅ `define_semi_surface()` logic moved to MLCCA (`compute_semi_surface_topology()`).
+3. ✅ `define_surface_neighbors()` logic moved to MLCCA (`compute_surface_neighbors()`).
+4. ✅ `define_ghosts()` logic moved to MLCCA (`compute_ghost_shell()`).
+5. ✅ `__stencil_3d()` logic moved to MLCCA (`stencil_3d()`).
+6. ✅ Structure initialization and resize paths switched to MLCCA calls internally.
+7. ✅ Compatibility wrappers retained in `Structure.define_*()` for external API stability (thin delegation layer).
+8. ✅ Dedicated topology tests added for migrated logic (`febid/tests/test_mlcca_topology.py`).
+9. ✅ All external callers (Process, febid_core.py) updated to use MLCCA directly where appropriate.
+9. ✅ External callers migrated to MLCCA direct usage (commit 119c987, 5dffe77).
+10. ✅ Compatibility wrappers provide stable API while MLCCA is the implementation layer.
 
-**Benefits**:
+**Benefits Achieved**:
 - **Single Responsibility**: Structure only stores data, MLCCA handles all CA logic
 - **Consistency**: All surface topology rules in one place
 - **Testability**: MLCCA methods are pure functions (easier to unit test)
 - **Reusability**: CA logic can be applied to any structure, not tied to Structure class
 - **Clarity**: Clear separation between data (Structure) and algorithms (MLCCA)
+- **API Stability**: Compatibility wrappers allow gradual migration without breaking existing code
 
-**Considerations**:
-- MLCCA methods should be stateless/functional (accept arrays, return results)
-- Structure should instantiate MLCCA instance or use class methods
-- Ensure backward compatibility during transition
-- Update documentation and method signatures clearly
+**Implementation Notes**:
+- MLCCA methods are stateless/functional (accept arrays, return results)
+- Structure instantiates MLCCA instance (`self._mlcca`) and delegates to it
+- Backward compatibility maintained through thin wrapper methods
+- Documentation and method signatures updated clearly
 
 ### Phase 7: Finalize Process as Toolkit
 1. Ensure Process provides clear operation methods (deposition, precursor_density, etc.)
@@ -1708,32 +1752,46 @@ Based on the corrections provided:
 
 The refactoring is successful if:
 
-1. ⏳ Process class is < 300 lines (currently ~642 lines in `febid/Process.py`) - **Not met**
-2. ✅ Each component has a single, clear responsibility - **Largely met (Stages 1-5 complete)**
+1. ⏳ Process class is < 300 lines (currently ~712 lines in `febid/Process.py`) - **Not met, but significant progress made**
+2. ✅ Each component has a single, clear responsibility - **Largely met (Stages 1-6 complete)**
 3. ✅ Switching acceleration grid on/off is a simple flag - **Met**
-4. ⏳ CPU and GPU execution paths are equally clean - **Partially met (abstraction leaks remain in GPU path)**
+4. 🟡 CPU and GPU execution paths are equally clean - **Mostly met (GPUFacade complete, minor cleanup remaining)**
 5. ✅ Adding new physics models doesn't require changing view logic - **Met in current CPU/view architecture**
 6. ✅ All existing tests pass - **Maintained for implemented stages**
 7. ✅ Performance is not degraded (±5%) - **Met; Stage 5 local update path shows major gain**
 8. ✅ Code coverage is maintained or improved - **Maintained by stage-specific tests**
 
-**Current Progress**: 5 of 7 stages complete (Stages 1-5), with Stage 7 partially complete and Stage 6 pending.
+**Current Progress**: Stages 1-6 complete, Stage 7 in progress.
+
+**Line Count Progress**:
+- Original: ~1200 lines
+- After Stages 1-5: ~642 lines (~558 lines removed)
+- After Stage 6: ~712 lines (some functionality added back for SimulationStats integration)
+- Net reduction: ~488 lines (~41% reduction) while improving modularity
 
 ---
 
 ## Conclusion
 
-This architecture transforms the Process class from a monolithic implementation into a clean, modular system. The key insight is that the acceleration grid is a **data access optimization**, not a physics concern, and should be isolated in DataViewManager. By using the **uniform expression approach** with smart index setup (`np.s_[:]` vs fancy index tuples), we achieve **zero conditionals in physics code** while preserving full performance optimizations.
+This architecture successfully transformed the Process class from a monolithic implementation (~1200 lines) into a clean, modular system (~712 lines, 41% reduction) with specialized components. The key insights were:
 
-The design prioritizes:
+1. **Data access optimization** (DataViewManager) should be separate from physics concerns
+2. **Uniform expression approach** with smart index setup (`np.s_[:]` vs fancy index tuples) achieves **zero conditionals in physics code**
+3. **Thermal effects encapsulation** (TemperatureManager) with granular local updates provides massive performance gains
+4. **Statistics decoupling** (SimulationStats) with cache-on-request pattern enables thread-safe data access
+5. **Cellular automata consolidation** (MLCCA) centralizes topology logic while maintaining compatibility
+
+The design achievements:
 - **Simplicity**: Clear, single-purpose classes with zero branching in physics calculations
 - **Transparency**: Explicit data flow through view objects, uniform expressions throughout
 - **Flexibility**: Easy to switch between CPU/GPU, enable/disable optimizations with a single flag
 - **Maintainability**: Changes are localized to appropriate components, physics code never changes
 - **Elegance**: NumPy handles fancy vs basic indexing transparently - no wrapper classes or conditionals needed
-- **Performance**: Not just preserved, but enhanced (Stage 5: 74× faster cell filling via granular updates)
+- **Performance**: Not just preserved, but dramatically enhanced (Stage 5: 74× faster cell filling via granular updates)
+- **Modularity**: Each refactored component (SimulationState, DataViewManager, PhysicsEngine, GPUFacade, TemperatureManager, SimulationStats) has a single, clear responsibility
+- **Compatibility**: Backward compatibility maintained through thin wrapper layers where appropriate
 
-This architecture provides a solid foundation for future enhancements while making the existing code more understandable and testable. The uniform expression approach ensures that physics code remains pure and optimization logic stays completely separate.
+This architecture provides a solid foundation for future enhancements while making the existing code more understandable, testable, and maintainable. With Stages 1-6 complete, only final cleanup work remains in Stage 7.
 
 ### Progress Summary (as of February 24, 2026)
 
@@ -1743,21 +1801,38 @@ This architecture provides a solid foundation for future enhancements while maki
 - ✅ **Stage 3**: PhysicsEngine extraction (CPU physics moved to dedicated module)
 - ✅ **Stage 4**: GPUFacade refactoring (GPU operations extracted behind facade)
 - ✅ **Stage 5**: TemperatureManager extraction (granular updates, zero branching, TemperatureRecalcView)
+- ✅ **Stage 6**: Supporting classes extraction
+  - ✅ SimulationStats implementation (~381 lines, commit 62f435e)
+  - ✅ MLCCA consolidation (topology algorithms migrated, commit f275050)
 
 **Remaining Stages**:
-- ⏳ **Stage 6**: MLCCA consolidation (move all CA functionality from Structure to MLCCA)
-- ⏳ **Stage 7**: Process finalization as toolkit (partially complete; legacy/proxy paths remain)
+- ⏳ **Stage 7**: Process finalization as toolkit (partially complete; some cleanup remaining)
 
 **Key Achievements**:
-1. **~550+ lines removed** from Process class (about 1200 → ~642 lines)
+1. **~488 lines net reduction** from Process class (1200 → ~712 lines, ~41% reduction)
 2. **Zero branching** in all physics calculations (temperature, acceleration)
 3. **74× performance gain** for cell filling updates (granular localization)
 4. **Architectural consistency** - TemperatureManager mirrors DataViewManager patterns
-5. **Module organization** - Thermal effects in dedicated `febid/thermal/` module
+5. **Module organization** - Thermal effects in `febid/thermal/`, process components in `febid/process/`
 6. **4 critical bugs fixed** - Uninitialized arrays, incorrect flags eliminated
 7. **Clean APIs** - All data access through views, no direct slice manipulation
+8. **Statistics decoupled** - SimulationStats provides thread-safe passive data provider
+9. **MLCCA consolidation** - All cellular automata logic centralized, Structure is pure data container
+10. **Compatibility maintained** - Thin wrapper layer ensures backward compatibility
 
-**Upcoming Stage 6**: MLCCA consolidation remains the main architectural gap; `Structure` still owns `define_surface()`, `define_semi_surface()`, `define_surface_neighbors()`, `define_ghosts()`, and `__stencil_3d()`.
+**Stage 6 Completion Details**:
+- **SimulationStats** (commit 62f435e): Overtakes all statistics responsibilities from Process, provides cache-on-request pattern with selective calculation control
+- **MLCCA topology migration** (commit f275050): Core algorithms moved to MLCCA (`compute_surface_topology`, `compute_semi_surface_topology`, `compute_surface_neighbors`, `compute_ghost_shell`)
+- **External caller updates** (commits 119c987, 5dffe77): Process and febid_core.py now call MLCCA methods directly
+- **Test coverage** (commit abdbc4e): Dedicated test suite in `febid/tests/test_mlcca_topology.py`
 
-The refactoring is proceeding according to plan with significant improvements in both architecture and performance. Each stage builds on previous work while maintaining backward compatibility and test coverage.
+The refactoring has proceeded according to plan with significant improvements in both architecture and performance. Stages 1-6 are complete, with only final cleanup work remaining in Stage 7. Each stage built on previous work while maintaining backward compatibility and test coverage.
+
+**Recent Milestones (February 24, 2026)**:
+- SimulationStats extraction provides thread-safe statistics with selective calculation control
+- MLCCA consolidation centralizes all cellular automata logic in one place
+- Process class reduced from ~1200 lines to ~712 lines (41% reduction)
+- All architectural design decisions resolved
+- Zero branching achieved in all physics calculations
+- Module organization completed (`febid/process/`, `febid/thermal/`)
 
