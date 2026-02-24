@@ -407,13 +407,36 @@ class GPUFacade:
         # Reload beam matrix with new size
         self.set_beam_matrix(self.state.beam_matrix)
 
-    def finish_queue(self) -> None:
+    def synchronize(self) -> None:
         """
         Wait for all GPU operations to finish.
 
         Useful for synchronization before retrieving data or updating the surface.
         """
         self.knl.queue.finish()
+
+    def get_dimensions(self) -> tuple:
+        """
+        Get GPU grid dimensions.
+
+        Returns
+        -------
+        tuple
+            (zdim, ydim, xdim) dimensions of the GPU grid
+        """
+        return (self.knl.zdim, self.knl.ydim, self.knl.xdim)
+
+    def set_zdim_max(self, zdim_max: int) -> None:
+        """
+        Set maximum z dimension and update dependent GPU parameters.
+
+        Parameters
+        ----------
+        zdim_max : int
+            New maximum z dimension
+        """
+        self.knl.zdim_max = zdim_max
+        self.knl.len_lap = (zdim_max - self.knl.zdim_min) * self.knl.xdim * self.knl.ydim
 
     # INTERNAL HELPER METHODS
     def _get_irradiated_indices(self) -> np.ndarray:

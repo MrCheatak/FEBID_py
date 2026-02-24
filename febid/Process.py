@@ -399,7 +399,7 @@ class Process:
         dt = self.dt
         if self.device:
             # Stage 4: Delegate to GPUFacade
-            self.gpu_facade.finish_queue()
+            self.gpu_facade.synchronize()
             self.gpu_facade.compute_deposition(dt)
         else:
             # Stage 3: Delegate to PhysicsEngine
@@ -448,33 +448,36 @@ class Process:
 
             if z_coord + 4 > self.state.max_z:
                 self.state.max_z = z_coord + 4
-                self.gpu_facade.knl.zdim_max = z_coord + 4
-                self.gpu_facade.knl.len_lap = (z_coord + 4 - self.gpu_facade.knl.zdim_min) * self.gpu_facade.knl.xdim * self.gpu_facade.knl.ydim
+                # Stage 4: Use accessor method instead of direct access
+                self.gpu_facade.set_zdim_max(z_coord + 4)
 
             self.irradiated_area_2D = np.s_[self.state.substrate_height - 1:self.state.max_z, :, :]
+
+            # Stage 4: Use accessor method to get dimensions
+            zdim, ydim, xdim = self.gpu_facade.get_dimensions()
 
             if z_coord - 3 < 0:
                 z_min = 0
             else:
                 z_min = z_coord - 3
-            if z_coord + 4 > self.gpu_facade.knl.zdim:
-                z_max = self.gpu_facade.knl.zdim
+            if z_coord + 4 > zdim:
+                z_max = zdim
             else:
                 z_max = z_coord + 4
             if y_coord - 3 < 0:
                 y_min = 0
             else:
                 y_min = y_coord - 3
-            if y_coord + 4 > self.gpu_facade.knl.ydim:
-                y_max = self.gpu_facade.knl.ydim
+            if y_coord + 4 > ydim:
+                y_max = ydim
             else:
                 y_max = y_coord + 4
             if x_coord - 3 < 0:
                 x_min = 0
             else:
                 x_min = x_coord - 3
-            if x_coord + 4 > self.gpu_facade.knl.xdim:
-                x_max = self.gpu_facade.knl.xdim
+            if x_coord + 4 > xdim:
+                x_max = xdim
             else:
                 x_max = x_coord + 4
             n_3d = np.s_[z_min:z_max, y_min:y_max, x_min:x_max]
@@ -488,7 +491,7 @@ class Process:
             arr_size = len(ind_arr[0])
             ind_arr = np.array(ind_arr).reshape(-1).astype(np.int32)
             # start = timeit.default_timer()
-            deposit, surface = self.knl.return_slice(ind_arr, arr_size)
+            deposit, surface = self.gpu_facade.return_slice(ind_arr, arr_size)
             # out = timeit.default_timer() - start
             deposit = deposit.reshape(z_max - z_min, y_max - y_min, x_max - x_min)
             surface = surface.reshape(z_max - z_min, y_max - y_min, x_max - x_min)
