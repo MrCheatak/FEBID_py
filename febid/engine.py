@@ -104,7 +104,7 @@ class TimeStepper:
 
         # trigger stats (Stage 6: delegates to SimulationStats)
         if self.pr.stats_gathering and self.time_passed_total % self.pr.stats_frequency < self._dt * 1.5:
-            self.pr.stats.gather(t=self.pr.t, filled_cells=self.pr.filled_cells)
+            self.pr.gather_stats()
 
         # tick threads
         self.sync.timer = self.time_passed_total

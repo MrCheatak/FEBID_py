@@ -58,6 +58,10 @@ class GPUFacade:
 
         # Track cell filling flag
         self._filled_flag = False
+        self._flag_pending = False
+        self._last_dep_event = None
+        self._last_prec_event = None
+        self._tail_event = None
 
     # PUBLIC INTERFACE (mirrors PhysicsEngine)
     def compute_deposition(self, dt: float) -> None:
@@ -66,7 +70,7 @@ class GPUFacade:
 
         Mirrors PhysicsEngine.compute_deposition() interface.
 
-        This operation is BLOCKING because we need the filled cell flag immediately after to update the surface.
+        This operation is non-blocking. Filled-cell flag is read lazily in check_cells_filled().
 
         Parameters
         ----------
@@ -78,12 +82,12 @@ class GPUFacade:
                  self.state.deposition_scaling / self.state.cell_V *
                  self.state.cell_size ** 2)
 
-        # Execute GPU kernel
-        flag = self.knl.deposit_gpu(const, blocking=True)
-
-        # Note: Results stay on GPU until explicit retrieval
-        # Filled cell flag is returned for immediate checking
-        self._filled_flag = bool(flag)
+        # Launch deposition and chain after previous compute tail if present
+        wait_for = [self._tail_event] if self._tail_event is not None else None
+        blocking = self.knl.timing_enabled()
+        self._last_dep_event = self.knl.deposit_gpu(const, blocking=blocking, wait_for=wait_for)
+        self._tail_event = self._last_dep_event
+        self._flag_pending = True
 
     def compute_precursor_density(self, dt: float) -> None:
         """
@@ -103,7 +107,9 @@ class GPUFacade:
         tau = self.temp_manager.get_tau()
 
         # Execute GPU RK4 kernel sequence (includes FTCS diffusion at each RK stage)
-        self.knl.precur_den_gpu(
+        wait_for = [self._last_dep_event] if self._last_dep_event is not None else ([self._tail_event] if self._tail_event is not None else None)
+        blocking = self.knl.timing_enabled()
+        self._last_prec_event = self.knl.precur_den_gpu(
             dt=dt,
             D=D,
             F=self.state.precursor.F,
@@ -111,8 +117,10 @@ class GPUFacade:
             tau=tau,
             sigma=self.state.precursor.sigma,
             cell_size=self.state.cell_size,
-            blocking=True
+            blocking=blocking,
+            wait_for=wait_for
         )
+        self._tail_event = self._last_prec_event
 
     def check_cells_filled(self) -> bool:
         """
@@ -125,7 +133,10 @@ class GPUFacade:
         bool
             True if at least one cell is filled (deposit >= 1.0)
         """
-        # GPU kernel already set flag during deposition
+        if self._flag_pending:
+            wait_for = [self._tail_event] if self._tail_event is not None else None
+            self._filled_flag = bool(self.knl.read_flag(wait_for=wait_for, clear=True, blocking=True))
+            self._flag_pending = False
         return self._filled_flag
 
     def equilibrate(self, dt: float, max_it: int = 10000, eps: float = 1e-8) -> int:
@@ -405,6 +416,8 @@ class GPUFacade:
         Useful for synchronization before retrieving data or updating the surface.
         """
         self.knl.queue.finish()
+        self._tail_event = None
+
 
     def get_dimensions(self) -> tuple:
         """

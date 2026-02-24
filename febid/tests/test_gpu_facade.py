@@ -684,7 +684,6 @@ class TestGPUFacade:
         if use_gpu:
             # Enable stats gathering flag so get_data() retrieves necessary arrays
             process.stats_gathering = True
-            process.get_data()  # Retrieve precursor and deposit arrays
             process.gpu_facade.retrieve_for_visualization(
                 stats_gathering=process.stats_gathering,
                 displayed_data=process.displayed_data

@@ -414,7 +414,6 @@ class Process:
         dt = self.dt
         if self.device:
             # Stage 4: Delegate to GPUFacade
-            self.gpu_facade.synchronize()
             self.gpu_facade.compute_deposition(dt)
         else:
             # Stage 3: Delegate to PhysicsEngine
@@ -582,12 +581,11 @@ class Process:
         """Set time interval between statistics gathering."""
         self.stats.stats_frequency = val
 
-    def _gather_stats(self):
+    def gather_stats(self):
         """
         Collect statistics of the process.
 
-        Stage 6: Delegates to SimulationStats for calculation and caching.
-        Access statistics via process.stats.growth_rate, process.stats.deposited_volume, etc.
+        Delegates to SimulationStats for calculation and caching.
         """
         self.stats.gather(t=self.t, filled_cells=self.filled_cells)
 
