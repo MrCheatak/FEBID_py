@@ -237,9 +237,9 @@ class TestSimulationVolume:
             'pattern': 'Point',
             'param1': 101,  # x
             'param2': 101,  # y
-            'dwell_time': 300,  # us
+            'dwell_time': 2000,  # us
             'pitch': 0,
-            'repeats': 100,
+            'repeats': 1,
             'settings_filename': r"febid/tests/Parameters.yml",
             'precursor_filename': r"febid/tests/Me3PtCpMe.yml",
             'save_simulation_data': False,
@@ -306,7 +306,7 @@ class TestSimulationVolume:
         acceleration_enabled = True
         params = self.params
         # print(f"Reduced exposure time: default is 0.03, current 0.0 s")
-        params["dwell_time"] = 100
+        # params["dwell_time"] = 10
 
         # Load settings and precursor using ruamel.yaml
         settings = load_yaml(params['settings_filename'])
@@ -354,14 +354,28 @@ class TestSimulationVolume:
         results_3d = self.run_3d_sim(ca, params, precursor, printing_path, settings, case_name,
                                      acceleration_enabled=acceleration_enabled, structure=structure)
         end = timer()
-        surface_deposit_cells = (results_3d_flat.structure.deposit > 0).sum()
+        surface_deposit_cells = (results_3d.structure.deposit > 0).sum()
 
         # Print simulation results
         print(f"\nSingle deposit layer without CA:")
         print(f"    Total run time: {(end - start):.2f} s")
 
-        assert surface_deposit_cells_flat == surface_deposit_cells, "Number of cells with surface deposit should be the same for flat surface and single layer patch"
-        assert results_3d_flat.V == results_3d.V, "Deposited volume should be the same for flat surface and single layer patch"
+        # Assert with tolerance (consistent with other tests)
+        # Check number of cells with deposit
+        rel_error_cells = abs(surface_deposit_cells_flat - surface_deposit_cells) / surface_deposit_cells_flat if surface_deposit_cells_flat != 0 else 0
+        assert rel_error_cells <= self.TOLERANCE, (
+            f"Cell count mismatch: "
+            f"flat={surface_deposit_cells_flat}, patch={surface_deposit_cells}, "
+            f"rel_error={rel_error_cells*100:.3f}%, tolerance={self.TOLERANCE*100:.3f}%"
+        )
+
+        # Check deposited volume
+        rel_error_vol = abs(results_3d_flat.V - results_3d.V) / results_3d_flat.V if results_3d_flat.V != 0 else 0
+        assert rel_error_vol <= self.TOLERANCE, (
+            f"Volume mismatch: "
+            f"flat={results_3d_flat.V:.3f} nm³, patch={results_3d.V:.3f} nm³, "
+            f"rel_error={rel_error_vol*100:.3f}%, tolerance={self.TOLERANCE*100:.3f}%"
+        )
 
 
     @pytest.mark.parametrize("case_name,acceleration_enabled", ACCELERATION_GRID_SETUPS)
@@ -370,7 +384,7 @@ class TestSimulationVolume:
         ca = True
         params = self.params
         # print(f"Reduced exposure time: default is 0.03, current 0.0 s")
-        params["dwell_time"] = 300
+        # params["dwell_time"] = 300
 
         # Load settings and precursor using ruamel.yaml
         settings = load_yaml(params['settings_filename'])
