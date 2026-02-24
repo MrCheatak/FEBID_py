@@ -227,6 +227,8 @@ def print_step_GPU(y, x, dwell_time, pr: Process, sim: MC_Simulation, t, run_fla
     """
     Run deposition on a single spot using GPU.
 
+    Stage 4: Updated to use unified Process interface (delegates to GPUFacade internally)
+
     :param x: spot x-coordinate
     :param y: spot y-coordinate
     :param dwell_time: time of the exposure
@@ -245,12 +247,13 @@ def print_step_GPU(y, x, dwell_time, pr: Process, sim: MC_Simulation, t, run_fla
         if time_passed + pr.dt > dwell_time:  # stepping only for remaining dwell time to avoid accumulating of excess deposit
             pr.dt = dwell_time - time_passed
             flag_dt = False
-        pr.knl.queue.finish() # acts as a memory barrier that the precursor coverage operation is done
-        full = pr.deposition_gpu(blocking=True)  # depositing on a selected area
+        pr.gpu_facade.knl.queue.finish() # acts as a memory barrier that the precursor coverage operation is done
+        pr.deposition()  # Stage 4: unified interface delegates to GPUFacade
+        full = pr.check_cells_filled()  # Stage 4: unified interface
         if full:
             # cell_filling_routine_GPU(y, x, pr, sim) # cell configuration update done on on GPU
             cell_filling_routine_CPU(y, x, pr, sim)  # cell configuration update done on CPU
-        pr.precursor_density_gpu(blocking=False)
+        pr.precursor_density()  # Stage 4: unified interface delegates to GPUFacade
         pr.t += pr.dt * pr.deposition_scaling
         time_passed += pr.dt
         run_flag.timer = pr.t
@@ -277,6 +280,8 @@ def cell_filling_routine_GPU(y, x, pr: Process, sim: MC_Simulation):
     Run the full set of operations on a filled cell event.
     Cell configuration update is performed on the GPU.
 
+    Stage 4: Updated to use Process proxy methods that delegate to GPUFacade
+
     :param y: spot y-coordinate
     :param x: spot x-coordinate
     :param pr: Process object
@@ -291,20 +296,20 @@ def cell_filling_routine_GPU(y, x, pr: Process, sim: MC_Simulation):
     sim.update_structure(pr.structure)
     start = timeit.default_timer()
     beam_matrix = sim.run_simulation(y, x, pr.request_temp_recalc) # run MC sim. and retrieve SE surface flux
-    pr.set_beam_matrix(beam_matrix)
     logger.info(f'Finished MC in {timeit.default_timer() - start} s')
     if beam_matrix.max() <= 1:
         warnings.warn('No surface flux!', RuntimeWarning)
         beam_matrix = 1
     if flag:
         try:
-            pr.onload_structure_to_gpu(beam_matrix)
+            pr.onload_structure_to_gpu()  # Stage 4: delegates to GPUFacade
+            pr.set_beam_matrix(beam_matrix)  # Stage 4: set_beam_matrix handles GPU updates
         except Exception as e:
             logger.exception("Error during structure resizing: " + repr(e))
             return False
         logger.info("Resize successfull")
     else:
-        pr.knl.update_beam_matrix(beam_matrix)
+        pr.set_beam_matrix(beam_matrix)  # Stage 4: set_beam_matrix handles GPU updates
     if pr.temperature_tracking:
         pr.heat_transfer(sim.beam_heating)
         pr.request_temp_recalc = False
@@ -314,6 +319,8 @@ def cell_filling_routine_CPU(y, x, pr: Process, sim: MC_Simulation):
     """
     Run the full set of operations on a filled cell event.
     Cell configuration update is performed on the CPU.
+
+    Stage 4: Updated to use Process proxy methods that delegate to GPUFacade
 
     :param y: spot y-coordinate
     :param x: spot x-coordinate
@@ -328,16 +335,12 @@ def cell_filling_routine_CPU(y, x, pr: Process, sim: MC_Simulation):
     sim.update_structure(pr.structure)
     start = timeit.default_timer()
     beam_matrix = sim.run_simulation(y, x, pr.request_temp_recalc)  # run MC sim. and retrieve SE surface flux
-    if flag_resize:
-        pr.knl.reload_beam_matrix(beam_matrix, blocking=False)
-    else:
-        pr.knl.update_beam_matrix(beam_matrix, blocking=False)
     logger.info(f'Finished MC in {timeit.default_timer() - start} s')
     if beam_matrix.max() <= 1:
         warnings.warn('No surface flux!', RuntimeWarning)
         pr.set_beam_matrix(1)
     else:
-        pr.set_beam_matrix(beam_matrix)
+        pr.set_beam_matrix(beam_matrix)  # Stage 4: set_beam_matrix now handles GPU updates internally
     if pr.temperature_tracking:
         pr.heat_transfer(sim.beam_heating)
         pr.request_temp_recalc = False
