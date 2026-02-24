@@ -5,5 +5,6 @@ This package contains modularized components extracted from the monolithic Proce
 """
 
 from .simulation_state import SimulationState
+from .gpu_facade import GPUFacade
 
-__all__ = ['SimulationState']
+__all__ = ['SimulationState', 'GPUFacade']
