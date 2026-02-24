@@ -434,95 +434,8 @@ class Process:
 
 
     # GPU methods (Stage 4: Proxy methods that delegate to GPUFacade)
-    # Note: deposition_gpu, precursor_density_gpu, load_kernel are replaced by unified
-    # deposition(), precursor_density() methods that delegate based on self.device
-
-    def update_surface_GPU(self):
-        """
-        Updates all data arrays on compute device
-
-        Stage 4: Delegates to GPUFacade for GPU operations
-
-        :return: True if structure was resized, False otherwise
-        """
-        # Here we use the beam matrix as an indicator for filled cells to avoid unnecessary data transfer.
-        # Conventionally, the deposit array is used for this purpose, but it is float32 that takes longer to copy back, while the beam matrix is int32.
-        # The cells are filled in the kernel, so the filled cells are marked with -1 in the beam matrix there.
-        beam_matrix = self.gpu_facade.return_beam_matrix()
-        full_cells = np.argwhere(beam_matrix < 0)
-        self.filled_cells += full_cells.size
-        self.last_full_cells = np.argwhere(beam_matrix.reshape(self.structure.shape) < 0)
-        self.gpu_facade.update_surface(full_cells)
-        # self.redraw = True
-
-        for cell in full_cells[0]:
-            z_coord, y_coord, x_coord = self.gpu_facade.index_1d_to_3d(cell)
-
-            if z_coord + 4 > self.state.max_z:
-                self.state.max_z = z_coord + 4
-                # Stage 4: Use accessor method instead of direct access
-                self.gpu_facade.set_zdim_max(z_coord + 4)
-
-            self.irradiated_area_2D = np.s_[self.state.substrate_height - 1:self.state.max_z, :, :]
-
-            # Stage 4: Use accessor method to get dimensions
-            zdim, ydim, xdim = self.gpu_facade.get_dimensions()
-
-            if z_coord - 3 < 0:
-                z_min = 0
-            else:
-                z_min = z_coord - 3
-            if z_coord + 4 > zdim:
-                z_max = zdim
-            else:
-                z_max = z_coord + 4
-            if y_coord - 3 < 0:
-                y_min = 0
-            else:
-                y_min = y_coord - 3
-            if y_coord + 4 > ydim:
-                y_max = ydim
-            else:
-                y_max = y_coord + 4
-            if x_coord - 3 < 0:
-                x_min = 0
-            else:
-                x_min = x_coord - 3
-            if x_coord + 4 > xdim:
-                x_max = xdim
-            else:
-                x_max = x_coord + 4
-            n_3d = np.s_[z_min:z_max, y_min:y_max, x_min:x_max]
-            ind_arr = [[], [], []]
-            for z in range(z_min, z_max, 1):
-                for y in range(y_min, y_max, 1):
-                    for x in range(x_min, x_max, 1):
-                        ind_arr[0].append(z)
-                        ind_arr[1].append(y)
-                        ind_arr[2].append(x)
-            arr_size = len(ind_arr[0])
-            ind_arr = np.array(ind_arr).reshape(-1).astype(np.int32)
-            # start = timeit.default_timer()
-            deposit, surface = self.gpu_facade.return_slice(ind_arr, arr_size)
-            # out = timeit.default_timer() - start
-            deposit = deposit.reshape(z_max - z_min, y_max - y_min, x_max - x_min)
-            surface = surface.reshape(z_max - z_min, y_max - y_min, x_max - x_min)
-            self._local_mcca.compute_surface_neighbors(
-                deposit,
-                surface,
-                n=self.state.max_neib,
-                out=self.structure.surface_neighbors_bool[n_3d]
-            )
-
-        if self.state.max_z + 5 > self.structure.shape[0]:
-            # Here the Structure is extended in height
-            # and all the references to the data arrays are renewed
-            self.offload_structure_from_gpu_all()
-            flag = self.extend_structure()
-            # Basically, none of the slices have to be updated, because they use indexes, not references.
-            return flag
-
-        return False
+    # Note: deposition_gpu, precursor_density_gpu, load_kernel, update_surface_GPU are replaced
+    # by unified methods that delegate based on self.device
 
     def offload_structure_from_gpu_all(self, blocking=True):
         """
@@ -544,16 +457,6 @@ class Process:
         :param blocking: wait until the operation is finished
         """
         self.gpu_facade.retrieve_array(data_name, blocking=blocking)
-
-    def onload_structure_to_gpu(self, blocking=True):
-        """
-        Loads structure data to the GPU
-
-        Stage 4: Delegates to GPUFacade
-
-        :param blocking: wait until the operation is finished
-        """
-        self.gpu_facade.upload_structure(blocking=blocking)
 
     def update_structure_to_gpu(self, blocking=True):
         """
