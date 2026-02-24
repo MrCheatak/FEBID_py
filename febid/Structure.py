@@ -4,7 +4,7 @@ import numpy as np
 import pyvista as pv
 
 from febid.logging_config import setup_logger
-from febid.mlcca import MultiLayerdCellCellularAutomata as MLCCA
+from febid.mlcca import MultiLayerdCellCellularAutomata as MLCCA, initialize_structure_topology
 # Setup logger
 logger = setup_logger(__name__)
 
@@ -134,6 +134,22 @@ class Structure(BaseSolidStructure):
         self.initialized = False
         self._mlcca = MLCCA()
 
+    def _ensure_topology_arrays(self):
+        """Ensure topology arrays exist with correct shape/dtype."""
+        shape = self.deposit.shape
+        if self.surface_bool is None or self.surface_bool.shape != shape:
+            self.surface_bool = np.zeros(shape, dtype=bool)
+        if self.semi_surface_bool is None or self.semi_surface_bool.shape != shape:
+            self.semi_surface_bool = np.zeros(shape, dtype=bool)
+        if self.surface_neighbors_bool is None or self.surface_neighbors_bool.shape != shape:
+            self.surface_neighbors_bool = np.zeros(shape, dtype=bool)
+        if self.ghosts_bool is None or self.ghosts_bool.shape != shape:
+            self.ghosts_bool = np.zeros(shape, dtype=bool)
+
+    def _rebuild_topology(self, n_surface_neighbors=0):
+        """Canonical topology rebuild delegated to MLCCA."""
+        initialize_structure_topology(self, n_surface_neighbors=n_surface_neighbors, mlcca=self._mlcca)
+
     @property
     def data_dict(self):
         return {'deposit': self.deposit, 'precursor': self.precursor, 'surface_bool': self.surface_bool,
@@ -236,18 +252,7 @@ class Structure(BaseSolidStructure):
             self.ghosts_bool = np.zeros(shape, dtype=bool)
             self.surface_neighbors_bool = np.zeros(shape, dtype=bool)
             self.temperature = np.zeros(shape, dtype=np.float64)
-            self.surface_bool = self._mlcca.compute_surface_topology(
-                self.deposit, d_full_d=self.d_full_d, d_full_s=self.d_full_s, out=self.surface_bool
-            )
-            self.semi_surface_bool = self._mlcca.compute_semi_surface_topology(
-                self.deposit, self.surface_bool, out=self.semi_surface_bool
-            )
-            self._mlcca.compute_surface_neighbors(
-                self.deposit, self.surface_bool, out=self.surface_neighbors_bool
-            )
-            self.ghosts_bool = self._mlcca.compute_ghost_shell(
-                self.surface_bool, self.semi_surface_bool, out=self.ghosts_bool
-            )
+            self._rebuild_topology()
         logger.info('Loaded the VTK file!')
         self.precursor[self.precursor < 0] = 0
         if self.substrate_height == 0:
@@ -279,15 +284,7 @@ class Structure(BaseSolidStructure):
         self.ghosts_bool = np.zeros_like(self.deposit, dtype=bool)
         self.temperature = np.zeros_like(self.deposit)
         self.temperature[self.deposit < 0] = self.room_temp
-        self.surface_bool = self._mlcca.compute_surface_topology(
-            self.deposit, d_full_d=self.d_full_d, d_full_s=self.d_full_s, out=self.surface_bool
-        )
-        self._mlcca.compute_surface_neighbors(
-            self.deposit, self.surface_bool, n=1, out=self.surface_neighbors_bool
-        )
-        self.ghosts_bool = self._mlcca.compute_ghost_shell(
-            self.surface_bool, self.semi_surface_bool, out=self.ghosts_bool
-        )
+        self._rebuild_topology(n_surface_neighbors=1)
         self.t = 0
 
         self.initialized = True
@@ -350,7 +347,7 @@ class Structure(BaseSolidStructure):
             self.semi_surface_bool = np.zeros(shape_new, dtype=bool)
             self.semi_surface_bool[slice_old] = temp[:]
             temp = np.copy(self.surface_neighbors_bool)
-            self.surface_neighbors_bool = np.zeros(shape_new, dtype=int)
+            self.surface_neighbors_bool = np.zeros(shape_new, dtype=bool)
             self.surface_neighbors_bool[slice_old] = temp[:]
             temp = np.copy(self.ghosts_bool)
             self.ghosts_bool = np.zeros(shape_new, dtype=bool)
@@ -360,19 +357,9 @@ class Structure(BaseSolidStructure):
             self.temperature[slice_old] = temp[:]
             if d_j > 0 or d_k > 0:
                 self.deposit[:self.substrate_height] = self.d_full_s
-                self.surface_bool = self._mlcca.compute_surface_topology(
-                    self.deposit, d_full_d=self.d_full_d, d_full_s=self.d_full_s, out=self.surface_bool
-                )
+                # Recompute topology after lateral growth and then refill fresh surface cells.
+                self._rebuild_topology()
                 self.precursor[np.logical_and(self.precursor == 0, self.surface_bool)] = self.precursor.max()
-                self.semi_surface_bool = self._mlcca.compute_semi_surface_topology(
-                    self.deposit, self.surface_bool, out=self.semi_surface_bool
-                )
-                self._mlcca.compute_surface_neighbors(
-                    self.deposit, self.surface_bool, out=self.surface_neighbors_bool
-                )
-                self.ghosts_bool = self._mlcca.compute_ghost_shell(
-                    self.surface_bool, self.semi_surface_bool, out=self.ghosts_bool
-                )
         try:
             resize_all(True)
         except ValueError:
@@ -392,89 +379,6 @@ class Structure(BaseSolidStructure):
         :return:
         """
         self.precursor[self.surface_bool] = nr
-
-    def define_all(self):
-        """
-        Method to define all the auxiliary arrays. Can be used if the structure is changed and all the arrays have to be updated.
-
-        :return:
-        """
-        self.surface_bool = self._mlcca.compute_surface_topology(
-            self.deposit, d_full_d=self.d_full_d, d_full_s=self.d_full_s, out=self.surface_bool
-        )
-        self.semi_surface_bool = self._mlcca.compute_semi_surface_topology(
-            self.deposit, self.surface_bool, out=self.semi_surface_bool
-        )
-        self._mlcca.compute_surface_neighbors(
-            self.deposit, self.surface_bool, out=self.surface_neighbors_bool
-        )
-        self.ghosts_bool = self._mlcca.compute_ghost_shell(
-            self.surface_bool, self.semi_surface_bool, out=self.ghosts_bool
-        )
-
-    def define_surface(self):
-        """
-        Determining surface of the initial structure
-
-        :return:
-        """
-        logger.debug('Generating surface index...')
-        self.surface_bool = self._mlcca.compute_surface_topology(
-            self.deposit, d_full_d=self.d_full_d, d_full_s=self.d_full_s, out=self.surface_bool
-        )
-        logger.debug('...done!')
-
-    def define_semi_surface(self):
-        """
-        Determining semi-surface of the initial structure
-
-        Semi-surface cell is a concept that enables diffusion on the steps of the structure.
-        These cells do not take part in the deposition process.
-
-        If semi-surface cell turns into a regular surface cell, the precursor density in it is preserved.
-       :return:
-       """
-        logger.debug('Generating semi-surface index...')
-        self.semi_surface_bool = self._mlcca.compute_semi_surface_topology(
-            self.deposit, self.surface_bool, out=self.semi_surface_bool
-        )
-        logger.debug('...done!')
-
-    def define_surface_neighbors(self, n=0, deposit=None, surface=None, neighbors=None):
-        """
-        Find solid cells that are n-closest direct neighbors to the surface cells.
-        If deposit, surface and neighbors are provided, nearest neighbors are defined for them.
-
-        :param n: order of nearest neighbor, if 0, then index all the solid cells
-        :param deposit: deposit array
-        :param surface: surface array
-        :param neighbors: neighbors array
-        :return:
-        """
-        logger.debug('Generating surface nearest neighbors index...')
-        if deposit is None:
-            deposit = self.deposit
-        if surface is None:
-            surface = self.surface_bool
-        if neighbors is None:
-            neighbors = self.surface_neighbors_bool
-        self._mlcca.compute_surface_neighbors(deposit, surface, n=n, out=neighbors)
-        logger.debug('...done!')
-
-    def define_ghosts(self):
-        """
-        Determining ghost shell wrapping the surface
-        This is crucial for the diffusion to work if rolling method is used.
-
-        :return:
-        """
-        # Rolling in all directions marks all the neighboring cells
-        # Subtracting surface from that selection results in a "shell" around the surface
-        logger.debug('Generating ghost cells index...')
-        self.ghosts_bool = self._mlcca.compute_ghost_shell(
-            self.surface_bool, self.semi_surface_bool, out=self.ghosts_bool
-        )
-        logger.debug('...done!')
 
     def max_z(self):
         """

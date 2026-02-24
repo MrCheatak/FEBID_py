@@ -15,6 +15,12 @@ from febid.tests.sample_beam_matrix import test_beam_matrix as beam_matrix_test
 from febid.monte_carlo.etraj3d import MC_Simulation
 from febid.febid_core import prepare_equation_values, prepare_ms_config
 from febid.tests.lib_1d_febid import Params, run_1d_simulation_metrics
+from febid.mlcca import initialize_structure_topology
+
+
+
+
+
 
 
 # from line_profiler import LineProfiler
@@ -337,7 +343,7 @@ class TestSimulationVolume:
         y1 = center[0] - patch_size_cells // 2
         y2 = center[0] + patch_size_cells // 2
         dep[sub_height, y1:y2, x1:x2] = -1
-        structure.define_all()
+        initialize_structure_topology(structure)
         prec = structure.precursor
         surface_mask = structure.surface_bool
         semi_surface_mask = structure.semi_surface_bool

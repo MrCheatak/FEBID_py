@@ -33,6 +33,7 @@ from febid.tests.sample_beam_matrix import test_beam_matrix as beam_matrix_test
 from febid.monte_carlo.etraj3d import MC_Simulation
 from febid.febid_core import prepare_equation_values, prepare_ms_config
 from febid.logging_config import setup_logger
+from febid.mlcca import initialize_structure_topology
 
 logger = setup_logger(__name__)
 
@@ -356,7 +357,7 @@ class TestGPUFacade:
         dep[sub_height, y1:y2, x1:x2] = -1
 
         # Redefine surface, semi-surface, and ghost cells
-        structure_patched.define_all()
+        initialize_structure_topology(structure_patched)
 
         # Initialize precursor coverage
         prec = structure_patched.precursor
@@ -390,7 +391,7 @@ class TestGPUFacade:
         structure_patched_gpu = self.setup_domain(params)
         dep_gpu = structure_patched_gpu.deposit
         dep_gpu[sub_height, y1:y2, x1:x2] = -1
-        structure_patched_gpu.define_all()
+        initialize_structure_topology(structure_patched_gpu)
         prec_gpu = structure_patched_gpu.precursor
         surface_mask_gpu = structure_patched_gpu.surface_bool
         semi_surface_mask_gpu = structure_patched_gpu.semi_surface_bool

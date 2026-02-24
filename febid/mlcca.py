@@ -210,6 +210,45 @@ class MultiLayerdCellCellularAutomata:
         out[roller] = False
         return out
 
+    def initialize_topology(
+        self,
+        deposit,
+        d_full_d=-1.0,
+        d_full_s=-2.0,
+        n_surface_neighbors=0,
+        surface_out=None,
+        semi_surface_out=None,
+        surface_neighbors_out=None,
+        ghosts_out=None,
+    ):
+        """
+        Compute and synchronize all topology arrays in one call.
+
+        This is the canonical initialization/rebuild pathway used by Structure.
+        Returns (surface, semi_surface, surface_neighbors, ghosts).
+        """
+        if surface_out is None:
+            surface_out = np.zeros_like(deposit, dtype=bool)
+        if semi_surface_out is None:
+            semi_surface_out = np.zeros_like(deposit, dtype=bool)
+        if surface_neighbors_out is None:
+            surface_neighbors_out = np.zeros_like(deposit, dtype=bool)
+        if ghosts_out is None:
+            ghosts_out = np.zeros_like(deposit, dtype=bool)
+
+        # Keep out arrays deterministic for full topology rebuilds.
+        surface_out[...] = False
+        semi_surface_out[...] = False
+        surface_neighbors_out[...] = False
+        ghosts_out[...] = False
+
+        self.compute_surface_topology(deposit, d_full_d=d_full_d, d_full_s=d_full_s, out=surface_out)
+        self.compute_semi_surface_topology(deposit, surface_out, out=semi_surface_out)
+        self.compute_surface_neighbors(deposit, surface_out, n=n_surface_neighbors, out=surface_neighbors_out)
+        self.compute_ghost_shell(surface_out, semi_surface_out, out=ghosts_out)
+
+        return surface_out, semi_surface_out, surface_neighbors_out, ghosts_out
+
     def check_neighbors(self, arr1, arr2):
         from scipy.ndimage import binary_dilation
 
@@ -256,6 +295,38 @@ class MultiLayerdCellCellularAutomata:
                                        [[0, 1, 0],
                                         [1, 0, 1],
                                         [0, 1, 0]]])
+
+
+def initialize_structure_topology(structure, n_surface_neighbors=0, mlcca=None):
+    """
+    Initialize/rebuild topology arrays on a Structure-like object.
+
+    This helper is intentionally outside Structure so callers can rebuild topology
+    without using facade methods on Structure itself.
+    """
+    if mlcca is None:
+        mlcca = MultiLayerdCellCellularAutomata()
+
+    shape = structure.deposit.shape
+    if getattr(structure, "surface_bool", None) is None or structure.surface_bool.shape != shape:
+        structure.surface_bool = np.zeros(shape, dtype=bool)
+    if getattr(structure, "semi_surface_bool", None) is None or structure.semi_surface_bool.shape != shape:
+        structure.semi_surface_bool = np.zeros(shape, dtype=bool)
+    if getattr(structure, "surface_neighbors_bool", None) is None or structure.surface_neighbors_bool.shape != shape:
+        structure.surface_neighbors_bool = np.zeros(shape, dtype=bool)
+    if getattr(structure, "ghosts_bool", None) is None or structure.ghosts_bool.shape != shape:
+        structure.ghosts_bool = np.zeros(shape, dtype=bool)
+
+    mlcca.initialize_topology(
+        structure.deposit,
+        d_full_d=structure.d_full_d,
+        d_full_s=structure.d_full_s,
+        n_surface_neighbors=n_surface_neighbors,
+        surface_out=structure.surface_bool,
+        semi_surface_out=structure.semi_surface_bool,
+        surface_neighbors_out=structure.surface_neighbors_bool,
+        ghosts_out=structure.ghosts_bool,
+    )
 
 
 def visualize_kernel(*arrays):
