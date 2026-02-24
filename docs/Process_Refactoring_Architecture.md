@@ -14,7 +14,7 @@
 8. ✅ **Cell filling routines stay in Process** - complex, coupled to many systems
 9. ✅ **TemperatureManager (Stage 5)** - All thermal effects encapsulated in dedicated component with granular local updates (~74× faster), zero branching in physics code, TemperatureRecalcView for clean data access
 
-**Stage 5 Complete (February 2026)**: TemperatureManager successfully extracted to `febid/thermal/temperature_manager.py` with significant performance improvements via granular local updates and architectural consistency with DataViewManager patterns. See detailed review in `docs/Temperature_Refactoring_Review.md`.
+**Stages 3-5 Complete (February 2026)**: PhysicsEngine, GPUFacade, and TemperatureManager are extracted and integrated (`febid/process/physics_engine.py`, `febid/process/gpu_facade.py`, `febid/thermal/temperature_manager.py`). See detailed thermal review in `docs/Temperature_Refactoring_Review.md`.
 
 **Remaining Questions**: None architectural - only minor implementation details (dataclass vs namedtuple, etc.)
 
@@ -1447,18 +1447,19 @@ This eliminates redundant regeneration of surface indices during beam update.
 - Two-phase update eliminates double-call inefficiency from previous design
 - TemperatureRecalcView provides clean API for thermal calculations (no slicing in TemperatureManager)
 
-### Phase 3: Extract PhysicsEngine
-1. Create PhysicsEngine class
-2. Move deposition, precursor_density, diffusion methods
-3. Move RK4 integration logic
-4. Update to use DataViewManager for array access
-5. Test CPU-only execution
+### Phase 3: Extract PhysicsEngine ✅ COMPLETE
+1. ✅ Create PhysicsEngine class
+2. ✅ Move deposition, precursor_density, diffusion methods
+3. ✅ Move RK4 integration logic
+4. ✅ Update to use DataViewManager for array access
+5. ✅ Integrate CPU delegation in Process
 
-### Phase 4: Refactor GPUFacade
-1. Create GPUFacade class (rename/refactor from GPU interaction code)
-2. Move all GPU-related methods
-3. Make it mirror PhysicsEngine interface
-4. Add switching logic in Process
+### Phase 4: Refactor GPUFacade ✅ COMPLETE (with caveats)
+1. ✅ Create GPUFacade class (rename/refactor from GPU interaction code)
+2. ✅ Move GPU-related methods into facade
+3. ✅ Mirror core PhysicsEngine operations (`compute_deposition`, `compute_precursor_density`, `check_cells_filled`)
+4. ✅ Add switching logic in Process
+5. ⚠️ Remaining cleanup: some GPU path code in `engine.py` still reaches low-level kernel attributes (`gpu_facade.knl`)
 
 ### Phase 5: Extract Supporting Classes ✅ COMPLETE
 1. ⏳ Extract SimulationStats (pending)
@@ -1707,16 +1708,16 @@ Based on the corrections provided:
 
 The refactoring is successful if:
 
-1. ⏳ Process class is < 300 lines (currently ~900 lines, down from ~1200+) - **Progress: 25% reduction**
-2. ✅ Each component has a single, clear responsibility - **Stage 1, 2, 5 complete**
-3. ✅ Switching acceleration grid on/off is a simple flag - **Stage 2 complete**
-4. ⏳ CPU and GPU execution paths are equally clean - **Stage 4 pending**
-5. ✅ Adding new physics models doesn't require changing view logic - **Stage 2 complete**
-6. ✅ All existing tests pass - **Stages 1, 2, 5 validated**
-7. ✅ Performance is not degraded (±5%) - **Stage 2: no overhead, Stage 5: 74× faster cell filling**
-8. ✅ Code coverage is maintained or improved - **Test suites created for Stages 2 and 5**
+1. ⏳ Process class is < 300 lines (currently ~642 lines in `febid/Process.py`) - **Not met**
+2. ✅ Each component has a single, clear responsibility - **Largely met (Stages 1-5 complete)**
+3. ✅ Switching acceleration grid on/off is a simple flag - **Met**
+4. ⏳ CPU and GPU execution paths are equally clean - **Partially met (abstraction leaks remain in GPU path)**
+5. ✅ Adding new physics models doesn't require changing view logic - **Met in current CPU/view architecture**
+6. ✅ All existing tests pass - **Maintained for implemented stages**
+7. ✅ Performance is not degraded (±5%) - **Met; Stage 5 local update path shows major gain**
+8. ✅ Code coverage is maintained or improved - **Maintained by stage-specific tests**
 
-**Current Progress**: 3 of 7 stages complete (Stages 1, 2, 5). Process class reduced by ~300 lines with significant performance improvements and architectural consistency.
+**Current Progress**: 5 of 7 stages complete (Stages 1-5), with Stage 7 partially complete and Stage 6 pending.
 
 ---
 
@@ -1734,21 +1735,21 @@ The design prioritizes:
 
 This architecture provides a solid foundation for future enhancements while making the existing code more understandable and testable. The uniform expression approach ensures that physics code remains pure and optimization logic stays completely separate.
 
-### Progress Summary (as of February 2026)
+### Progress Summary (as of February 24, 2026)
 
 **Completed Stages**:
 - ✅ **Stage 1**: SimulationState extraction (pure data container)
 - ✅ **Stage 2**: DataViewManager extraction (uniform expression, two-phase updates, 5 view types)
+- ✅ **Stage 3**: PhysicsEngine extraction (CPU physics moved to dedicated module)
+- ✅ **Stage 4**: GPUFacade refactoring (GPU operations extracted behind facade)
 - ✅ **Stage 5**: TemperatureManager extraction (granular updates, zero branching, TemperatureRecalcView)
 
 **Remaining Stages**:
-- ⏳ **Stage 3**: PhysicsEngine extraction (pure physics calculations, reusable)
-- ⏳ **Stage 4**: GPUFacade refactoring (mirror PhysicsEngine interface)
 - ⏳ **Stage 6**: MLCCA consolidation (move all CA functionality from Structure to MLCCA)
-- ⏳ **Stage 7**: Process finalization as toolkit (orchestration fully in engine.py)
+- ⏳ **Stage 7**: Process finalization as toolkit (partially complete; legacy/proxy paths remain)
 
 **Key Achievements**:
-1. **~300 lines removed** from Process class (1200 → ~900 lines)
+1. **~550+ lines removed** from Process class (about 1200 → ~642 lines)
 2. **Zero branching** in all physics calculations (temperature, acceleration)
 3. **74× performance gain** for cell filling updates (granular localization)
 4. **Architectural consistency** - TemperatureManager mirrors DataViewManager patterns
@@ -1756,7 +1757,7 @@ This architecture provides a solid foundation for future enhancements while maki
 6. **4 critical bugs fixed** - Uninitialized arrays, incorrect flags eliminated
 7. **Clean APIs** - All data access through views, no direct slice manipulation
 
-**Upcoming Stage 6**: MLCCA consolidation will further improve separation of concerns by moving all cellular automata logic (surface topology initialization and updates) from Structure to MultiLayerdCellCellularAutomata, making Structure a pure data container.
+**Upcoming Stage 6**: MLCCA consolidation remains the main architectural gap; `Structure` still owns `define_surface()`, `define_semi_surface()`, `define_surface_neighbors()`, `define_ghosts()`, and `__stencil_3d()`.
 
 The refactoring is proceeding according to plan with significant improvements in both architecture and performance. Each stage builds on previous work while maintaining backward compatibility and test coverage.
 
