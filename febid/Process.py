@@ -354,7 +354,12 @@ class Process:
             beam_matrix_old = self.state.beam_matrix.copy()  # Save old beam matrix
             beam_matrix_surface_old = self.state.beam_matrix_surface.copy()  # Save old beam matrix surface
             self.structure.resize_structure(200)
-            self.structure.define_surface_neighbors(self.state.max_neib)
+            self._local_mcca.compute_surface_neighbors(
+                self.structure.deposit,
+                self.structure.surface_bool,
+                n=self.state.max_neib,
+                out=self.structure.surface_neighbors_bool
+            )
 
             # Recreate state arrays with new size
             self.state.beam_matrix = np.zeros_like(self.structure.deposit, dtype=np.int32)
@@ -390,10 +395,12 @@ class Process:
         neighbors_neighbs = data_view.surface_neighbors[n_3d]
         deposit_neighbs = data_view.deposit[n_3d]
         surface_neighbs = data_view.surface[n_3d]
-        self.structure.define_surface_neighbors(self.state.max_neib,
-                                                       deposit_neighbs,
-                                                       surface_neighbs,
-                                                       neighbors_neighbs)
+        self._local_mcca.compute_surface_neighbors(
+            deposit_neighbs,
+            surface_neighbs,
+            n=self.state.max_neib,
+            out=neighbors_neighbs
+        )
 
     def deposition(self):
         """
@@ -500,10 +507,12 @@ class Process:
             # out = timeit.default_timer() - start
             deposit = deposit.reshape(z_max - z_min, y_max - y_min, x_max - x_min)
             surface = surface.reshape(z_max - z_min, y_max - y_min, x_max - x_min)
-            self.structure.define_surface_neighbors(self.state.max_neib,
-                                                          deposit,
-                                                          surface,
-                                                          self.structure.surface_neighbors_bool[n_3d])
+            self._local_mcca.compute_surface_neighbors(
+                deposit,
+                surface,
+                n=self.state.max_neib,
+                out=self.structure.surface_neighbors_bool[n_3d]
+            )
 
         if self.state.max_z + 5 > self.structure.shape[0]:
             # Here the Structure is extended in height
