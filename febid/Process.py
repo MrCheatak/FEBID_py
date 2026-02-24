@@ -151,6 +151,11 @@ class Process:
         if self.state.temperature_tracking:
             self.temp_manager.update_full()
 
+        # GPU buffers were initialized before n_init assignment above.
+        # Refresh GPU-side arrays so deposition starts from the same initial precursor field as CPU.
+        if self.device and self.gpu_facade is not None:
+            self.gpu_facade.upload_structure(blocking=True)
+
     # Initialization methods
     def __set_structure(self, structure: Structure):
         self.state.max_z = self.structure.deposit.nonzero()[0].max() + 3

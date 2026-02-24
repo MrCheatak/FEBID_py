@@ -63,7 +63,9 @@ class GPU:
         # 1. Compile the kernel
         # 2. Create a shortcut to the main function of the kernel
         prg_prec_den = cl.Program(self.ctx, kernels_prec_den).build()  # compile kernel program
-        self.knl_prec_den = prg_prec_den.precursor_coverage  # RDE or precursor density calculation function
+        self.knl_prec_stage_scalar = prg_prec_den.rk4_stage_scalar  # scalar D/tau RK stages
+        self.knl_prec_stage_array = prg_prec_den.rk4_stage_array  # array D/tau RK stages
+        self.knl_prec_combine = prg_prec_den.rk4_combine  # RK stage combination
         self.knl_dep = prg_prec_den.deposition  # deposition function
         prg_up_surf = cl.Program(self.ctx, kernels_up_surf).build()  # compile kernel program
         self.knl_up_surf = prg_up_surf.update  # cellular automaton update function
@@ -118,6 +120,20 @@ class GPU:
         mf = cl.mem_flags
         self.cur_prec = cl.Buffer(self.ctx, mf.READ_WRITE | mf.COPY_HOST_PTR, hostbuf=self.precursor)
         self.next_prec = cl.Buffer(self.ctx, mf.READ_WRITE | mf.COPY_HOST_PTR, hostbuf=self.precursor)
+        self.k1 = np.zeros_like(self.precursor)
+        self.k2 = np.zeros_like(self.precursor)
+        self.k3 = np.zeros_like(self.precursor)
+        self.k4 = np.zeros_like(self.precursor)
+        self.zero_add = np.zeros_like(self.precursor)
+        self.k1_buf = cl.Buffer(self.ctx, mf.READ_WRITE | mf.COPY_HOST_PTR, hostbuf=self.k1)
+        self.k2_buf = cl.Buffer(self.ctx, mf.READ_WRITE | mf.COPY_HOST_PTR, hostbuf=self.k2)
+        self.k3_buf = cl.Buffer(self.ctx, mf.READ_WRITE | mf.COPY_HOST_PTR, hostbuf=self.k3)
+        self.k4_buf = cl.Buffer(self.ctx, mf.READ_WRITE | mf.COPY_HOST_PTR, hostbuf=self.k4)
+        self.zero_add_buf = cl.Buffer(self.ctx, mf.READ_ONLY | mf.COPY_HOST_PTR, hostbuf=self.zero_add)
+        self.D_coeff = np.zeros_like(self.precursor)
+        self.tau_coeff = np.ones_like(self.precursor)
+        self.D_coeff_buf = cl.Buffer(self.ctx, mf.READ_WRITE | mf.COPY_HOST_PTR, hostbuf=self.D_coeff)
+        self.tau_coeff_buf = cl.Buffer(self.ctx, mf.READ_WRITE | mf.COPY_HOST_PTR, hostbuf=self.tau_coeff)
         self.surface_all_buf = cl.Buffer(self.ctx, mf.READ_WRITE | mf.COPY_HOST_PTR, hostbuf=self.surface_all)
         self.deposit_buf = cl.Buffer(self.ctx, mf.READ_WRITE | mf.COPY_HOST_PTR, hostbuf=self.deposit)
         self.surf_buf = cl.Buffer(self.ctx, mf.READ_WRITE | mf.COPY_HOST_PTR, hostbuf=self.surface_bool)
@@ -194,6 +210,13 @@ class GPU:
         try:
             self.cur_prec.release()
             self.next_prec.release()
+            self.k1_buf.release()
+            self.k2_buf.release()
+            self.k3_buf.release()
+            self.k4_buf.release()
+            self.zero_add_buf.release()
+            self.D_coeff_buf.release()
+            self.tau_coeff_buf.release()
             self.surface_all_buf.release()
             self.deposit_buf.release()
             self.surf_buf.release()
@@ -260,16 +283,102 @@ class GPU:
 
         return deposit, surface
 
-    def precur_den_gpu(self, add, a, F_dt, F_dt_n0_1_tau_dt, sigma_dt, blocking=True):
+    def precur_den_gpu(self, dt, D, F, n0, tau, sigma, cell_size, blocking=True):
         """
-        Recalculate precursor coverage using reaction equation with diffusion.
+        Recalculate precursor coverage using RK4 + FTCS diffusion at each stage.
         """
-        event = self.knl_prec_den(self.queue, (self.len_lap,), None,
-                                  self.cur_prec, self.next_prec, self.beam_matrix_buf,
-                                  np.int32(self.offset), np.int32(self.zdim_max), np.int32(self.ydim),
-                                  np.int32(self.xdim), np.double(F_dt), np.double(F_dt_n0_1_tau_dt),
-                                  np.double(sigma_dt), self.surface_all_buf, np.double(a),
-                                  self.flag_buf, self.surf_buf, np.int32(self.zdim_min))
+        dt_full = np.double(dt)
+        dt_half = np.double(dt * 0.5)
+        addon_zero = np.double(0.0)
+        addon_half = np.double(0.5)
+        addon_full = np.double(1.0)
+
+        common_dims = (
+            np.int32(self.offset), np.int32(self.zdim_max), np.int32(self.ydim), np.int32(self.xdim)
+        )
+        common_phys = (np.double(F), np.double(n0), np.double(sigma))
+
+        use_array_coeffs = isinstance(D, np.ndarray) or isinstance(tau, np.ndarray)
+        if use_array_coeffs:
+            D_flat = D.reshape(-1).astype(np.double, copy=False) if isinstance(D, np.ndarray) else None
+            tau_flat = tau.reshape(-1).astype(np.double, copy=False) if isinstance(tau, np.ndarray) else None
+
+            if D_flat is None:
+                self.D_coeff.fill(float(D))
+            else:
+                self.D_coeff[...] = D_flat
+            if tau_flat is None:
+                self.tau_coeff.fill(float(tau))
+            else:
+                self.tau_coeff[...] = tau_flat
+
+            cl.enqueue_copy(self.queue, self.D_coeff_buf, self.D_coeff, is_blocking=False)
+            cl.enqueue_copy(self.queue, self.tau_coeff_buf, self.tau_coeff, is_blocking=False)
+
+            cell_size_sq = np.double(cell_size * cell_size)
+            self.knl_prec_stage_array(
+                self.queue, (self.len_lap,), None,
+                self.cur_prec, self.zero_add_buf, self.k1_buf, self.beam_matrix_buf,
+                *common_dims, *common_phys, dt_full, cell_size_sq,
+                self.D_coeff_buf, self.tau_coeff_buf, self.surface_all_buf, self.surf_buf, np.int32(self.zdim_min),
+                addon_zero
+            )
+            self.knl_prec_stage_array(
+                self.queue, (self.len_lap,), None,
+                self.cur_prec, self.k1_buf, self.k2_buf, self.beam_matrix_buf,
+                *common_dims, *common_phys, dt_half, cell_size_sq,
+                self.D_coeff_buf, self.tau_coeff_buf, self.surface_all_buf, self.surf_buf, np.int32(self.zdim_min),
+                addon_half
+            )
+            self.knl_prec_stage_array(
+                self.queue, (self.len_lap,), None,
+                self.cur_prec, self.k2_buf, self.k3_buf, self.beam_matrix_buf,
+                *common_dims, *common_phys, dt_half, cell_size_sq,
+                self.D_coeff_buf, self.tau_coeff_buf, self.surface_all_buf, self.surf_buf, np.int32(self.zdim_min),
+                addon_half
+            )
+            event = self.knl_prec_stage_array(
+                self.queue, (self.len_lap,), None,
+                self.cur_prec, self.k3_buf, self.k4_buf, self.beam_matrix_buf,
+                *common_dims, *common_phys, dt_full, cell_size_sq,
+                self.D_coeff_buf, self.tau_coeff_buf, self.surface_all_buf, self.surf_buf, np.int32(self.zdim_min),
+                addon_full
+            )
+        else:
+            a_full = np.double(dt * D / (cell_size * cell_size))
+            a_half = np.double(0.5 * a_full)
+            tau_scalar = np.double(tau)
+
+            self.knl_prec_stage_scalar(
+                self.queue, (self.len_lap,), None,
+                self.cur_prec, self.zero_add_buf, self.k1_buf, self.beam_matrix_buf,
+                *common_dims, np.double(F), np.double(n0), tau_scalar, np.double(sigma), dt_full, a_full,
+                self.surface_all_buf, self.surf_buf, np.int32(self.zdim_min), addon_zero
+            )
+            self.knl_prec_stage_scalar(
+                self.queue, (self.len_lap,), None,
+                self.cur_prec, self.k1_buf, self.k2_buf, self.beam_matrix_buf,
+                *common_dims, np.double(F), np.double(n0), tau_scalar, np.double(sigma), dt_half, a_half,
+                self.surface_all_buf, self.surf_buf, np.int32(self.zdim_min), addon_half
+            )
+            self.knl_prec_stage_scalar(
+                self.queue, (self.len_lap,), None,
+                self.cur_prec, self.k2_buf, self.k3_buf, self.beam_matrix_buf,
+                *common_dims, np.double(F), np.double(n0), tau_scalar, np.double(sigma), dt_half, a_half,
+                self.surface_all_buf, self.surf_buf, np.int32(self.zdim_min), addon_half
+            )
+            event = self.knl_prec_stage_scalar(
+                self.queue, (self.len_lap,), None,
+                self.cur_prec, self.k3_buf, self.k4_buf, self.beam_matrix_buf,
+                *common_dims, np.double(F), np.double(n0), tau_scalar, np.double(sigma), dt_full, a_full,
+                self.surface_all_buf, self.surf_buf, np.int32(self.zdim_min), addon_full
+            )
+
+        event = self.knl_prec_combine(
+            self.queue, (self.len_lap,), None,
+            self.cur_prec, self.next_prec, self.k1_buf, self.k2_buf, self.k3_buf, self.k4_buf,
+            np.int32(self.offset), self.surface_all_buf
+        )
         if blocking:
             event.wait()
 

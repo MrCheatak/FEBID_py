@@ -102,26 +102,17 @@ class GPUFacade:
         D = self.temp_manager.get_D()
         tau = self.temp_manager.get_tau()
 
-        # Handle scalar vs array cases
-        # GPU kernels currently expect scalars, so use max values for arrays
-        if isinstance(D, np.ndarray):
-            D_max = D.max()
-        else:
-            D_max = D
-
-        if isinstance(tau, np.ndarray):
-            tau_max = tau.max()
-        else:
-            tau_max = tau
-
-        # Prepare GPU parameters
-        a = dt * D_max / (self.state.cell_size ** 2)
-        F_dt = self.state.precursor.F * dt
-        F_dt_n0_1_tau_dt = (F_dt * tau_max + self.state.precursor.n0 * dt) / (tau_max * self.state.precursor.n0)
-        sigma_dt = self.state.precursor.sigma * dt
-
-        # Execute GPU kernel (includes RK4 + FTCS diffusion)
-        self.knl.precur_den_gpu(0, a, F_dt, F_dt_n0_1_tau_dt, sigma_dt, blocking=True)
+        # Execute GPU RK4 kernel sequence (includes FTCS diffusion at each RK stage)
+        self.knl.precur_den_gpu(
+            dt=dt,
+            D=D,
+            F=self.state.precursor.F,
+            n0=self.state.precursor.n0,
+            tau=tau,
+            sigma=self.state.precursor.sigma,
+            cell_size=self.state.cell_size,
+            blocking=True
+        )
 
     def check_cells_filled(self) -> bool:
         """
