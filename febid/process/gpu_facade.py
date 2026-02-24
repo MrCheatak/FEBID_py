@@ -365,7 +365,11 @@ class GPUFacade:
         blocking : bool, optional
             Wait for operation to complete (default: True)
         """
-        self.knl.update_beam_matrix(beam_matrix, blocking=blocking)
+        # Check if beam matrix buffer exists - if not, load for first time
+        if not hasattr(self.knl, 'beam_matrix_buf'):
+            self.knl.load_beam_matrix(beam_matrix, blocking=blocking)
+        else:
+            self.knl.update_beam_matrix(beam_matrix, blocking=blocking)
 
     def reload_beam_matrix(self, beam_matrix: np.ndarray, blocking: bool = True) -> None:
         """
@@ -401,7 +405,15 @@ class GPUFacade:
         self.initialize_kernels()
 
         # Reload beam matrix with new size
-        self.reload_beam_matrix(self.state.beam_matrix)
+        self.set_beam_matrix(self.state.beam_matrix)
+
+    def finish_queue(self) -> None:
+        """
+        Wait for all GPU operations to finish.
+
+        Useful for synchronization before retrieving data or updating the surface.
+        """
+        self.knl.queue.finish()
 
     # INTERNAL HELPER METHODS
     def _get_irradiated_indices(self) -> np.ndarray:

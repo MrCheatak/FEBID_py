@@ -157,11 +157,7 @@ class SimulationPipeline:
                 break
             self.mc_executor.step(y, x)
             self.heat_solver.step()
-            if pr.device:
-                pr.knl.load_beam_matrix(self.mc_executor.beam_matrix, blocking=False)
-                print_step_GPU(y, x, dwell_time, pr, self.context.mcSimulation, self.stepper.progress_bar, run_flag)
-            else:
-                self.run_step(x, y, dwell_time)
+            self.run_step(x, y, dwell_time)
 
         run_flag.is_success = not run_flag.is_stopped
         run_flag.run_flag = True
@@ -198,9 +194,19 @@ class SimulationPipeline:
     def _handle_cell_filled(self, y, x):
         pr = self.context.process
         sim = self.context.mcSimulation
+        if pr.device:
+            pr.offload_from_gpu_partial('deposit', blocking=False)
+            pr.offload_from_gpu_partial('precursor', blocking=True)
         flag_resize = pr.cell_filled_routine()  # updating surface on a selected area
+
         if flag_resize:  # update references if the allocated simulation volume was increased
+            if pr.device:
+                pr.gpu_facade.reinitialize_after_resize()
             sim.update_structure(pr.structure)
+        else:
+            if pr.device:
+                pr.update_structure_to_gpu(blocking=True)
+
         self.mc_executor.step(y, x)  # run MC sim. and retrieve SE surface flux and update beam matrix
 
     def stop(self):

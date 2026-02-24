@@ -206,7 +206,7 @@ class Process:
         if self.device:
             # Stage 4: Delegate to GPUFacade
             # return self.gpu_facade.check_cells_filled()
-            return self.physics_engine.check_cells_filled()
+            return self.gpu_facade.check_cells_filled()
         else:
             # Stage 3: Delegate to PhysicsEngine
             return self.physics_engine.check_cells_filled()
@@ -399,6 +399,7 @@ class Process:
         dt = self.dt
         if self.device:
             # Stage 4: Delegate to GPUFacade
+            self.gpu_facade.finish_queue()
             self.gpu_facade.compute_deposition(dt)
         else:
             # Stage 3: Delegate to PhysicsEngine
