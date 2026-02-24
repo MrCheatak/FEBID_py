@@ -4,6 +4,7 @@ import numpy as np
 import pyvista as pv
 
 from febid.logging_config import setup_logger
+from febid.mlcca import MultiLayerdCellCellularAutomata as MLCCA
 # Setup logger
 logger = setup_logger(__name__)
 
@@ -131,6 +132,7 @@ class Structure(BaseSolidStructure):
         self.nr = 0.000001
 
         self.initialized = False
+        self._mlcca = MLCCA()
 
     @property
     def data_dict(self):
@@ -178,14 +180,18 @@ class Structure(BaseSolidStructure):
             except:
                 logger.debug('failed to retrieve surface index data...')
                 self.surface_bool = np.zeros_like(self.deposit, dtype=bool)
-                self.define_surface()
+                self.surface_bool = self._mlcca.compute_surface_topology(
+                    self.deposit, d_full_d=self.d_full_d, d_full_s=self.d_full_s, out=self.surface_bool
+                )
             try:
                 self.semi_surface_bool = np.asarray(vtk_obj.cell_data['semi_surface_bool'].reshape(shape), dtype=bool)
                 logger.debug('retrieved semi-surface index data...')
             except:
                 logger.debug('failed to retrieve semi-surface index data...')
                 self.semi_surface_bool = np.zeros_like(self.deposit, dtype=bool)
-                self.define_semi_surface()
+                self.semi_surface_bool = self._mlcca.compute_semi_surface_topology(
+                    self.deposit, self.surface_bool, out=self.semi_surface_bool
+                )
             try:
                 self.surface_neighbors_bool = np.asarray(vtk_obj.cell_data['surface_neighbors_bool'].reshape(shape),
                                                          dtype=bool)
@@ -193,14 +199,18 @@ class Structure(BaseSolidStructure):
             except:
                 logger.debug('failed to retrieve surface nearest neighbors index data...')
                 self.surface_neighbors_bool = np.zeros_like(self.deposit, dtype=bool)
-                self.define_surface_neighbors(3)
+                self._mlcca.compute_surface_neighbors(
+                    self.deposit, self.surface_bool, n=3, out=self.surface_neighbors_bool
+                )
             try:
                 self.ghosts_bool = np.asarray(vtk_obj.cell_data['ghosts_bool'].reshape(shape), dtype=bool)
                 logger.debug('retrieved ghost cells index data...')
             except:
                 logger.debug('failed to retrieve ghost cells index data...')
                 self.ghosts_bool = np.zeros_like(self.deposit, dtype=bool)
-                self.define_ghosts()
+                self.ghosts_bool = self._mlcca.compute_ghost_shell(
+                    self.surface_bool, self.semi_surface_bool, out=self.ghosts_bool
+                )
             try:
                 self.temperature = np.asarray(vtk_obj.cell_data['temperature'].reshape(shape))
                 logger.debug('retrieved temperature data...')
@@ -226,10 +236,18 @@ class Structure(BaseSolidStructure):
             self.ghosts_bool = np.zeros(shape, dtype=bool)
             self.surface_neighbors_bool = np.zeros(shape, dtype=bool)
             self.temperature = np.zeros(shape, dtype=np.float64)
-            self.define_surface()
-            self.define_semi_surface()
-            self.define_surface_neighbors()
-            self.define_ghosts()
+            self.surface_bool = self._mlcca.compute_surface_topology(
+                self.deposit, d_full_d=self.d_full_d, d_full_s=self.d_full_s, out=self.surface_bool
+            )
+            self.semi_surface_bool = self._mlcca.compute_semi_surface_topology(
+                self.deposit, self.surface_bool, out=self.semi_surface_bool
+            )
+            self._mlcca.compute_surface_neighbors(
+                self.deposit, self.surface_bool, out=self.surface_neighbors_bool
+            )
+            self.ghosts_bool = self._mlcca.compute_ghost_shell(
+                self.surface_bool, self.semi_surface_bool, out=self.ghosts_bool
+            )
         logger.info('Loaded the VTK file!')
         self.precursor[self.precursor < 0] = 0
         if self.substrate_height == 0:
@@ -261,9 +279,15 @@ class Structure(BaseSolidStructure):
         self.ghosts_bool = np.zeros_like(self.deposit, dtype=bool)
         self.temperature = np.zeros_like(self.deposit)
         self.temperature[self.deposit < 0] = self.room_temp
-        self.define_surface()
-        self.define_surface_neighbors(1)
-        self.define_ghosts()
+        self.surface_bool = self._mlcca.compute_surface_topology(
+            self.deposit, d_full_d=self.d_full_d, d_full_s=self.d_full_s, out=self.surface_bool
+        )
+        self._mlcca.compute_surface_neighbors(
+            self.deposit, self.surface_bool, n=1, out=self.surface_neighbors_bool
+        )
+        self.ghosts_bool = self._mlcca.compute_ghost_shell(
+            self.surface_bool, self.semi_surface_bool, out=self.ghosts_bool
+        )
         self.t = 0
 
         self.initialized = True
@@ -336,11 +360,19 @@ class Structure(BaseSolidStructure):
             self.temperature[slice_old] = temp[:]
             if d_j > 0 or d_k > 0:
                 self.deposit[:self.substrate_height] = self.d_full_s
-                self.define_surface()
+                self.surface_bool = self._mlcca.compute_surface_topology(
+                    self.deposit, d_full_d=self.d_full_d, d_full_s=self.d_full_s, out=self.surface_bool
+                )
                 self.precursor[np.logical_and(self.precursor == 0, self.surface_bool)] = self.precursor.max()
-                self.define_semi_surface()
-                self.define_surface_neighbors()
-                self.define_ghosts()
+                self.semi_surface_bool = self._mlcca.compute_semi_surface_topology(
+                    self.deposit, self.surface_bool, out=self.semi_surface_bool
+                )
+                self._mlcca.compute_surface_neighbors(
+                    self.deposit, self.surface_bool, out=self.surface_neighbors_bool
+                )
+                self.ghosts_bool = self._mlcca.compute_ghost_shell(
+                    self.surface_bool, self.semi_surface_bool, out=self.ghosts_bool
+                )
         try:
             resize_all(True)
         except ValueError:
@@ -367,10 +399,18 @@ class Structure(BaseSolidStructure):
 
         :return:
         """
-        self.define_surface()
-        self.define_semi_surface()
-        self.define_surface_neighbors()
-        self.define_ghosts()
+        self.surface_bool = self._mlcca.compute_surface_topology(
+            self.deposit, d_full_d=self.d_full_d, d_full_s=self.d_full_s, out=self.surface_bool
+        )
+        self.semi_surface_bool = self._mlcca.compute_semi_surface_topology(
+            self.deposit, self.surface_bool, out=self.semi_surface_bool
+        )
+        self._mlcca.compute_surface_neighbors(
+            self.deposit, self.surface_bool, out=self.surface_neighbors_bool
+        )
+        self.ghosts_bool = self._mlcca.compute_ghost_shell(
+            self.surface_bool, self.semi_surface_bool, out=self.ghosts_bool
+        )
 
     def define_surface(self):
         """
@@ -378,37 +418,10 @@ class Structure(BaseSolidStructure):
 
         :return:
         """
-
-        # The whole idea is to derive surface according to neighboring cells
-        # 1. Firstly, a boolean array marking non-solid cells is created (positive)
-        # 2. Then, an average of each cell+neighbors is calculated (convolution applied)
-        #   after this only cells that are on the surfaces(solid side and gas side) are gonna be changed
-        # 3. Surface cells now have changed values and have to be separated from surface on the solid side
-        #   it achieved by the intersection of 'positive' and convoluted arrays, as surface is ultimately not a solid
-
         logger.debug('Generating surface index...')
-        self.surface_bool[...] = False
-        positive = np.full(self.deposit.shape, False, dtype=bool)
-        positive[self.deposit >= 0] = True  # gas cells
-        grid = np.copy(self.deposit)
-        grid[grid > 0] = 0  # removing any deposit in process
-        grid1 = np.copy(self.deposit)
-        grid1[grid1 > 0] = 0
-        # Applying convolution;  simple np.roll() does not work well, as it connects the edges(i.E rolls top layer to the bottom)
-        self.__stencil_3d(grid, grid1)
-        grid /= 7  # six neighbors + cell itself
-        # Trimming unchanged cells:     using tolerance in case of inaccuracy
-        grid[abs(grid - self.d_full_d) < 0.0000001] = 0  # fully deposited cells
-        grid[abs(grid - self.d_full_s) < 0.0000001] = 0  # substrate
-        # grid[abs(grid - self.vol_prefill) < 0.000001] = 0  # prefilled cells
-        # Now making a boolean array of changed cells
-        combined = np.full(self.deposit.shape, False, dtype=bool)
-        combined[abs(grid) > 0] = True
-        grid[...] = 0
-        # Now, surface is intersection of these boolean arrays:
-        grid += positive
-        grid += combined
-        self.surface_bool[grid == 2] = True
+        self.surface_bool = self._mlcca.compute_surface_topology(
+            self.deposit, d_full_d=self.d_full_d, d_full_s=self.d_full_s, out=self.surface_bool
+        )
         logger.debug('...done!')
 
     def define_semi_surface(self):
@@ -422,12 +435,9 @@ class Structure(BaseSolidStructure):
        :return:
        """
         logger.debug('Generating semi-surface index...')
-        grid = np.zeros_like(self.deposit)
-        self.__stencil_3d(grid, self.surface_bool)
-        grid[self.deposit != 0] = 0
-        grid[self.surface_bool] = 0
-        grid[grid < 2] = 0
-        self.semi_surface_bool[grid != 0] = True
+        self.semi_surface_bool = self._mlcca.compute_semi_surface_topology(
+            self.deposit, self.surface_bool, out=self.semi_surface_bool
+        )
         logger.debug('...done!')
 
     def define_surface_neighbors(self, n=0, deposit=None, surface=None, neighbors=None):
@@ -448,43 +458,7 @@ class Structure(BaseSolidStructure):
             surface = self.surface_bool
         if neighbors is None:
             neighbors = self.surface_neighbors_bool
-        grid = np.zeros_like(deposit)
-        self.__stencil_3d(grid, surface)
-        grid[grid > 1] = 1
-        grid1 = np.zeros_like(grid)
-        self.__stencil_3d(grid1, grid)
-        grid1[grid > 0] = 0
-        grid1[grid1 < 2] = 0
-        grid1[grid1 >= 2] = 1
-        grid[grid1 > 0] = 1
-        i = 1
-        if n == 0:
-            loop = 0
-        else:
-            loop = 1
-        while True:
-            i += 1
-            if loop:
-                if i > n:
-                    break
-            elif grid[deposit < 0].min() > 0:
-                break
-            grid1 = np.zeros_like(grid)
-            self.__stencil_3d(grid1, grid)
-            grid1[grid != 0] = 0
-            grid1[grid1 > 0] = 1
-            grid[grid1 > 0] = i
-            grid1 = np.zeros_like(grid)
-            self.__stencil_3d(grid1, grid)
-            grid1[grid > 0] = 0
-            grid1[grid1 < i * 2] = 0
-            grid1[grid1 >= i * 2] = 1
-            grid[grid1 > 0] = i
-        grid[deposit > -1] = 0
-        neigb = neighbors[1:-1, 1:-1, 1:-1]
-        g = grid[1:-1, 1:-1, 1:-1]
-        neigb[...] = 0
-        neigb[g > 0] = True
+        self._mlcca.compute_surface_neighbors(deposit, surface, n=n, out=neighbors)
         logger.debug('...done!')
 
     def define_ghosts(self):
@@ -497,10 +471,9 @@ class Structure(BaseSolidStructure):
         # Rolling in all directions marks all the neighboring cells
         # Subtracting surface from that selection results in a "shell" around the surface
         logger.debug('Generating ghost cells index...')
-        roller = np.logical_or(self.surface_bool, self.semi_surface_bool)
-        self.ghosts_bool = np.copy(roller)
-        self.__stencil_3d(self.ghosts_bool, roller)
-        self.ghosts_bool[roller] = False
+        self.ghosts_bool = self._mlcca.compute_ghost_shell(
+            self.surface_bool, self.semi_surface_bool, out=self.ghosts_bool
+        )
         logger.debug('...done!')
 
     def max_z(self):
@@ -518,20 +491,6 @@ class Structure(BaseSolidStructure):
         grid.spacing = (self.cell_size, self.cell_size, self.cell_size)  # assigning dimensions of a cell
         grid.cell_data["deposit"] = self.deposit.flatten()
         grid.save('Deposit_' + time.strftime("%H:%M:%S", time.localtime()))
-
-    def __stencil_3d(self, grid_out, grid_in):
-        grid_out[:, :, :-1] += grid_in[:, :, 1:]  # rolling forward (actually backwards)
-        grid_out[:, :, -1] += grid_in[:, :, -1]  # taking care of edge values
-        grid_out[:, :, 1:] += grid_in[:, :, :-1]  # rolling backwards
-        grid_out[:, :, 0] += grid_in[:, :, 0]
-        grid_out[:, :-1, :] += grid_in[:, 1:, :]
-        grid_out[:, -1, :] += grid_in[:, -1, :]
-        grid_out[:, 1:, :] += grid_in[:, :-1, :]
-        grid_out[:, 0, :] += grid_in[:, 0, :]
-        grid_out[:-1, :, :] += grid_in[1:, :, :]
-        grid_out[-1, :, :] += grid_in[-1, :, :]
-        grid_out[1:, :, :] += grid_in[:-1, :, :]
-        grid_out[0, :, :] += grid_in[0, :, :]
 
     @property
     def substrate_height_abs(self):

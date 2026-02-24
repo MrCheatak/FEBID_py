@@ -4,7 +4,6 @@ Multi-Layerd Continuous Cellular Automata
 import numpy as np
 
 from febid.slice_trics import get_3d_slice, get_boundary_indices
-from febid.libraries.vtk_rendering.VTK_Rendering import SetVisibilityCallback
 
 
 class MultiLayerdCellCellularAutomata:
@@ -92,6 +91,125 @@ class MultiLayerdCellCellularAutomata:
 
         return neighbors_2nd, surface_view, semi_surface_view, ghosts_view
 
+    @staticmethod
+    def stencil_3d(grid_out, grid_in):
+        """Accumulate 6-neighborhood + edge-safe boundaries into ``grid_out``."""
+        grid_out[:, :, :-1] += grid_in[:, :, 1:]
+        grid_out[:, :, -1] += grid_in[:, :, -1]
+        grid_out[:, :, 1:] += grid_in[:, :, :-1]
+        grid_out[:, :, 0] += grid_in[:, :, 0]
+        grid_out[:, :-1, :] += grid_in[:, 1:, :]
+        grid_out[:, -1, :] += grid_in[:, -1, :]
+        grid_out[:, 1:, :] += grid_in[:, :-1, :]
+        grid_out[:, 0, :] += grid_in[:, 0, :]
+        grid_out[:-1, :, :] += grid_in[1:, :, :]
+        grid_out[-1, :, :] += grid_in[-1, :, :]
+        grid_out[1:, :, :] += grid_in[:-1, :, :]
+        grid_out[0, :, :] += grid_in[0, :, :]
+
+    def compute_surface_topology(self, deposit, d_full_d=-1.0, d_full_s=-2.0, out=None):
+        """
+        Compute surface mask from deposit grid.
+
+        Returns a boolean array where gas-side surface cells are True.
+        """
+        if out is None:
+            out = np.zeros_like(deposit, dtype=bool)
+        else:
+            out[...] = False
+
+        positive = deposit >= 0
+        grid = np.copy(deposit)
+        grid[grid > 0] = 0
+        grid1 = np.copy(deposit)
+        grid1[grid1 > 0] = 0
+        self.stencil_3d(grid, grid1)
+        grid /= 7
+        grid[np.abs(grid - d_full_d) < 1e-7] = 0
+        grid[np.abs(grid - d_full_s) < 1e-7] = 0
+        combined = np.abs(grid) > 0
+        out[positive & combined] = True
+        return out
+
+    def compute_semi_surface_topology(self, deposit, surface_bool, out=None):
+        """
+        Compute semi-surface mask from deposit and surface masks.
+        """
+        if out is None:
+            out = np.zeros_like(deposit, dtype=bool)
+
+        grid = np.zeros_like(deposit)
+        self.stencil_3d(grid, surface_bool)
+        grid[deposit != 0] = 0
+        grid[surface_bool] = 0
+        # Preserve legacy behavior from Structure.define_semi_surface():
+        # only mark True where condition matches, without explicit full reset.
+        out[grid >= 2] = True
+        return out
+
+    def compute_surface_neighbors(self, deposit, surface_bool, n=0, out=None):
+        """
+        Compute nearest-neighbor shell of solid cells around surface cells.
+
+        If ``out`` is provided, the computed values are written to its inner volume
+        (excluding 1-cell border) to preserve original in-place update behavior.
+        """
+        if out is None:
+            out = np.zeros_like(deposit, dtype=bool)
+
+        grid = np.zeros_like(deposit)
+        self.stencil_3d(grid, surface_bool)
+        grid[grid > 1] = 1
+
+        grid1 = np.zeros_like(grid)
+        self.stencil_3d(grid1, grid)
+        grid1[grid > 0] = 0
+        grid1[grid1 < 2] = 0
+        grid1[grid1 >= 2] = 1
+        grid[grid1 > 0] = 1
+
+        i = 1
+        loop = 0 if n == 0 else 1
+        while True:
+            i += 1
+            if loop:
+                if i > n:
+                    break
+            elif grid[deposit < 0].min() > 0:
+                break
+            grid1 = np.zeros_like(grid)
+            self.stencil_3d(grid1, grid)
+            grid1[grid != 0] = 0
+            grid1[grid1 > 0] = 1
+            grid[grid1 > 0] = i
+            grid1 = np.zeros_like(grid)
+            self.stencil_3d(grid1, grid)
+            grid1[grid > 0] = 0
+            grid1[grid1 < i * 2] = 0
+            grid1[grid1 >= i * 2] = 1
+            grid[grid1 > 0] = i
+
+        grid[deposit > -1] = 0
+        out_view = out[1:-1, 1:-1, 1:-1]
+        grid_view = grid[1:-1, 1:-1, 1:-1]
+        out_view[...] = False
+        out_view[grid_view > 0] = True
+        return out
+
+    def compute_ghost_shell(self, surface_bool, semi_surface_bool, out=None):
+        """
+        Compute ghost shell wrapping surface and semi-surface.
+        """
+        roller = np.logical_or(surface_bool, semi_surface_bool)
+        if out is None:
+            out = np.copy(roller)
+        else:
+            out[...] = roller
+
+        self.stencil_3d(out, roller)
+        out[roller] = False
+        return out
+
     def check_neighbors(self, arr1, arr2):
         from scipy.ndimage import binary_dilation
 
@@ -142,6 +260,7 @@ class MultiLayerdCellCellularAutomata:
 
 def visualize_kernel(*arrays):
     import pyvista as pv
+    from febid.libraries.vtk_rendering.VTK_Rendering import SetVisibilityCallback
 
     # Step 1: Create a ImageData
     grids = []
