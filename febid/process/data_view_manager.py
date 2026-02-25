@@ -361,13 +361,13 @@ class DataViewManager:
         """
         Returns a PrecursorDensityView for precursor density (RDE) calculations.
 
-        Note: This view uses surface_all boolean array, NOT surface_all_index.
-        The index tuple is only used in diffusion calculations.
+        Note: The `surface` attribute in this view is surface_bool (not surface_all).
+        Semi-surface cells are handled separately via semi_surface_index.
 
         When acceleration_enabled=True:
             - Uses tight 2D bounding box around irradiated area
             - beam_matrix is 1D flattened array (for surface cells only)
-            - tau is 1D flattened (if temp tracking) or scalar
+            - tau is 1D flattened for surface cells ONLY (if temp tracking) or scalar
 
         When acceleration_enabled=False:
             - Uses full 2D slice (substrate_height:max_z)
@@ -401,8 +401,9 @@ class DataViewManager:
 
             # Flatten for acceleration mode if needed
             if self.acceleration_enabled and isinstance(tau_2d, np.ndarray):
-                # Flatten tau to 1D for surface cells
-                tau = tau_2d[self._surface_all[slice_2d]]
+                # Flatten tau to 1D for surface cells ONLY (not semi_surface)
+                # CRITICAL: Must match precursor[surface] size in physics_engine._rk4_with_ftcs()
+                tau = tau_2d[self.structure.surface_bool[slice_2d]]
             else:
                 tau = tau_2d
 
