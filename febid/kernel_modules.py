@@ -101,7 +101,6 @@ class GPU:
         self.knl_prec_stage_array = prg_prec_den.rk4_stage_array  # array D/tau RK stages
         self.knl_prec_stage_scalar_final = prg_prec_den.rk4_stage_scalar_final  # fused final stage + combine
         self.knl_prec_stage_array_final = prg_prec_den.rk4_stage_array_final  # fused final stage + combine
-        self.knl_prec_combine = prg_prec_den.rk4_combine  # RK stage combination
         self.knl_dep = prg_prec_den.deposition  # deposition function
         prg_up_surf = cl.Program(self.ctx, kernels_up_surf).build()  # compile kernel program
         self.knl_up_surf = prg_up_surf.update  # cellular automaton update function
@@ -159,12 +158,10 @@ class GPU:
         self.k1 = np.zeros_like(self.precursor)
         self.k2 = np.zeros_like(self.precursor)
         self.k3 = np.zeros_like(self.precursor)
-        self.k4 = np.zeros_like(self.precursor)
         self.zero_add = np.zeros_like(self.precursor)
         self.k1_buf = cl.Buffer(self.ctx, mf.READ_WRITE | mf.COPY_HOST_PTR, hostbuf=self.k1)
         self.k2_buf = cl.Buffer(self.ctx, mf.READ_WRITE | mf.COPY_HOST_PTR, hostbuf=self.k2)
         self.k3_buf = cl.Buffer(self.ctx, mf.READ_WRITE | mf.COPY_HOST_PTR, hostbuf=self.k3)
-        self.k4_buf = cl.Buffer(self.ctx, mf.READ_WRITE | mf.COPY_HOST_PTR, hostbuf=self.k4)
         self.zero_add_buf = cl.Buffer(self.ctx, mf.READ_ONLY | mf.COPY_HOST_PTR, hostbuf=self.zero_add)
         self.D_coeff = np.zeros_like(self.precursor)
         self.tau_coeff = np.ones_like(self.precursor)
@@ -249,7 +246,6 @@ class GPU:
             self.k1_buf.release()
             self.k2_buf.release()
             self.k3_buf.release()
-            self.k4_buf.release()
             self.zero_add_buf.release()
             self.D_coeff_buf.release()
             self.tau_coeff_buf.release()
