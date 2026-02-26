@@ -367,7 +367,7 @@ class Process:
 
         :return: True if the structure was resized
         """
-        with Lock():  # blocks run with Lock should exclude calls of decorated functions, otherwise the thread will hang
+        with self.lock:
             shape_old = self.structure.shape
             beam_matrix_old = self.state.beam_matrix.copy()  # Save old beam matrix
             beam_matrix_surface_old = self.state.beam_matrix_surface.copy()  # Save old beam matrix surface
