@@ -147,7 +147,6 @@ class DataViewManager:
         self._index_surface_2d: tuple = None
         self._index_semi_surface_2d: tuple = None
         self._index_surface_all_2d: tuple = None
-        self._index_surface_all_2d_prev: tuple = None
 
         # Metrics
         self.n_surface_cells: int = 0
@@ -168,7 +167,6 @@ class DataViewManager:
         self.n_semi_surface_cells = self._index_semi_surface_2d[0].size
         self._index_surface_all_2d = concat_index(self._index_surface_2d, self._index_semi_surface_2d)
         self._surface_all[self._slice_irradiated_2d][self._index_surface_all_2d] = True
-        self._index_surface_all_2d_prev = self._index_surface_all_2d
 
     def update_roi(self, beam_matrix: np.ndarray = None):
         """
@@ -477,7 +475,7 @@ class DataViewManager:
         - Recalculate 2D slices (depend on max_z)
         - Regenerate surface indices (depend on surface_bool, semi_surface_bool)
         """
-
+        # We do not update surface_all here since it is handled during cell filling update more effectively.
         # 1. Calculate the 2D slice that covers the entire structure height (always needed)
         self._slice_irradiated_2d = self._define_irradiated_slice_2d()
         # 1a. Calculate the 2D slice that covers the entire structure height without substrate
