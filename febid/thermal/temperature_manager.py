@@ -299,9 +299,9 @@ class TemperatureManager:
 
     def _update_surface_temperatures(self) -> None:
         """Calculate surface temperatures by averaging neighboring solid cells."""
-        surface_index = self.view_manager._index_surface_2d
-        semi_surface_index = self.view_manager._index_semi_surface_2d
-        slice_2d = self.view_manager._slice_irradiated_2d
+        surface_index = self.view_manager.get_surface_index()
+        semi_surface_index = self.view_manager.get_semi_surface_index()
+        slice_2d = self.view_manager.get_full_active_volume_slice()
 
         surface_temp = self.state.surface_temp[slice_2d]
         temp = self.state.structure.temperature[slice_2d]
@@ -321,20 +321,20 @@ class TemperatureManager:
         No caching - DataViewManager generates appropriate forms on-demand.
         """
         # Get surface_all index (includes surface AND semi_surface)
-        surface_all = self.view_manager._index_surface_all_2d
-        slice_2d = self.view_manager._slice_irradiated_2d
+        surface_all_index = self.view_manager._index_surface_all_2d
+        active_slice = self.view_manager._slice_irradiated_2d
 
         # Get surface temperatures
-        temp_2d = self.state.surface_temp[slice_2d]
+        temp_surface = self.state.surface_temp[active_slice]
 
         # Calculate D(T) for ALL surface cells (surface + semi_surface)
-        D_2d = np.zeros_like(temp_2d)
-        D_2d[surface_all] = self.state.precursor.diffusion_coefficient_at_T(
-            temp_2d[surface_all]
+        D_array = np.zeros_like(temp_surface)
+        D_array[surface_all_index] = self.state.precursor.diffusion_coefficient_at_T(
+            temp_surface[surface_all_index]
         )
 
         # Store in state array (source of truth)
-        self.state.D_temp[slice_2d] = D_2d
+        self.state.D_temp[active_slice] = D_array
 
     def _update_residence_times(self) -> None:
         """
@@ -344,20 +344,19 @@ class TemperatureManager:
         No caching - DataViewManager generates appropriate forms on-demand.
         """
         # Get surface_all index (includes surface AND semi_surface)
-        surface_all = self.view_manager._index_surface_all_2d
-        slice_2d = self.view_manager._slice_irradiated_2d
-
+        surface_all_index = self.view_manager.get_surface_all_index()
+        active_slice = self.view_manager.get_full_active_volume_slice()
         # Get surface temperatures
-        temp_2d = self.state.surface_temp[slice_2d]
+        temp = self.state.surface_temp[active_slice]
 
         # Calculate tau(T) for ALL surface cells (surface + semi_surface)
-        tau_2d = np.zeros_like(temp_2d)
-        tau_2d[surface_all] = self.state.precursor.residence_time_at_T(
-            temp_2d[surface_all]
+        tau_2d = np.zeros_like(temp)
+        tau_2d[surface_all_index] = self.state.precursor.residence_time_at_T(
+            temp[surface_all_index]
         )
 
         # Store in state array (source of truth - 2D only)
-        self.state.tau_temp[slice_2d] = tau_2d
+        self.state.tau_temp[active_slice] = tau_2d
 
         # NO caching of 1D flattened form - DataViewManager generates when needed
 

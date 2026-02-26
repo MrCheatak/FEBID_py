@@ -2,9 +2,7 @@ import numpy as np
 from dataclasses import dataclass
 from typing import Union, Tuple
 
-from febid.libraries.rolling.roll import beam_matrix_semi_surface_av
-
-from febid.slice_trics import index_where, get_index_in_parent, concat_index, cast_index_to_int
+from febid.slice_trics import index_where, concat_index, cast_index_to_int
 from febid.process.simulation_state import SimulationState
 
 
@@ -101,6 +99,8 @@ class TemperatureRecalcView:
     """
     deposit: np.ndarray
     temp: np.ndarray
+    temp_surface: np.ndarray
+    D_temp: Union[np.ndarray, float]
     slice_no_sub: slice
 
 
@@ -131,7 +131,6 @@ class DataViewManager:
         self.acceleration_enabled: bool = acceleration_enabled
 
         # --- Private state for cached views and indices ---
-        # These will be updated by the `update_roi` method.
 
         # Cached flattened arrays (only populated when acceleration_enabled=True)
         self.beam_matrix_surface_flat = None
@@ -269,7 +268,7 @@ class DataViewManager:
         to the 3D view's coordinate system.
         """
         if self._index_deposition_2d[0].size == 0:
-            return (np.array([]), np.array([]), np.array([]))
+            return np.array([]), np.array([]), np.array([])
 
         z, y, x = self._index_deposition_2d
 
@@ -278,7 +277,7 @@ class DataViewManager:
         y_offset = self._slice_irradiated_3d[1].start
         x_offset = self._slice_irradiated_3d[2].start
 
-        return (z.copy(), y - y_offset, x - x_offset)
+        return z.copy(), y - y_offset, x - x_offset
 
     # --- Public API for Retrieving Views and Data ---
     def get_effective_beam_flux_for_deposition(self) -> np.ndarray:
@@ -302,8 +301,6 @@ class DataViewManager:
         beam_matrix_surface_2d_view[:] = 0
         index_surface = self._index_surface_2d
         self.beam_matrix_surface_flat = beam_matrix_surface_2d_view[index_surface] = beam_matrix_2d_view[index_surface]
-        # index = self._index_semi_surface_2d
-        # beam_matrix_semi_surface_av(beam_matrix_surface_2d_view, beam_matrix_surface_2d_view, *index)
         return self.beam_matrix_surface_flat
 
     def get_index(self, view) -> tuple:
@@ -500,6 +497,8 @@ class DataViewManager:
         return TemperatureRecalcView(
             deposit=self.structure.deposit[slice_2d_no_sub],
             temp=self.structure.temperature[slice_2d_no_sub],
+            temp_surface=self.state.temp_surface[slice_2d_no_sub],
+            D_temp=self.state.D_temp[slice_2d_no_sub],  # D_temp is typically a scalar, but could be an array
             slice_no_sub=slice_2d_no_sub
         )
 
@@ -578,6 +577,36 @@ class DataViewManager:
             self._slice_irradiated_3d = self._define_irradiated_slice_2d()
             self.n_beam_flux_points = np.count_nonzero(beam_matrix_2d_view)
 
+    def get_surface_index(self):
+        """
+        Returns the current surface index tuple (fancy index for surface cells).
+        """
+        if self._index_surface_2d is None:
+            raise ValueError("Surface index has not been generated yet. Call update_after_cell_filling() first.")
+        return self._index_surface_2d
+
+    def get_semi_surface_index(self):
+        """
+        Returns the current semi-surface index tuple (fancy index for semi-surface cells).
+        """
+        if self._index_semi_surface_2d is None:
+            raise ValueError("Semi-surface index has not been generated yet. Call update_after_cell_filling() first.")
+        return self._index_semi_surface_2d
+
+    def get_surface_all_index(self):
+        """
+        Returns the current combined surface+semi-surface index tuple (fancy index for all surface cells).
+        """
+        if self._index_surface_all_2d is None:
+            raise ValueError("Combined surface index has not been generated yet. Call update_after_cell_filling() first.")
+        return self._index_surface_all_2d
+
+    def get_full_active_volume_slice(self):
+        """
+        Returns the full active volume slice (from substrate_height to max_z) for 3D arrays.
+        This is used when access to all surface is required.
+        """
+        return self._slice_irradiated_2d
 
     # --- Convenience properties for cleaner internal access ---
     @property
