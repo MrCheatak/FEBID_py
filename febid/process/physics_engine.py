@@ -299,7 +299,7 @@ class PhysicsEngine:
             p_prev = view.precursor.copy()
 
             # Update precursor density
-            self.compute_precursor_density()
+            self.compute_precursor_density(dt)
 
             # Check convergence
             view_new = self.view_manager.get_precursor_density_view(self.temp_manager)
