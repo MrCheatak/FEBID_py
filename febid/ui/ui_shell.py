@@ -180,7 +180,7 @@ class MainPanel(QMainWindow, UI_MainPanel):
         :type current: str
         :return: None
         """
-        self.ui_helper.set_simple_pattern_change()
+        self.ui_helper.set_simple_pattern_change(current)
         self.pattern = current
         self.__save_parameter('pattern', current)
 
