@@ -454,7 +454,7 @@ class DataViewManager:
         return TemperatureRecalcView(
             deposit=self.structure.deposit[slice_2d_no_sub],
             temp=self.structure.temperature[slice_2d_no_sub],
-            temp_surface=self.state.temp_surface[slice_2d_no_sub],
+            temp_surface=self.state.surface_temp[slice_2d_no_sub],
             D_temp=self.state.D_temp[slice_2d_no_sub],  # D_temp is typically a scalar, but could be an array
             slice_no_sub=slice_2d_no_sub
         )
