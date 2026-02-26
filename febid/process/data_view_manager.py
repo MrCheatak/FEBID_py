@@ -186,49 +186,8 @@ class DataViewManager:
                 raise ValueError("Beam matrix shape must match the structure shape.")
             self.beam_matrix[:] = beam_matrix
 
-        self._recalculate_views_and_indices()
-
-    def _recalculate_views_and_indices(self):
-        """
-        Private method to re-compute all slices and indices.
-        This centralizes the update logic that was scattered across Process.py.
-        Only generates fancy indices and flattened arrays when acceleration_enabled=True.
-        """
-        # 1. Calculate the 2D slice that covers the entire structure height (always needed)
-        self._slice_irradiated_2d = self._define_irradiated_slice_2d()
-        # 1a. Calculate the 2D slice that covers the entire structure height without substrate
-        self._slice_irradiated_2d_no_sub = self._define_irradiated_slice_2d_no_sub()
-
-        # 2. Generate surface-related indices (ALWAYS needed for diffusion algorithm)
-        surface_2d_view = self.structure.surface_bool[self._slice_irradiated_2d]
-        semi_surface_2d_view = self.structure.semi_surface_bool[self._slice_irradiated_2d]
-
-        self._index_surface_2d = self.get_index(surface_2d_view)
-        self._index_semi_surface_2d = self.get_index(semi_surface_2d_view)
-        self._index_surface_all_2d_prev = self._index_surface_all_2d
-        self._index_surface_all_2d = concat_index(self._index_surface_2d, self._index_semi_surface_2d)
-
-        # Only generate deposition indices and flattened arrays if acceleration is enabled
-        if self.acceleration_enabled:
-            # 3. Get the view of the beam matrix within that 2D slice
-            beam_matrix_2d_view = self.beam_matrix[self._slice_irradiated_2d]
-
-            # 4. Find the indices of irradiated cells within the 2D view
-            self._index_deposition_2d = self.get_index(beam_matrix_2d_view)
-
-            # 5. Based on those indices, calculate the tighter 3D slice
-            self._slice_irradiated_3d = self._define_irradiated_slice_3d()
-
-            # 6. Transform the 2D deposition index into the coordinate system of the 3D slice
-            self._index_deposition_3d = self._transform_deposition_index_to_3d()
-
-            # 7. Get the flattened effective beam flux for deposition
-            self.get_effective_beam_flux_for_deposition()
-            # 8. Get the flattened beam flux for surface and semi-surface cells
-            self.get_beam_flux_for_surface()
-        else:
-            # Acceleration disabled: compute simple 3D slice, no fancy indices for deposition
-            self._slice_irradiated_3d = np.s_[self.substrate_height:self.max_z, :, :]
+        self.update_after_cell_filling()
+        self.update_after_beam_matrix()
 
     # --- Slice and Index Definition Methods (formerly properties in Process) ---
 
