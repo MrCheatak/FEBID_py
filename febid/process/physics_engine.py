@@ -312,6 +312,7 @@ class PhysicsEngine:
             logger.warning(f'Failed to reach {eps} accuracy in {max_it} iterations in Process.equilibrate. Achieved accuracy: {acc} \n'
                           f'Terminating loop.', RuntimeWarning)
             print(f'Took {i + 1} iteration(s) to equilibrate, took {df() - start}')
+            return 0
 
 
     def __expressions(self):

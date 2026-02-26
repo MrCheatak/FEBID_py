@@ -185,6 +185,7 @@ class SimulationPipeline:
         self.mc_executor = MonteCarloExecutor(context.process, context.mcSimulation)
         self.heat_solver = HeatSolverExecutor(context.process, context.mcSimulation)
         self.stepper: TimeStepper = None
+        self.initialized = False
 
     def initialize(self):
         """Prepare process coordinates and time-step controller before execution.

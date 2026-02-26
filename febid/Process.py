@@ -413,6 +413,7 @@ class Process:
         This updates the Hausdroff distances used for electron escape depth estimation.
 
         :param cell: cell indices
+        :param data_view: SurfaceUpdateView with local active array views
         :return:
         """
         n_3d, _ = get_3d_slice(cell, data_view.deposit.shape, self.state.max_neib)

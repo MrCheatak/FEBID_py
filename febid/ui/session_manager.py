@@ -136,6 +136,7 @@ class SessionManager:
             self.starter.start_mc(**kwargs)
         else:
             raise ValueError(f'Unknown module: {module}')
+        return None
 
     def stop(self):
         """Stop the currently running simulation via starter interface.

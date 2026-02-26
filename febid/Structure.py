@@ -290,7 +290,6 @@ class Structure(BaseSolidStructure):
         self.temperature = np.zeros_like(self.deposit)
         self.temperature[self.deposit < 0] = self.room_temp
         self._rebuild_topology(n_surface_neighbors=1)
-        self.t = 0
 
         self.initialized = True
 

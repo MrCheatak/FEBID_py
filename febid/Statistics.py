@@ -266,8 +266,6 @@ class Statistics(MonitoringDaemon):
         :param stats: current simulation time, current number of deposited cells and manually added columns
         :return:
         """
-        self.dt = 0
-        self.av_temperature = 0
         record = {}
         cols = self.columns
         try:

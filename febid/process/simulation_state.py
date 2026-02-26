@@ -6,32 +6,22 @@ No computation logic - just state storage.
 """
 
 import numpy as np
+
 from febid.Structure import Structure
-from febid.continuum_model_base import BeamSettings, PrecursorParams, ContinuumModel
+from febid.continuum_model_base import ContinuumModel
 
 
 class SimulationState:
     """
     Container for all simulation data arrays and parameters.
 
-    This is a "dumb" data container with no computation logic.
+    This is a data container with no computation logic.
     All arrays are references to Structure arrays or locally managed arrays.
     """
 
     def __init__(self, structure: Structure, model: ContinuumModel,
                  heat_cond: float, room_temp: float = 294):
-        """
-        Initialize simulation state.
-        
-        :param structure: The 3D structure object containing main arrays
-        :type structure: Structure
-        :param model: Physics model with beam and precursor parameters
-        :type model: ContinuumModel
-        :param heat_cond: Thermal conductivity
-        :type heat_cond: float
-        :param room_temp: Room temperature in Kelvin (default: 294)
-        :type room_temp: float, optional
-        """
+        """Initialize simulation state with structure-backed arrays."""
         # Core references
         self.structure = structure
         self.model = model
@@ -55,7 +45,7 @@ class SimulationState:
 
         # Additional arrays (managed locally, not in Structure)
         self.beam_matrix = np.zeros_like(structure.deposit, dtype=np.int32)
-        self.beam_matrix_surface = np.zeros_like(structure.deposit, dtype=np.int32)  # Surface and semmi-surface cells exposed to the beam
+        self.beam_matrix_surface = np.zeros_like(structure.deposit, dtype=np.int32)
         self.surface_temp = np.zeros_like(structure.temperature)
         self.D_temp = np.zeros_like(structure.precursor)  # Temperature-dependent diffusion coefficients
         self.tau_temp = np.zeros_like(structure.precursor)  # Temperature-dependent residence times
@@ -65,4 +55,4 @@ class SimulationState:
         self.deposition_scaling = 1.0  # multiplier of the deposit increment; used to speed up the process
 
         # Temperature tracking flag
-        self.temperature_tracking = False  # Will be set during Process initialization
+        self.temperature_tracking = False

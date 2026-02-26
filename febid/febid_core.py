@@ -76,6 +76,7 @@ class SimulationManager:
 
         gather_stats = self.context.savingParams.get('gather_stats', False)
         save_snapshot = self.context.savingParams.get('save_snapshot', False)
+        self.process.stats_gathering = bool(gather_stats or save_snapshot)
         if gather_stats or save_snapshot:
             if gather_stats:
                 self.stats_thread = Statistics(self.process, self.syncHelper,
@@ -88,10 +89,8 @@ class SimulationManager:
                 self.snapshot_thread = StructureSaver(self.process, self.syncHelper,
                                                       refresh_rate=self.context.savingParams.get('save_snapshot_interval'),
                                                       filename=self.context.savingParams.get('filename'))
-            stats_interval = self.context.savingParams.get('gather_stats_interval', 1)
             self.process.stats_frequency = min(self.context.savingParams.get('gather_stats_interval', 1),
                                               self.context.savingParams.get('save_snapshot_interval', 1))
-            self.process.stats_gathering = True
 
         self.printing = Thread(target=print_all, args=[self.context],)
 

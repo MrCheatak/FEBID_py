@@ -389,7 +389,7 @@ class GPUFacade:
         
         :return: (tuple) (zdim, ydim, xdim) dimensions of the GPU grid
         """
-        return (self.knl.zdim, self.knl.ydim, self.knl.xdim)
+        return self.knl.zdim, self.knl.ydim, self.knl.xdim
 
     def set_zdim_max(self, zdim_max: int) -> None:
         """

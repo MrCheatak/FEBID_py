@@ -717,10 +717,11 @@ class TestGPUFacade:
                     all_metrics: List[List[MetricResult]]):
         """
         Print a comprehensive report comparing CPU vs GPU for all cases.
-
-        Args:
-            results: List of tuples (CPU results, GPU results) for each case
-            all_metrics: List of metric lists for each case
+        
+        :param results: List of tuples (CPU results, GPU results) for each case
+        :type results: list
+        :param all_metrics: List of metric lists for each case
+        :type all_metrics:list
         """
         print("\n" + "="*120)
         print("COMPREHENSIVE TEST REPORT: CPU vs GPU FEBID SIMULATION COMPARISON")

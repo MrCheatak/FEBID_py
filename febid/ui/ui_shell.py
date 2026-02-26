@@ -43,6 +43,7 @@ class MainPanel(QMainWindow, UI_MainPanel):
         """
         super().__init__(parent)
         self.app = app
+        self.controller = None  # Will be set when controller registers
         self.initialized = False
         self.setupUi(self)
         self.setWindowTitle('FEBID Control Panel')
