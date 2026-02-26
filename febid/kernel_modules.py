@@ -4,7 +4,6 @@ and utility functions for 3D<->1D index conversion.
 """
 import numpy as np
 import pyopencl as cl
-# import warnings
 import os
 # from pynvml import *
 os.environ['PYOPENCL_COMPILER_OUTPUT'] = '1'
@@ -63,18 +62,40 @@ class GPU:
         }
 
     def enable_timing(self, enabled=True, reset=True):
+        """Enable or disable kernel-timing collection.
+
+        :param enabled: Flag controlling timing collection.
+        :type enabled: bool
+        :param reset: Reset counters when toggling timing mode.
+        :type reset: bool
+        :return: None
+        """
         self._timing_enabled = bool(enabled)
         if reset:
             self.reset_timing()
 
     def get_timing(self):
+        """Return a copy of collected timing counters.
+
+        :return: Dictionary with accumulated timing metrics in seconds.
+        """
         return dict(self._timings)
 
     def timing_enabled(self):
+        """Report whether timing collection is currently enabled.
+
+        :return: True when kernel timing is enabled.
+        """
         return self._timing_enabled
 
     @staticmethod
     def _event_seconds(event):
+        """Convert OpenCL profiling event duration to seconds.
+
+        :param event: OpenCL event with profiling timestamps.
+        :type event: pyopencl.Event
+        :return: Event duration in seconds, or 0 on unavailable profiling data.
+        """
         try:
             return (event.profile.end - event.profile.start) * 1e-9
         except Exception:
