@@ -13,20 +13,6 @@ from febid.logging_config import setup_logger
 logger = setup_logger(__name__)
 
 
-class DepositionEngineExecutor:
-    def __init__(self, process):
-        self.process = process
-
-    def step(self, dwell_time):
-        if dwell_time < self.process.dt:
-            logger.info('Dwell time is smaller than the time step!')
-            self.process.dt = dwell_time
-        self.process.deposition()
-        self.process.precursor_density()
-        self.process.t += self.process.dt * self.process.deposition_scaling
-        self.process.reset_dt()
-
-
 class MonteCarloExecutor:
     """Run Monte Carlo transport and propagate beam-matrix updates to the process."""
 
@@ -196,7 +182,6 @@ class SimulationPipeline:
         """
         self.logger = setup_logger("febid.simulation")
         self.context = context
-        self.deposition_engine = DepositionEngineExecutor(context.process)
         self.mc_executor = MonteCarloExecutor(context.process, context.mcSimulation)
         self.heat_solver = HeatSolverExecutor(context.process, context.mcSimulation)
         self.stepper: TimeStepper = None
