@@ -248,11 +248,24 @@ class Starter:
         flag1, flag2 = self._params.save_simulation_data, self._params.save_structure_snapshot
         gather_stats = saving_params['gather_stats'] = self._params.save_simulation_data
         if gather_stats:
-            saving_params['gather_stats_interval'] = float(self._params.simulation_data_interval)
+            try:
+                saving_params['gather_stats_interval'] = float(self._params.simulation_data_interval)
+            except ValueError as e:
+                msg = 'Invalid value for simulation data saving interval. Please enter a valid number.'
+                logger.exception(msg)
+                e.errno = 10
+                e.args = (msg,)
+                raise e
         save_snapshot = saving_params['save_snapshot'] = self._params.save_structure_snapshot
         if save_snapshot:
-            saving_params['save_snapshot_interval'] = float(self._params.structure_snapshot_interval)
-        flag1, flag2 = self._params.save_simulation_data, self._params.save_structure_snapshot
+            try:
+                saving_params['save_snapshot_interval'] = float(self._params.structure_snapshot_interval)
+            except ValueError as e:
+                msg = 'Invalid value for structure snapshot saving interval. Please enter a valid number.'
+                logger.exception(msg)
+                e.errno = 11
+                e.args = (msg,)
+                raise e
         if flag1 or flag2:
             try:
                 if not self._params.unique_name:
