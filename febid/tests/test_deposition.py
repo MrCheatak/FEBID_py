@@ -228,8 +228,15 @@ class TestSimulationVolume:
         ("OFF", False),
     ]
 
+    # Large-beam consistency studies
+    LARGE_BEAM_SIGMA = 10
+    CELL_SIZE_SETUPS = [2, 5, 10]
+    BEAM_SIGMA_SETUPS = [2.0, 3.0, 4.0, 5.0, 7.0, 10.0]
+    DT_FACTORS = [1.0, 0.8, 0.6, 0.4, 0.2, 0.1]
+
     # Cache for simulation results
     _simulation_cache = {}
+    _advanced_simulation_cache = {}
 
     # Track which cases have been reported (for printing/plotting only once)
     _reported_cases = set()
@@ -303,6 +310,205 @@ class TestSimulationVolume:
 
         # Assess edge coverage metric (index 2)
         self._assert_metric(metrics[2])
+
+    @staticmethod
+    def _relative_error(reference: float, value: float) -> float:
+        """Compute relative error with a safe fallback for near-zero reference values."""
+        if abs(reference) < 1e-12:
+            return abs(value - reference)
+        return abs(value - reference) / abs(reference)
+
+    def _get_or_run_custom_simulation(
+        self,
+        case_name: str,
+        *,
+        cell_size: int,
+        gauss_dev: float,
+        dt_factor: float,
+        D_override: float = None,
+    ) -> tuple[SimulationResults1D, SimulationResults3D]:
+        """
+        Run a custom 1D/3D comparison scenario (or return cached result).
+        """
+        cache_key = (case_name, cell_size, gauss_dev, dt_factor, D_override)
+        if cache_key in self._advanced_simulation_cache:
+            return self._advanced_simulation_cache[cache_key]
+
+        params = dict(self.params)
+        params['cell_size'] = cell_size
+
+        settings = load_yaml(params['settings_filename'])
+        precursor = load_yaml(params['precursor_filename'])
+
+        settings['gauss_dev'] = gauss_dev
+        if D_override is not None:
+            precursor['diffusion_coefficient'] = D_override
+
+        printing_path = create_pattern(params)
+        results_1d = self.run_1d_sim(params, precursor, printing_path, settings, case_name)
+        results_3d = self.run_3d_sim(
+            ca=False,
+            params=params,
+            precursor=precursor,
+            printing_path=printing_path,
+            settings=settings,
+            case_name=case_name,
+            acceleration_enabled=True,
+            dt_factor=dt_factor,
+        )
+        self._advanced_simulation_cache[cache_key] = (results_1d, results_3d)
+        return results_1d, results_3d
+
+    def _assess_volume_and_min_coverage(
+        self,
+        results_1d: SimulationResults1D,
+        results_3d: SimulationResults3D
+    ) -> dict:
+        """Compare deposited volume and minimum precursor coverage against analytical (1D) results."""
+        min_cov_1d = float(np.min(results_1d.profile))
+        min_cov_3d = float(results_3d.theta_depleted)
+
+        volume_rel_error = self._relative_error(results_1d.V, results_3d.V)
+        min_cov_rel_error = self._relative_error(min_cov_1d, min_cov_3d)
+
+        return {
+            "volume_rel_error": volume_rel_error,
+            "min_cov_rel_error": min_cov_rel_error,
+            "volume_pass": volume_rel_error <= self.TOLERANCE,
+            "min_cov_pass": min_cov_rel_error <= self.TOLERANCE,
+            "all_pass": volume_rel_error <= self.TOLERANCE and min_cov_rel_error <= self.TOLERANCE,
+            "volume_1d": results_1d.V,
+            "volume_3d": results_3d.V,
+            "min_cov_1d": min_cov_1d,
+            "min_cov_3d": min_cov_3d,
+        }
+
+    @pytest.mark.parametrize("cell_size", CELL_SIZE_SETUPS)
+    def test_cell_size_conformity_large_beam(self, cell_size):
+        """
+        Validate volume and minimum precursor coverage for a large beam (sigma=10 nm)
+        across different cell sizes against the analytical (1D) reference.
+        """
+        case_name = f"cell_size_conformity_sigma_{self.LARGE_BEAM_SIGMA}_cs_{cell_size}"
+        results_1d, results_3d = self._get_or_run_custom_simulation(
+            case_name,
+            cell_size=cell_size,
+            gauss_dev=self.LARGE_BEAM_SIGMA,
+            dt_factor=1.0,
+        )
+        assessment = self._assess_volume_and_min_coverage(results_1d, results_3d)
+
+        print(
+            f"Cell size={cell_size} nm, beam sigma={self.LARGE_BEAM_SIGMA} nm | "
+            f"volume rel err={assessment['volume_rel_error'] * 100:.3f}%, "
+            f"min coverage rel err={assessment['min_cov_rel_error'] * 100:.3f}%"
+        )
+
+        assert assessment["volume_pass"], (
+            f"Cell size {cell_size} nm: deposited volume mismatch. "
+            f"1D={assessment['volume_1d']:.6f}, 3D={assessment['volume_3d']:.6f}, "
+            f"rel_error={assessment['volume_rel_error'] * 100:.3f}%, "
+            f"tolerance={self.TOLERANCE * 100:.3f}%"
+        )
+        assert assessment["min_cov_pass"], (
+            f"Cell size {cell_size} nm: minimum precursor coverage mismatch. "
+            f"1D={assessment['min_cov_1d']:.6f}, 3D={assessment['min_cov_3d']:.6f}, "
+            f"rel_error={assessment['min_cov_rel_error'] * 100:.3f}%, "
+            f"tolerance={self.TOLERANCE * 100:.3f}%"
+        )
+
+    @pytest.mark.parametrize("cell_size", CELL_SIZE_SETUPS)
+    def test_dt_consistency_against_analytical(self, cell_size):
+        """
+        For each cell size, reduce dt by predefined factors and compare volume and minimum
+        precursor coverage against analytical (1D) solution.
+        """
+        agreeing_factors = []
+        assessments_by_factor = {}
+
+        for dt_factor in self.DT_FACTORS:
+            case_name = f"dt_consistency_sigma_{self.LARGE_BEAM_SIGMA}_cs_{cell_size}_dtf_{dt_factor:.1f}"
+            print(f"Testing dt factor {dt_factor:.1f} for cell size {cell_size} nm...")
+
+            results_1d, results_3d = self._get_or_run_custom_simulation(
+                case_name,
+                cell_size=cell_size,
+                gauss_dev=self.LARGE_BEAM_SIGMA,
+                dt_factor=dt_factor,
+            )
+            assessment = self._assess_volume_and_min_coverage(results_1d, results_3d)
+            assessments_by_factor[dt_factor] = assessment
+
+            print(
+                f"Cell size={cell_size} nm, dt factor={dt_factor:.1f} | "
+                f"volume rel err={assessment['volume_rel_error'] * 100:.3f}%, "
+                f"min coverage rel err={assessment['min_cov_rel_error'] * 100:.3f}%"
+            )
+
+            if assessment["all_pass"]:
+                agreeing_factors.append(dt_factor)
+
+        if agreeing_factors:
+            best_factor = max(agreeing_factors)
+            if best_factor < 1.0:
+                print(
+                    f"Recommendation (cell size {cell_size} nm): reduce time step by factor <= {best_factor:.1f} "
+                    f"for agreement with analytical solution."
+                )
+        else:
+            best_factor = None
+            print(
+                f"Recommendation (cell size {cell_size} nm): no tested dt factor in {self.DT_FACTORS} "
+                f"met tolerance; reduce dt further."
+            )
+
+        assert agreeing_factors, (
+            f"No dt factor produced analytical agreement for cell size {cell_size} nm. "
+            f"Errors by factor: { {f: (a['volume_rel_error'], a['min_cov_rel_error']) for f, a in assessments_by_factor.items()} }"
+        )
+
+    @pytest.mark.parametrize("beam_sigma", BEAM_SIGMA_SETUPS)
+    def test_recommend_cell_size_for_beam(self, beam_sigma):
+        """
+        Recommend an appropriate cell size for beam sigma=10 nm based on
+        analytical agreement from the cell-size conformity study.
+        """
+        assessments = {}
+        for cell_size in self.CELL_SIZE_SETUPS:
+            case_name = f"cell_size_recommendation_sigma_{beam_sigma}_cs_{cell_size}"
+            print(f"Evaluating cell size {cell_size} nm for beam sigma {beam_sigma} nm...")
+            results_1d, results_3d = self._get_or_run_custom_simulation(
+                case_name,
+                cell_size=cell_size,
+                gauss_dev=beam_sigma,
+                dt_factor=1.0,
+            )
+            assessments[cell_size] = self._assess_volume_and_min_coverage(results_1d, results_3d)
+            print(
+                f"\n"
+                f"Results for "
+                f"Cell size={cell_size} nm, beam sigma={beam_sigma} nm: \n"
+                f"Volume rel err={assessments[cell_size]['volume_rel_error'] * 100:.3f}% \n"
+                f"Min coverage rel err={assessments[cell_size]['min_cov_rel_error'] * 100:.3f}% \n "
+                f"Pass={assessments[cell_size]['all_pass']}"
+                f"\n")
+
+        valid_cell_sizes = [cs for cs, report in assessments.items() if report["all_pass"]]
+        if valid_cell_sizes:
+            recommended = max(valid_cell_sizes)
+            print(
+                f"Recommended cell size for beam sigma={beam_sigma} nm: "
+                f"{recommended} nm or finer (tolerance {self.TOLERANCE * 100:.1f}%)."
+            )
+        else:
+            recommended = min(self.CELL_SIZE_SETUPS)
+            print(
+                f"No tested cell size met tolerance for beam sigma={self.LARGE_BEAM_SIGMA} nm. "
+                f"Use <= {recommended} nm and expand search to finer resolution."
+            )
+
+        assert recommended in self.CELL_SIZE_SETUPS
+        assert len(assessments) == len(self.CELL_SIZE_SETUPS)
 
     def test_semi_surface_cells(self):
         """Test equivalence of deposited volume on a flat surface vs a surface with single layer square patch.
@@ -676,7 +882,7 @@ class TestSimulationVolume:
                 val_str = str(v)
             print(f"  {k:<{maxk}} : {val_str}")
 
-        self.run_sim(ca, printing_path, process, sim)
+        self.run_sim(ca, printing_path, process, sim, dt_factor=dt_factor)
 
         # Extract precursor coverage profile for display
         s = structure.surface_bool.argmax(axis=0).max()
@@ -864,7 +1070,7 @@ class TestSimulationVolume:
         plt.tight_layout()
         plt.show()
 
-    def run_sim(self, ca, printing_path, process, sim):
+    def run_sim(self, ca, printing_path, process, sim, dt_factor=1.0):
         """
         Run the 3D FEBID simulation loop.
         This test loop follows the same algorithm as the real loop, but is modified to add extra external control.
@@ -884,20 +1090,25 @@ class TestSimulationVolume:
             process.x0, process.y0 = x, y
             time_passed = 0.0
             while time_passed < dwell_time:
+                remaining_dwell = max(dwell_time - time_passed, 0.0)
+                process.reset_dt()
+                if dt_factor != 1.0:
+                    process.dt = process.dt * dt_factor
+                step_dt = process.dt
                 # Use test_beam_matrix instead of MC_Simulation
                 process.deposition()
                 process.precursor_density()
-                process.t += process.dt * process.deposition_scaling
-                time_passed += process.dt
-                process.reset_dt()
+                process.t += step_dt * process.deposition_scaling
+                time_passed += step_dt
                 # process.dt *= 0.6
                 if ca:
                     if process.check_cells_filled():
                         process.cell_filled_routine()
                         beam_matrix = beam_matrix_test(x, y, sim=sim, pr=process)
                         process.set_beam_matrix(beam_matrix)
-                progress_bar.update((process.dt * process.deposition_scaling * 1e6))
+                progress_bar.update((min(step_dt, remaining_dwell) * process.deposition_scaling * 1e6))
                 i += 1
+        progress_bar.close()
         a=0
 
     def setup_progress_bar(self, printing_path, deposition_scaling=1):
