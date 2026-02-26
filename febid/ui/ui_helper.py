@@ -7,6 +7,12 @@ class UI_Group(list):
     """
 
     def __init__(self, *args):
+        """Create a list-like container for related UI widgets.
+
+        :param args: Widgets or one iterable of widgets.
+        :type args: tuple
+        :return: None
+        """
         super().__init__()
         if type(args[0]) in [set, list, tuple]:
             self.extend(args[0])
@@ -43,6 +49,14 @@ class RadioButtonGroup(UI_Group):
     A collection of bound radio buttons.
     """
     def __init__(self, *args, names=None):
+        """Initialize grouped radio buttons and corresponding logical names.
+
+        :param args: Radio button widgets.
+        :type args: tuple
+        :param names: Logical names mapped to buttons by position.
+        :type names: list
+        :return: None
+        """
         super().__init__(*args)
         self.names = names
 
@@ -73,6 +87,12 @@ class UIHelper:
     """
 
     def __init__(self, ui: UI_MainPanel):
+        """Initialize UI helper and build widget groups.
+
+        :param ui: Main UI object containing all controls.
+        :type ui: UI_MainPanel
+        :return: None
+        """
         self.ui = ui
         self._organize_ui_elements()
 
@@ -158,6 +178,10 @@ class UIHelper:
         self.radio_buttons_viz_data = None
 
     def set_vtk_chosen(self):
+        """Apply UI state corresponding to VTK-based structure source.
+
+        :return: None
+        """
         # Changing FEBID tab interface
         self.ui.choice_vtk_file.setChecked(True)
         self.ui_sim_volume.disable()
@@ -169,6 +193,10 @@ class UIHelper:
         self.ui_vtk_choice_mc.enable()
 
     def set_geom_chosen(self):
+        """Apply UI state corresponding to geometry-parameter structure source.
+
+        :return: None
+        """
         # Changing FEBID tab interface
         self.ui.choice_geom_parameters_file.setChecked(True)
         self.ui_sim_volume.disable()
@@ -180,6 +208,10 @@ class UIHelper:
         self.ui_geom_choice_mc.enable()
 
     def set_auto_chosen(self):
+        """Apply UI state for automatic volume creation from stream geometry.
+
+        :return: None
+        """
         # Changing FEBID tab interface
         self.ui.choice_auto.setChecked(True)
         self.ui_sim_volume.disable()
@@ -194,18 +226,32 @@ class UIHelper:
         self.ui.choice_vtk_file_mc.setAutoExclusive(True)
 
     def set_simple_pattern_chosen(self):
+        """Apply UI state for simple-pattern path generation.
+
+        :return: None
+        """
         # Changing FEBID tab interface
         self.ui.choice_simple_pattern.setChecked(True)
         self.ui_pattern.disable()
         self.ui_simple_patterns.enable()
 
     def set_stream_file_chosen(self):
+        """Apply UI state for stream-file path input.
+
+        :return: None
+        """
         # Changing FEBID tab interface
         self.ui.choice_stream_file.setChecked(True)
         self.ui_pattern.disable()
         self.ui_stream_file.enable()
 
     def set_simple_pattern_change(self, current):
+        """Enable or disable pattern parameter controls for the selected pattern.
+
+        :param current: Selected pattern name.
+        :type current: str
+        :return: None
+        """
         if current == 'Point':
             self.ui_pattern_param1.enable()
             self.ui_pattern_param2.enable()
@@ -226,6 +272,12 @@ class UIHelper:
             self.ui_pattern_param2.disable()
 
     def set_state_save_sim_data(self, param):
+        """Toggle controls related to periodic simulation-data export.
+
+        :param param: Truthy value enabling simulation-data saving.
+        :type param: bool
+        :return: None
+        """
         switch = bool(param)
         self.ui.checkbox_save_simulation_data.setChecked(switch)
         if switch:
@@ -240,6 +292,12 @@ class UIHelper:
             self.ui_save_folder.disable()
 
     def set_state_save_snapshots(self, param):
+        """Toggle controls related to structure-snapshot export.
+
+        :param param: Truthy value enabling snapshot saving.
+        :type param: bool
+        :return: None
+        """
         switch = bool(param)
         self.ui.checkbox_save_snapshots.setChecked(switch)
         if switch:

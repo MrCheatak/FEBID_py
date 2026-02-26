@@ -15,6 +15,12 @@ class ApplicationController(QObject):
     simulation_finished = pyqtSignal(str)  # Signal to emit when simulation finishes
 
     def __init__(self, session_manager):
+        """Create controller with a session manager backend.
+
+        :param session_manager: Session manager used to configure and run simulations.
+        :type session_manager: SessionManager
+        :return: None
+        """
         super().__init__()
         self.session_manager = session_manager
 

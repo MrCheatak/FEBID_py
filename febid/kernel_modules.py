@@ -10,6 +10,8 @@ import os
 os.environ['PYOPENCL_COMPILER_OUTPUT'] = '1'
 
 class GPU:
+    """Manage OpenCL context, buffers, and kernels for FEBID GPU computations."""
+
     def __init__(self, device=None):
         """
         platform = cl.get_platforms()
@@ -218,6 +220,10 @@ class GPU:
             self.queue.finish()
 
     def _get_required_space(self):
+        """Estimate GPU memory required for current structure and beam buffers.
+
+        :return: Estimated byte count required for GPU allocations.
+        """
         # calculate if storage size is sufficient
         self.req_space = self.precursor.size * self.precursor.itemsize * 2 + self.deposit.size * self.deposit.itemsize
         + self.surface_bool.size * self.surface_bool.itemsize * 4 + 32
@@ -531,14 +537,26 @@ class GPU:
 
     @property
     def xdim(self):
+        """Return X dimension of current structure.
+
+        :return: Size of X axis in cells.
+        """
         return self.shape[2]
 
     @property
     def ydim(self):
+        """Return Y dimension of current structure.
+
+        :return: Size of Y axis in cells.
+        """
         return self.shape[1]
 
     @property
     def zdim(self):
+        """Return Z dimension of current structure.
+
+        :return: Size of Z axis in cells.
+        """
         return self.shape[0]
 
     def __set_structure(self, precursor, deposit, surface_all, surf_bool, semi_surface, ghost, irr_ind_2d):

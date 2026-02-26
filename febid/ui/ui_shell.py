@@ -31,6 +31,16 @@ class MainPanel(QMainWindow, UI_MainPanel):
     stop_simulation_requested = pyqtSignal()
 
     def __init__(self, app=None, config_filename=None, parent=None):
+        """Initialize main control panel, session state, and UI bindings.
+
+        :param app: Optional Qt application instance.
+        :type app: QApplication
+        :param config_filename: Optional session file loaded on startup.
+        :type config_filename: str
+        :param parent: Optional parent widget.
+        :type parent: QWidget
+        :return: None
+        """
         super().__init__(parent)
         self.app = app
         self.initialized = False
@@ -96,6 +106,12 @@ class MainPanel(QMainWindow, UI_MainPanel):
 
     # Slots
     def change_state_load_last_session(self, param=None):
+        """Toggle auto-loading of the last session file.
+
+        :param param: Truthy value enables loading at startup.
+        :type param: bool
+        :return: None
+        """
         switch = True if param else False
         self.checkbox_load_last_session.setChecked(switch)
         self.save_flag = switch
@@ -104,11 +120,19 @@ class MainPanel(QMainWindow, UI_MainPanel):
         self.__save_parameter('load_last_session', switch)
 
     def vtk_chosen(self):
+        """Switch structure-source mode to VTK input.
+
+        :return: None
+        """
         self.structure_source = 'vtk'
         self.ui_helper.set_vtk_chosen()
         self.__save_parameter('structure_source', self.structure_source)
 
     def geom_parameters_chosen(self):
+        """Switch structure-source mode to geometry parameters.
+
+        :return: None
+        """
         self.structure_source = 'geom'
         self.ui_helper.set_geom_chosen()
 
@@ -119,6 +143,10 @@ class MainPanel(QMainWindow, UI_MainPanel):
         self.__save_parameter('structure_source', 'geom')
 
     def auto_chosen(self):
+        """Switch structure-source mode to auto volume generation.
+
+        :return: None
+        """
         self.structure_source = 'auto'
         self.ui_helper.set_auto_chosen()
 
@@ -129,19 +157,39 @@ class MainPanel(QMainWindow, UI_MainPanel):
         self.__save_parameter('structure_source', 'auto')
 
     def simple_pattern_chosen(self):
+        """Switch path-source mode to built-in simple patterns.
+
+        :return: None
+        """
         self.ui_helper.set_simple_pattern_chosen()
         self.__save_parameter('pattern_source', 'simple')
 
     def stream_file_chosen(self):
+        """Switch path-source mode to stream-file input.
+
+        :return: None
+        """
         self.ui_helper.set_stream_file_chosen()
         self.__save_parameter('pattern_source', 'stream_file')
 
     def pattern_selection_changed(self, current=''):
+        """Handle pattern selection changes and persist the selected pattern.
+
+        :param current: Newly selected pattern name.
+        :type current: str
+        :return: None
+        """
         self.ui_helper.set_simple_pattern_change()
         self.pattern = current
         self.__save_parameter('pattern', current)
 
     def open_vtk_file(self, file=''):
+        """Load VTK file, extract dimensions, and update related UI/session fields.
+
+        :param file: Path to VTK file; dialog is used when empty.
+        :type file: str
+        :return: None
+        """
         # For both tabs:
         #  Check if the specified file is a valid .vtk file
         #  Insert parameters into fields
@@ -159,6 +207,12 @@ class MainPanel(QMainWindow, UI_MainPanel):
         self.statusBar().showMessage('VTK file loaded')
 
     def open_geom_parameters_file(self, file=''):
+        """Load geometry-parameter YAML and apply values to FEBID controls.
+
+        :param file: Path to geometry YAML file; dialog is used when empty.
+        :type file: str
+        :return: None
+        """
         if not file:
             file = self.__get_file_name_from_dialog()
             if not file:
@@ -173,6 +227,12 @@ class MainPanel(QMainWindow, UI_MainPanel):
             logger.exception("Was unable to open .yml geometry parameters file.")
 
     def open_stream_file(self, file=''):
+        """Set stream-file path used for pattern import.
+
+        :param file: Path to stream file; dialog is used when empty.
+        :type file: str
+        :return: None
+        """
         if not file:
             file = self.__get_file_name_from_dialog()
             if not file:
@@ -182,6 +242,12 @@ class MainPanel(QMainWindow, UI_MainPanel):
         self.__save_parameter('stream_file_filename', file)
 
     def open_settings_file(self, file=''):
+        """Load beam/settings YAML and mirror key values in the UI.
+
+        :param file: Path to settings YAML; dialog is used when empty.
+        :type file: str
+        :return: None
+        """
         if not file:
             file = self.__get_file_name_from_dialog()
             if not file:
@@ -204,6 +270,12 @@ class MainPanel(QMainWindow, UI_MainPanel):
         self.statusBar().showMessage('Settings loaded')
 
     def open_precursor_parameters_file(self, file=''):
+        """Load precursor-parameter YAML and persist selected file path.
+
+        :param file: Path to precursor YAML; dialog is used when empty.
+        :type file: str
+        :return: None
+        """
         if not file:
             file = self.__get_file_name_from_dialog()
             if not file:
@@ -222,29 +294,63 @@ class MainPanel(QMainWindow, UI_MainPanel):
         self.statusBar().showMessage('Precursor parameters loaded')
 
     def change_state_save_sim_data(self, param=None):
+        """Toggle periodic simulation-data export controls and state.
+
+        :param param: Truthy value enables simulation-data export.
+        :type param: bool
+        :return: None
+        """
         switch = bool(param)
         self.ui_helper.set_state_save_sim_data(switch)
         self.__save_parameter('save_simulation_data', switch)
 
     def change_state_save_snapshots(self, param=None):
+        """Toggle structure-snapshot export controls and state.
+
+        :param param: Truthy value enables snapshot export.
+        :type param: bool
+        :return: None
+        """
         switch = bool(param)
         self.ui_helper.set_state_save_snapshots(switch)
         self.__save_parameter('save_structure_snapshot', switch)
 
     def change_state_temperature_tracking(self, param):
+        """Toggle temperature-tracking option in UI and session state.
+
+        :param param: Truthy value enables temperature tracking.
+        :type param: bool
+        :return: None
+        """
         switch = bool(param)
         self.checkbox_temperature_tracking.setChecked(switch)
         self.__save_parameter('temperature_tracking', switch)
 
     def unique_name_changed(self):
+        """Persist current run-name value from the UI.
+
+        :return: None
+        """
         self.__save_parameter('unique_name', self.input_unique_name.text())
 
     def change_state_gpu(self, param):
+        """Toggle GPU execution flag in UI and session state.
+
+        :param param: Truthy value enables GPU mode.
+        :type param: bool
+        :return: None
+        """
         switch = bool(param)
         self.checkbox_gpu.setChecked(switch)
         self.__save_parameter('gpu', switch)
 
     def open_save_directory(self, directory=''):
+        """Select and persist directory used for simulation outputs.
+
+        :param directory: Target directory; chooser dialog is used when empty.
+        :type directory: str
+        :return: None
+        """
         if not directory:
             directory = QtWidgets.QFileDialog.getExistingDirectory()
             if not directory:
@@ -254,6 +360,12 @@ class MainPanel(QMainWindow, UI_MainPanel):
         self.__save_parameter('save_directory', directory)
 
     def tab_switched(self, current):
+        """Resize window for FEBID or Monte Carlo tab layouts.
+
+        :param current: Active tab index.
+        :type current: int
+        :return: None
+        """
         if current == 0:
             self.resize(self.width(), 684)
         if current == 1:
@@ -354,14 +466,28 @@ class MainPanel(QMainWindow, UI_MainPanel):
         self.viz.start(frame_rate=self.frame_rate)
 
     def precursor_coverage_viz_chosen(self):
+        """Set visualization mode to precursor coverage.
+
+        :return: None
+        """
         self.choice_precursor_coverage_viz.setChecked(True)
         self.displayed_data = 'precursor'
 
     def surface_deposit_viz_chosen(self):
+        """Set visualization mode to deposited volume map.
+
+        :return: None
+        """
         self.choice_surface_deposit_viz.setChecked(True)
         self.displayed_data = 'deposit'
 
     def frame_rate_slider_moved(self, tick):
+        """Update visualization frame rate from slider ticks.
+
+        :param tick: Slider tick value.
+        :type tick: int
+        :return: None
+        """
         frame_rate = tick * self.frame_rate_control_tick_size
         self.display_frame_rate.setText(str(f'{frame_rate:.1f}'))
         self.frame_rate = frame_rate
@@ -395,17 +521,33 @@ class MainPanel(QMainWindow, UI_MainPanel):
 
     @pyqtSlot(str)
     def on_finish(self, message=''):
+        """Restore idle UI state after simulation completion.
+
+        :param message: Status-bar message shown after completion.
+        :type message: str
+        :return: None
+        """
         self.start_febid_button.setVisible(True)
         self.stop_febid_button.setVisible(False)
         self.groupBox_visualization.setVisible(False)
         self.statusBar().showMessage(message)
 
     def on_close(self):
+        """Stop active tasks and close visualization resources.
+
+        :return: None
+        """
         self.session_handler.stop()
         if self.viz is not None:
             self.viz.close()
 
     def closeEvent(self, event):
+        """Handle Qt window-close event and perform cleanup.
+
+        :param event: Qt close event object.
+        :type event: QCloseEvent
+        :return: None
+        """
         self.on_close()
         event.accept()
 
@@ -469,6 +611,12 @@ class MainPanel(QMainWindow, UI_MainPanel):
 
     @staticmethod
     def __is_int(element) -> bool:
+        """Check whether a value can be converted to integer.
+
+        :param element: Value to test.
+        :type element: object
+        :return: True when conversion to int succeeds.
+        """
         try:
             int(element)
             return True
@@ -477,6 +625,16 @@ class MainPanel(QMainWindow, UI_MainPanel):
 
     @staticmethod
     def __view_message(message="An error occurred", additional_message='', icon='Warning'):
+        """Show a QMessageBox with mapped icon and optional details.
+
+        :param message: Main message text.
+        :type message: str
+        :param additional_message: Secondary informative text.
+        :type additional_message: str
+        :param icon: Icon key (`Warning`, `Question`, `Information`, `Critical`).
+        :type icon: str
+        :return: None
+        """
         icon_mapping = {
             'Warning': QMessageBox.Warning,
             'Question': QMessageBox.Question,
@@ -532,6 +690,12 @@ class MainPanel(QMainWindow, UI_MainPanel):
         return values, units
 
     def __load_vtk_file(self, file):
+        """Load a VTK file and return populated structure plus stored field metadata.
+
+        :param file: Path to VTK file.
+        :type file: str
+        :return: Tuple of structure instance and parsed field-data payload.
+        """
         structure = Structure()
         vtk_obj = pv.read(file)
         structure.load_from_vtk(vtk_obj)
@@ -539,6 +703,12 @@ class MainPanel(QMainWindow, UI_MainPanel):
         return structure, params
 
     def __exception_handler(self, e):
+        """Display a user-facing message for known and unexpected startup errors.
+
+        :param e: Caught exception.
+        :type e: Exception
+        :return: None
+        """
         known_errnos = {
                         1: 'VTK file not specified. Please choose the file and try again.',
                         2: 'An error occurred while fetching geometry parameters for the simulation volume.',
@@ -586,6 +756,12 @@ class MainPanel(QMainWindow, UI_MainPanel):
 
 
 def start(config_filename=None):
+    """Launch the Qt application with main panel and application controller.
+
+    :param config_filename: Optional startup session file.
+    :type config_filename: str
+    :return: None
+    """
     app = QApplication(sys.argv)
     win1 = MainPanel(config_filename)
     controller = ApplicationController(win1.session_handler)
@@ -601,6 +777,12 @@ class UIConfigMapper:
     """
 
     def __init__(self, ui: MainPanel):
+        """Initialize mapper for synchronizing UI widgets and config parameters.
+
+        :param ui: MainPanel instance containing mapped widgets.
+        :type ui: MainPanel
+        :return: None
+        """
         self.ui = ui
         self._mapping = self._get_mapping()
 
@@ -698,6 +880,12 @@ class UIConfigMapper:
 
     @staticmethod
     def __is_float(element) -> bool:
+        """Check whether a value can be parsed as float.
+
+        :param element: Value to test.
+        :type element: object
+        :return: True when conversion to float succeeds.
+        """
         try:
             float(element)
             return True

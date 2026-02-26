@@ -87,6 +87,20 @@ def prepare_surface_index(surface: np.ndarray):
 
 
 def stencil_debug(grid_out, grid, z_index, y_index, x_index):
+    """Debug helper that re-evaluates stencil contributions on selected cells.
+
+    :param grid_out: Output grid receiving accumulated stencil values.
+    :type grid_out: numpy.ndarray
+    :param grid: Input scalar field.
+    :type grid: numpy.ndarray
+    :param z_index: Z indices of cells to inspect.
+    :type z_index: numpy.ndarray
+    :param y_index: Y indices of cells to inspect.
+    :type y_index: numpy.ndarray
+    :param x_index: X indices of cells to inspect.
+    :type x_index: numpy.ndarray
+    :return: None
+    """
     xdim, ydim, zdim = grid.shape
     shape = (zdim, ydim, xdim)
     l = z_index.size

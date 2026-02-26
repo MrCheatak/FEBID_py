@@ -21,18 +21,8 @@ from febid.logging_config import setup_logger
 # Setup logger
 logger = setup_logger(__name__)
 
-# TODO: look into k-d trees
-
-
-# Deprecation note:
-# At some point, due to efficiency advantages, the diffusion calculation approach switched from 'rolling' to 'stencil'.
-# The rolling approach explicitly requires the array of ghost cells, while stencil does not, although still relying
-# on this approach. Instead of the ghost cell array, it checks the same 'precursor' array, that it gets as a base argument,
-# for zero cells.
-# The ghost array is still kept and maintained throughout the simulation for conceptual clearness and visualisation
-
-# TODO: Extract temperature tracking into a separate class
-# TODO: It may be possible to extract acceleration framework into separate class
+# Diffusion is computed with stencil updates on precursor fields.
+# Ghost-shell arrays are still maintained for topology bookkeeping and visualization.
 class Process:
     """
     Class representing the core deposition process.
@@ -47,6 +37,26 @@ class Process:
 
     def __init__(self, structure: Structure, equation_values, deposition_scaling=1, temp_tracking=True,
                  acceleration_enabled=True, device=None, n_init="full", name=None):
+        """Initialize process state, managers, and optional GPU acceleration.
+
+        :param structure: Simulation structure with geometry and field arrays.
+        :type structure: Structure
+        :param equation_values: Precomputed model constants and process settings.
+        :type equation_values: dict
+        :param deposition_scaling: Scaling factor between simulated and physical deposition time.
+        :type deposition_scaling: float
+        :param temp_tracking: Enable temperature-dependent physics updates.
+        :type temp_tracking: bool
+        :param acceleration_enabled: Enable accelerated array indexing paths.
+        :type acceleration_enabled: bool
+        :param device: OpenCL device identifier for GPU execution.
+        :type device: object
+        :param n_init: Initial precursor coverage mode or scalar value.
+        :type n_init: str
+        :param name: Optional process identifier.
+        :type name: str
+        :return: None
+        """
         super().__init__()
         if not name:
             self.name = str(np.random.randint(000000, 999999, 1)[0])
@@ -87,9 +97,9 @@ class Process:
         self._temp_step_cells = 0  # number of cells to be filled before next temperature calculation
         self._temp_calc_count = 0  # counting number of times temperature has been calculated
 
-        # Statistics (delegated to SimulationStats - Stage 6 refactoring)
+        # Statistics
         self.filled_cells = 0  # current number of filled cells
-        self.max_T = 0  # max temperature (legacy - TODO: migrate to stats)
+        self.max_T = 0  # cached maximum temperature for reporting
         self._stats_frequency = 1e-3  # s, default calculation of stats and offloading from GPU for visualisation
         self.x0 = 0
         self.y0 = 0
@@ -109,13 +119,13 @@ class Process:
         self.__set_structure(structure)
         self.__set_constants(equation_values)
 
-        # Initialize DataViewManager (Stage 2 refactoring)
+        # Initialize view manager
         self.view_manager = DataViewManager(self.state, acceleration_enabled=acceleration_enabled)
 
-        # Initialize TemperatureManager (Stage 5 refactoring)
+        # Initialize temperature manager
         self.temp_manager = TemperatureManager(self.state, self.view_manager)
 
-        # Initialize SimulationStats (Stage 6 refactoring)
+        # Initialize simulation statistics
         stats_enabled = self.stats_gathering if self.stats_gathering is not None else True
         stats_freq = getattr(self, '_stats_frequency', 1e-3)
         self.stats = SimulationStats(
@@ -125,10 +135,10 @@ class Process:
             stats_frequency=stats_freq
         )
 
-        # Initialize PhysicsEngine (Stage 3 refactoring)
+        # Initialize CPU physics engine
         self.physics_engine = PhysicsEngine(self.state, self.view_manager, self.temp_manager)
 
-        # Initialize GPUFacade (Stage 4 refactoring)
+        # Initialize GPU facade when device is available
         if device:
             self.gpu_facade = GPUFacade(self.state, self.view_manager, self.temp_manager, device)
         else:
@@ -156,10 +166,21 @@ class Process:
 
     # Initialization methods
     def __set_structure(self, structure: Structure):
+        """Initialize structure-dependent bounds used during simulation.
+
+        :param structure: Structure object that defines deposit geometry.
+        :type structure: Structure
+        :return: None
+        """
         self.state.max_z = self.structure.deposit.nonzero()[0].max() + 3
-        # GPU initialization now handled by GPUFacade (Stage 4)
 
     def __set_constants(self, params):
+        """Load precursor, thermal, and scaling constants into process state.
+
+        :param params: Dictionary with precursor and process constants.
+        :type params: dict
+        :return: None
+        """
         # Set precursor parameters (these are stored in self.state.precursor via self.model)
         self.state.precursor.F = params['F']
         self.state.precursor.n0 = params['n0']
@@ -176,7 +197,7 @@ class Process:
         self.state.heat_cond = params['heat_cond']
         self.state.deposition_scaling = params['deposition_scaling']
 
-        # Backward compatibility: Keep references
+        # Keep convenience aliases used by external callers.
         self.kb = self.state.kb
         self.heat_cond = self.state.heat_cond
         self.deposition_scaling = self.state.deposition_scaling
@@ -187,6 +208,12 @@ class Process:
                 self.state.temperature_tracking = False
 
     def print_dt(self, units='µs'):
+        """Print the active stable time-step estimate in the selected unit.
+
+        :param units: Time unit label (`s`, `ms`, `µs`, or `ns`).
+        :type units: str
+        :return: None
+        """
         m = 1E6
         if units not in ['s', 'ms', 'µs', 'ns']:
             print('Unacceptable input for time units, use one of the following: s, ms, µs, ns.')
@@ -212,11 +239,8 @@ class Process:
         :return: bool
         """
         if self.device:
-            # Stage 4: Delegate to GPUFacade
-            # return self.gpu_facade.check_cells_filled()
             return self.gpu_facade.check_cells_filled()
         else:
-            # Stage 3: Delegate to PhysicsEngine
             return self.physics_engine.check_cells_filled()
 
     def cell_filled_routine(self):
@@ -225,7 +249,7 @@ class Process:
 
         :return: flag if the structure was resized
         """
-        # Stage 2: Uses DataViewManager for optimized array access
+        # Use data views for localized array access.
 
         # What here actually done is marking the filled cell as a solid and a ghost cell and then updating surface,
         # semi-surface, ghosts and precursor to describe the surface geometry around the newly filled cell.
@@ -273,15 +297,13 @@ class Process:
 
         if self.state.temperature_tracking:
             for cell in cells_abs:
-                # Updating temperature in the new cell (Stage 5: use TemperatureManager)
+                # Initialize temperature in newly solid cells.
                 self.temp_manager.initialize_cell_temperature(cell)
                 self.temp_manager.update_local(cell)
-            # Stage 5: Check if temperature recalculation needed (sets flag)
+            # Update recalculation request for the next thermal solve.
             self.temp_manager.check_and_request_recalculation(self.filled_cells)
-            # Update local tracking for backward compatibility
             self.request_temp_recalc = self.temp_manager.requires_recalculation
-            # Stage 5: Phase 1 temperature update - coefficients for NEW topology with CURRENT temps
-            if not self.request_temp_recalc:  # skipping coeffs update if temperature recalculation is pending
+            if not self.request_temp_recalc:  # skip coefficient update if full recalculation is pending
                 self.temp_manager.update_full()
 
         return structure_extended
@@ -298,7 +320,6 @@ class Process:
         # semi-surface, ghosts and precursor to describe the surface geometry around the newly filled cell.
         # The approach is cell-centric, which means all the surroundings are processed
 
-        # Stage 2: Uses SurfaceUpdateView for array access
         surplus_deposit = surf_view.deposit[cell] - 1  # saving deposit overfill to distribute among the neighbors later
         precursor_cov = surf_view.precursor[cell]
         surf_view.deposit[cell] = -1  # a fully deposited cell is always a minus unity
@@ -376,7 +397,7 @@ class Process:
         self.state.beam_matrix[:shape_old[0], :shape_old[1], :shape_old[2]] = beam_matrix_old
         self.state.beam_matrix_surface[:shape_old[0], :shape_old[1], :shape_old[2]] = beam_matrix_surface_old
 
-        # Stage 4: Reinitialize GPU buffers after resize
+        # Reinitialize GPU buffers after resize.
         if self.device:
             self.gpu_facade.reinitialize_after_resize()
 
@@ -413,10 +434,8 @@ class Process:
         """
         dt = self.dt
         if self.device:
-            # Stage 4: Delegate to GPUFacade
             self.gpu_facade.compute_deposition(dt)
         else:
-            # Stage 3: Delegate to PhysicsEngine
             self.physics_engine.compute_deposition(dt)
 
     def precursor_density(self):
@@ -427,16 +446,9 @@ class Process:
         """
         dt = self.dt
         if self.device:
-            # Stage 4: Delegate to GPUFacade
             self.gpu_facade.compute_precursor_density(dt)
         else:
-            # Stage 3: Delegate to PhysicsEngine
             self.physics_engine.compute_precursor_density(dt)
-
-
-
-    ###
-    # Physics methods have been moved to PhysicsEngine (Stage 3)
 
     def heat_transfer(self, heating):
         """
@@ -447,10 +459,9 @@ class Process:
         :param heating: volumetric heat sources distribution
         :return:
         """
-        # Stage 5: Delegate to TemperatureManager
         self.temp_manager.update_temperature_field(heating)
 
-        # Update local tracking (backward compatibility)
+        # Keep cached maximum temperature for UI/statistics consumers.
         self.max_T = self.temp_manager.max_temperature
 
     def set_beam_matrix(self, beam_matrix):
@@ -465,11 +476,11 @@ class Process:
             beam_matrix = np.array(beam_matrix)
         else:
             self.state.beam.f0 = beam_matrix.max()
-        # Stage 2: Phase 2 update - beam pattern changed
+        # Refresh cached views and indices that depend on beam flux matrix
         self.view_manager.update_after_beam_matrix()
         self.n_beam_matrix_points = self.view_manager.n_beam_flux_points
 
-        # Stage 4: Update beam matrix on GPU if using GPU
+        # Mirror beam matrix to GPU buffers when GPU mode is active.
         if self.device:
             self.gpu_facade.set_beam_matrix(beam_matrix)
 
@@ -489,8 +500,7 @@ class Process:
         """
         Get total deposited volume.
 
-        NOTE: This is kept for backward compatibility with debug scripts.
-        For new code, use process.stats.deposited_volume directly.
+        NOTE: This property is used by diagnostic scripts.
 
         :return: Deposited volume (nm³)
         """
@@ -569,7 +579,7 @@ class Process:
         """
         self.__forced_dt = False
 
-    # ========== Statistics Properties (Stage 6: Delegation to SimulationStats) ==========
+    # Statistics properties
 
     @property
     def stats_frequency(self):
@@ -625,25 +635,40 @@ class Process:
     @property
     def structure(self):
         """
-        Returns the structure instance.
-        For backward compatability.
+        Return the active structure instance.
         """
         return self.state.structure
 
     @property
     def cell_size(self):
+        """Return simulation cell edge size.
+
+        :return: Cell size in nanometers.
+        """
         return self.state.cell_size
 
     @property
     def max_z(self):
+        """Return current upper z-bound used for active simulation volume.
+
+        :return: Active maximum z-index in structure coordinates.
+        """
         return self.state.max_z
 
     @property
     def substrate_height(self):
+        """Return substrate height index in structure coordinates.
+
+        :return: Substrate height index.
+        """
         return self.state.substrate_height
 
     @property
     def beam_matrix(self):
+        """Return current secondary-electron flux matrix.
+
+        :return: Beam flux matrix aligned with structure shape.
+        """
         return self.state.beam_matrix
 
 

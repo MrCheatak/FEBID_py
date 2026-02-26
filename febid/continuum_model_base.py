@@ -8,10 +8,22 @@ logger = setup_logger(__name__)
 
 
 class BaseParameterCollection:
+    """Provide shared constants and formatting utilities for parameter containers."""
+
     def __init__(self):
+        """Initialize shared physical constants.
+
+        :return: None
+        """
         self.KB = 0.00008617
 
     def _print_params(self, params):
+        """Print selected attributes and their formatted values.
+
+        :param params: Attribute names to print.
+        :type params: iterable
+        :return: None
+        """
         text = ''
         for param in params:
             val = getattr(self, param)
@@ -20,6 +32,12 @@ class BaseParameterCollection:
         print(text)
 
     def __custom_format(self, number):
+        """Format numeric values for compact readable output.
+
+        :param number: Value to format.
+        :type number: float
+        :return: Formatted string representation of the value.
+        """
         if type(number) is not type(None) or str:
             if number > 1000:
                 return "{:.3e}".format(number)
@@ -32,7 +50,13 @@ class BaseParameterCollection:
 
 
 class BeamSettings(BaseParameterCollection):
+    """Store beam shape and intensity parameters used by the continuum model."""
+
     def __init__(self):
+        """Initialize default beam-profile settings.
+
+        :return: None
+        """
         super().__init__()
         self.beam_settings = ['st_dev', 'fwhm', 'beam_type', 'order', 'f0']
         self._st_dev = 1
@@ -57,6 +81,12 @@ class BeamSettings(BaseParameterCollection):
 
     @st_dev.setter
     def st_dev(self, val):
+        """Set beam standard deviation and update dependent FWHM.
+
+        :param val: Standard deviation value in nanometers.
+        :type val: float
+        :return: None
+        """
         self._st_dev = val
         _ = self.fwhm
 
@@ -75,15 +105,31 @@ class BeamSettings(BaseParameterCollection):
 
     @fwhm.setter
     def fwhm(self, val):
+        """Set beam FWHM and update dependent standard deviation.
+
+        :param val: Full width at half maximum in nanometers.
+        :type val: float
+        :return: None
+        """
         self._fwhm = val
         _ = self.st_dev
 
     def print_beam_settings(self):
+        """Print current beam settings to stdout.
+
+        :return: None
+        """
         self._print_params(self.beam_settings)
 
 
 class PrecursorParams(BaseParameterCollection):
+    """Hold precursor and temperature-dependent kinetic parameters."""
+
     def __init__(self):
+        """Initialize default precursor parameters.
+
+        :return: None
+        """
         super().__init__()
         self.name = ''
         self.base_params = ['s', 'F', 'n0', 'tau', 'sigma', 'D', 'V']
@@ -118,6 +164,10 @@ class PrecursorParams(BaseParameterCollection):
         return 1 / self.k0 * np.exp(self.Ea / self.KB / temp)
 
     def print_precursor_params(self):
+        """Print base precursor parameters to stdout.
+
+        :return: None
+        """
         self._print_params(self.base_params)
 
 
@@ -130,6 +180,10 @@ class ContinuumModel(BaseParameterCollection):
     """
 
     def __init__(self):
+        """Initialize precursor, beam, and derived process parameter storage.
+
+        :return: None
+        """
         super().__init__()
         self.precursor = PrecursorParams()
         self.beam = BeamSettings()
@@ -158,6 +212,12 @@ class ContinuumModel(BaseParameterCollection):
         self._phi2 = np.nan
 
     def set_precursor_params(self, params: PrecursorParams):
+        """Replace the precursor-parameter object used by the model.
+
+        :param params: New precursor parameter collection.
+        :type params: PrecursorParams
+        :return: None
+        """
         self.precursor = params
 
     @property
@@ -172,6 +232,12 @@ class ContinuumModel(BaseParameterCollection):
 
     @dt.setter
     def dt(self, val):
+        """Set explicit time step if it does not exceed the stability limit.
+
+        :param val: Requested integration time step in seconds.
+        :type val: float
+        :return: None
+        """
         dt = self.dt
         if val > dt:
             logger.warning(f'Not allowed to increase time step. \nTime step larger than {dt} s will crash the solution.')
@@ -332,9 +398,17 @@ class ContinuumModel(BaseParameterCollection):
         return self._phi2
 
     def print_initial_parameters(self):
+        """Print configured precursor parameters.
+
+        :return: None
+        """
         self.precursor.print_precursor_params()
 
     def print_process_attributes(self):
+        """Print current derived process attributes.
+
+        :return: None
+        """
         self._print_params(self.process_attrs)
 
     def save_to_file(self, filename):

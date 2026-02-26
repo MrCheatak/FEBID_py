@@ -3,8 +3,6 @@ PhysicsEngine - CPU-based physics calculations
 
 This module contains all CPU-based physics calculations for the FEBID simulation.
 It is acceleration-agnostic and uses the uniform expression pattern via DataViewManager.
-
-Stage 3 of Process refactoring.
 """
 
 import numpy as np
@@ -323,7 +321,6 @@ class PhysicsEngine:
         :param max_it: number of iterations
         :param eps: desired accuracy
         """
-        # Stage 3: Use PhysicsEngine for equilibration
         start = df()
         for i in range(max_it):
             # Get current precursor state

@@ -37,7 +37,15 @@ logger = setup_logger(__name__)
 warnings.simplefilter('always')
 
 class SimulationManager:
+    """Set up and orchestrate the end-to-end FEBID simulation workflow."""
+
     def __init__(self, context: SimulationContext):
+        """Create a simulation manager bound to a context object.
+
+        :param context: Simulation context with parameters and shared runtime objects.
+        :type context: SimulationContext
+        :return: None
+        """
         self.context = context
         self._running = threading.Event()
         self._lock = threading.Lock()
@@ -50,6 +58,10 @@ class SimulationManager:
         self.context.syncHelper = self.syncHelper
 
     def initialize(self):
+        """Initialize process, Monte Carlo model, optional daemons, and worker thread.
+
+        :return: None
+        """
         eq_vals = prepare_equation_values(self.context.precursorParams, self.context.settings)
         mc_conf = prepare_ms_config(self.context.precursorParams, self.context.settings, self.context.structure)
 
@@ -84,6 +96,10 @@ class SimulationManager:
         self.printing = Thread(target=print_all, args=[self.context],)
 
     def run(self):
+        """Start configured background daemons (statistics save and structure dump) and launch the simulation thread.
+
+        :return: None
+        """
         self._running.set()
         if self.stats_thread is not None:
             self.stats_thread.start()
@@ -93,6 +109,10 @@ class SimulationManager:
         Thread(target=self._monitor_completion, daemon=True).start()
 
     def stop(self):
+        """Stop simulation execution and join all managed threads.
+
+        :return: None
+        """
         self.syncHelper.is_stopped = True
         self.syncHelper.run_flag = True
         self._running.clear()
@@ -100,6 +120,10 @@ class SimulationManager:
         self._join_threads()
 
     def _monitor_completion(self):
+        """Wait for simulation completion, then clean up threads and state.
+
+        :return: None
+        """
         self.syncHelper.event.wait()  # Wait until the printing thread finishes
         self.printing.join()
         self._join_threads()

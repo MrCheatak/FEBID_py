@@ -23,6 +23,13 @@ class Starter:
     This class serves as an interface between the interface and the simulation code.
     """
     def __init__(self, params: SimulationParameters = None):
+        """Initialize starter with optional simulation-parameter dataclass.
+        If params argument is not provided, it has to be set before starting the simulation.
+
+        :param params: Simulation parameters object; default values are used when omitted.
+        :type params: SimulationParameters
+        :return: None
+        """
         self._params: SimulationParameters = params or SimulationParameters()
         self.context = SimulationContext()
         self.dwell_time_units = 1E-6
@@ -43,6 +50,12 @@ class Starter:
         return self.simulation_manager
 
     def start_mc(self, **kwargs):
+        """Prepare context and execute Monte Carlo-only workflow.
+
+        :param kwargs: Extra Monte Carlo runtime arguments.
+        :type kwargs: dict
+        :return: None
+        """
         self._params.validate()
         self._create_simulation_volume()
         self.context.precursorParams  = self._open_precursor_params()
@@ -291,6 +304,10 @@ class Starter:
         return e3d.run_mc_simulation(self.context.structure, precursor=self.context.precursorParams , **kwargs)
 
     def get_simulation_volume_parameters(self):
+        """Return physical simulation-volume parameters derived from the structure.
+
+        :return: Dictionary with width, length, height, cell size, and substrate height.
+        """
         sim_volume_params = {
             'width': self.context.structure.shape_abs[2],
             'length': self.context.structure.shape_abs[1],
@@ -301,6 +318,10 @@ class Starter:
         return sim_volume_params
 
     def check_for_temperature_tracking_consistency(self):
+        """Verify that required precursor keys exist when temperature tracking is enabled.
+
+        :return: True when configuration is consistent, otherwise False.
+        """
         if self._params.temperature_tracking:
             precursor_params = self.context.precursorParams 
             keys = ['desorption_activation_energy', 'desorption_attempt_frequency',
@@ -313,10 +334,20 @@ class Starter:
 
     @property
     def params(self) -> SimulationParameters:
+        """Return active simulation parameters.
+
+        :return: Current simulation-parameter dataclass.
+        """
         return self._params
 
     @params.setter
     def params(self, params: SimulationParameters):
+        """Replace active simulation parameters.
+
+        :param params: New simulation-parameter dataclass.
+        :type params: SimulationParameters
+        :return: None
+        """
         self._params = params
 
 

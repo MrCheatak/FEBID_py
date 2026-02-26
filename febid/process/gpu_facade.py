@@ -3,8 +3,6 @@ GPUFacade - GPU-accelerated physics calculations
 
 This module provides GPU-based implementations of physics calculations
 that mirror the PhysicsEngine interface for seamless CPU/GPU switching.
-
-Stage 4 of Process refactoring.
 """
 
 import numpy as np

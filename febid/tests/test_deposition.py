@@ -37,6 +37,7 @@ from febid.mlcca import initialize_structure_topology
 
 # Custom YAML parser
 def load_yaml(path):
+    """Load and parse a YAML file from disk."""
     yaml = YAML(typ='safe')
     with open(path, 'r') as f:
         return yaml.load(f)
@@ -191,6 +192,7 @@ class SimulationResults3D(SimulationResults):
 
     @property
     def filled_cells(self):
+        """Return filled cells."""
         return self.process.filled_cells
 
 
@@ -691,6 +693,7 @@ class TestSimulationVolume:
         )
 
     def run_1d_sim(self, params, precursor, printing_path, settings, case_name: str = "") -> SimulationResults1D:
+        """Run the 1D analytical FEBID reference simulation."""
         p1d = self.setup_1d_params(params, precursor, settings, printing_path)
 
         # Extract key parameters for reporting
@@ -884,6 +887,7 @@ class TestSimulationVolume:
         a=0
 
     def setup_progress_bar(self, printing_path, deposition_scaling=1):
+        """Create a progress bar that tracks simulated exposure time."""
         total_time = int(printing_path[:, 2].sum() * deposition_scaling * 1e6)
         bar_format = "{desc}: {percentage:.1f}%|{bar}| {n:.0f}/{total_fmt} [{elapsed}<{remaining}, {rate_fmt}{postfix}]"
         progress_bar = tqdm(total=total_time, desc='Patterning', position=0, unit='µs',
@@ -891,17 +895,20 @@ class TestSimulationVolume:
         return progress_bar
 
     def setup_mc_sim(self, precursor, settings, structure):
+        """Initialize the Monte Carlo simulator for the current structure."""
         mc_config = prepare_ms_config(precursor, settings, structure)
         sim = MC_Simulation(structure, mc_config)
         return sim
 
     def setup_rde_sim(self, params, precursor, settings, structure, acceleration_enabled=True):
+        """Initialize the reaction-diffusion deposition process."""
         equation_values = prepare_equation_values(precursor, settings)
         process = Process(structure, equation_values, deposition_scaling=settings.get('deposition_scaling', 1),
                           temp_tracking=params['temperature_tracking'], acceleration_enabled=acceleration_enabled)
         return process
 
     def setup_domain(self, params):
+        """Build a simulation structure from test volume parameters."""
         cell_size = params['cell_size']
         xdim = params['width'] // cell_size
         ydim = params['length'] // cell_size

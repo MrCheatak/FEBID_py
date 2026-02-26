@@ -33,10 +33,20 @@ class SynchronizationHelper:
 
     @property
     def timer(self):
+        """Return current intrinsic simulation time used for daemon synchronization.
+
+        :return: Current simulation time in seconds.
+        """
         return self._current_time
 
     @timer.setter
     def timer(self, value):
+        """Update intrinsic simulation time that is shared across monitoring threads.
+
+        :param value: New simulation time in seconds.
+        :type value: float
+        :return: None
+        """
         self._current_time = value
 
     def notify(self):
@@ -59,14 +69,34 @@ class SynchronizationHelper:
         self.event.clear()
 
     def __repr__(self):
+        """Return string representation of the run flag state.
+
+        :return: String form of the boolean run flag.
+        """
         return str(self.run_flag)
 
     def __bool__(self):
+        """Expose run flag truthiness for loop control.
+
+        :return: Current run flag value.
+        """
         return self.run_flag
 
 
 class MonitoringDaemon(Thread):
+    """Base daemon thread that executes a periodic hook during simulation progress."""
+
     def __init__(self, run_flag: SynchronizationHelper, refresh_rate, purpose='Unidentified'):
+        """Initialize synchronization primitives and timing state for a daemon.
+
+        :param run_flag: Shared synchronization object controlling daemon lifecycle.
+        :type run_flag: SynchronizationHelper
+        :param refresh_rate: Interval between hook executions in simulation seconds.
+        :type refresh_rate: float
+        :param purpose: Human-readable daemon purpose for logging.
+        :type purpose: str
+        :return: None
+        """
         super().__init__()
         self.run_flag = run_flag
         self.refresh_rate = refresh_rate
@@ -76,6 +106,10 @@ class MonitoringDaemon(Thread):
         self.passed_time = run_flag.timer
 
     def run(self):
+        """Run daemon loop and call :meth:`looped_func` at configured intervals.
+
+        :return: None
+        """
         logger.info(f'Starting {self.purpose} daemon.')
         next_record_time = self.passed_time + self.refresh_rate
         with self.run_flag.loop_tick:
@@ -99,12 +133,30 @@ class StructureSaver(MonitoringDaemon):
     Class for saving structure data to vtk file.
     """
     def __init__(self, observed_obj, run_flag: SynchronizationHelper, refresh_rate, filename):
+        """Create a daemon that periodically saves structure snapshots to VTK.
+
+        :param observed_obj: Process-like object exposing structure and beam position.
+        :type observed_obj: object
+        :param run_flag: Shared synchronization object controlling daemon lifecycle.
+        :type run_flag: SynchronizationHelper
+        :param refresh_rate: Snapshot interval in simulation seconds.
+        :type refresh_rate: float
+        :param filename: Output base filename for saved snapshots.
+        :type filename: str
+        :return: None
+        """
         super().__init__(run_flag, refresh_rate, purpose='Structure saver')
         self.observed_obj = observed_obj
         self.filename = filename
         save_deposited_structure(self.observed_obj.structure, 0, 0, (0, 0), self.filename)
 
     def looped_func(self, end=False):
+        """Persist current structure state for visualization/replay.
+
+        :param end: Flag indicating final flush at daemon shutdown.
+        :type end: bool
+        :return: None
+        """
         pr = self.observed_obj
         structure = pr.structure
         sim_t = pr.t
@@ -112,7 +164,6 @@ class StructureSaver(MonitoringDaemon):
         beam_position = (pr.x0, pr.y0)
         save_deposited_structure(structure, sim_t, t, beam_position, self.filename)
 
-# TODO: There is an Excel context manager in Pandas
 class Statistics(MonitoringDaemon):
     """
     Class implementing statistics gathering and saving(to excel).
@@ -127,6 +178,20 @@ class Statistics(MonitoringDaemon):
 
     def __init__(self, observed_obj, run_flag: SynchronizationHelper, refresh_rate, filename=f'run_id{rnd.randint(100000, 999999)}',
                  record_interval=1e-3):
+        """Initialize statistics collection buffers and output workbook.
+
+        :param observed_obj: Process-like object exposing monitored values.
+        :type observed_obj: object
+        :param run_flag: Shared synchronization object controlling daemon lifecycle.
+        :type run_flag: SynchronizationHelper
+        :param refresh_rate: Polling interval in simulation seconds.
+        :type refresh_rate: float
+        :param filename: Base output filename without extension.
+        :type filename: str
+        :param record_interval: Reserved sampling interval metadata in seconds.
+        :type record_interval: float
+        :return: None
+        """
         super().__init__(run_flag, refresh_rate, purpose='Statistics gathering')
         self.observed_obj = observed_obj
         self.filename = filename + '.xlsx'
@@ -158,10 +223,20 @@ class Statistics(MonitoringDaemon):
         self.columns.append(name)
 
     def __getitem__(self, item):
+        """Return a statistics column by name.
+
+        :param item: Column name to retrieve.
+        :type item: str
+        :return: Column values from the statistics table.
+        """
         return self.data[item]
 
     @property
     def shape(self):
+        """Return current dataframe shape.
+
+        :return: Tuple with row and column counts.
+        """
         return self.data.shape
 
     def get_params(self, arg: dict, name: str):
@@ -250,6 +325,10 @@ class Statistics(MonitoringDaemon):
                 input('Please close the file and press Enter to continue recording.')
 
     def get_growth_rate(self):
+        """Compute growth-rate series from volume change over simulation time.
+
+        :return: None
+        """
         delta = 4
         t = self.data['Sim.time']
         vol = self.data['Volume']
@@ -277,6 +356,18 @@ class Statistics(MonitoringDaemon):
         writer.close()
 
     def add_plot(self, x, y, writer, position='J1'):
+        """Add a scatter plot for two statistics columns to an Excel worksheet.
+
+        :param x: Column name used for X values.
+        :type x: str
+        :param y: Column name used for Y values.
+        :type y: str
+        :param writer: Active pandas Excel writer.
+        :type writer: pandas.ExcelWriter
+        :param position: Top-left worksheet cell for chart placement.
+        :type position: str
+        :return: None
+        """
         def mag(val):  # define magnitude of the number
             return abs(floor(log(abs(val), 10)))
 
@@ -336,10 +427,19 @@ class Statistics(MonitoringDaemon):
         worksheet.insert_chart(position, chart)
 
     def looped_func(self, end=False):
+        """Collect one statistics sample and flush buffered rows when needed.
+
+        :param end: Force write-out at shutdown when True.
+        :type end: bool
+        :return: None
+        """
         pr = self.observed_obj
-        # Stage 6: Use SimulationStats interface directly
         self.append(pr.t, pr.stats.min_precursor_coverage, pr.stats.deposited_volume, pr.max_T, )
         self.save_to_file(end)
 
     def __get_writer_args_and_kwargs(self):
+        """Return positional and keyword arguments for creating Excel writers.
+
+        :return: Tuple of writer args and kwargs.
+        """
         return (self.filename,), dict(engine='openpyxl', mode='a', if_sheet_exists='overlay')

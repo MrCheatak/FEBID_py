@@ -142,7 +142,6 @@ class MultiLayerdCellCellularAutomata:
         self.stencil_3d(grid, surface_bool)
         grid[deposit != 0] = 0
         grid[surface_bool] = 0
-        # Preserve legacy behavior from Structure.define_semi_surface():
         # only mark True where condition matches, without explicit full reset.
         out[grid >= 2] = True
         return out
@@ -250,6 +249,14 @@ class MultiLayerdCellCellularAutomata:
         return surface_out, semi_surface_out, surface_neighbors_out, ghosts_out
 
     def check_neighbors(self, arr1, arr2):
+        """Check whether each true cell in ``arr2`` has a true 6-neighbor in ``arr1``.
+
+        :param arr1: Reference boolean array.
+        :type arr1: numpy.ndarray
+        :param arr2: Array to validate against ``arr1`` neighborhood.
+        :type arr2: numpy.ndarray
+        :return: True when isolated cells are found, otherwise False.
+        """
         from scipy.ndimage import binary_dilation
 
         # Define a connectivity structure (3x3x3 cube around each cell)
@@ -276,6 +283,10 @@ class MultiLayerdCellCellularAutomata:
         return False
 
     def __get_utils(self):
+        """Precompute side- and edge-neighborhood masks used by topology updates.
+
+        :return: None
+        """
         # Kernels for choosing cells
         self.__neibs_sides = np.array([[[0, 0, 0],  # chooses side neighbors
                                         [0, 1, 0],
@@ -330,6 +341,12 @@ def initialize_structure_topology(structure, n_surface_neighbors=0, mlcca=None):
 
 
 def visualize_kernel(*arrays):
+    """Render one or more 3D arrays with independent visibility toggles.
+
+    :param arrays: Arrays to visualize as thresholded voxel sets.
+    :type arrays: tuple
+    :return: None
+    """
     import pyvista as pv
     from febid.libraries.vtk_rendering.VTK_Rendering import SetVisibilityCallback
 

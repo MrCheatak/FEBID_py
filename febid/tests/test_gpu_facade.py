@@ -1,18 +1,8 @@
 """
-Test suite for GPUFacade - Stage 4 refactoring validation
+Test suite for GPU-supported simulation run.
 
-Compares CPU (PhysicsEngine) vs GPU (GPUFacade) implementations to ensure:
-1. Numerical correctness (results match within float precision)
-2. Interface consistency (same API behavior)
-3. Performance validation (GPU maintains speed advantage)
-
-Tests are structured similarly to test_deposition.py but compare CPU vs GPU
-instead of 1D vs 3D simulations.
-
-Test cases (matching test_deposition.py pattern):
-- D=0, D=1, D=from_file (diffusion coefficient variations)
-- acceleration_grid ON/OFF (for each D value)
-- Total: 6 test cases (3 D values × 2 acceleration modes)
+Compares CPU (PhysicsEngine) and GPU (GPUFacade) implementations for
+numerical consistency, interface consistency, and runtime behavior.
 """
 
 import unittest
@@ -40,6 +30,7 @@ logger = setup_logger(__name__)
 
 # Custom YAML parser
 def load_yaml(path):
+    """Load and parse a YAML file from disk."""
     yaml = YAML(typ='safe')
     with open(path, 'r') as f:
         return yaml.load(f)
@@ -927,9 +918,9 @@ if __name__ == "__main__":
     print("="*80)
     all_passed = all(m.passed for m in metrics)
     if all_passed:
-        print("✓ All metrics PASSED")
+        print("All metrics PASSED")
     else:
-        print("✗ Some metrics FAILED")
+        print("Some metrics FAILED")
         for m in metrics:
             if not m.passed:
                 print(f"  - {m.metric_name}: rel_error={m.relative_error*100:.6f}%")

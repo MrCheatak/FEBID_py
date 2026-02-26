@@ -152,6 +152,10 @@ class Structure(BaseSolidStructure):
 
     @property
     def data_dict(self):
+        """Return structure arrays packed as a dictionary.
+
+        :return: Mapping of array names to numpy arrays.
+        """
         return {'deposit': self.deposit, 'precursor': self.precursor, 'surface_bool': self.surface_bool,
                           'semi_surface_bool': self.semi_surface_bool, 'surface_neighbors_bool': self.surface_neighbors_bool,
                           'ghosts_bool': self.ghosts_bool, 'temperature': self.temperature}
@@ -185,7 +189,8 @@ class Structure(BaseSolidStructure):
                 if 'precursor' in cell_data_keys:
                     self.precursor = np.asarray(vtk_obj.cell_data['precursor'].reshape(shape))
                 else:
-                    self.precursor = np.asarray(vtk_obj.cell_data['precursor_density'].reshape(shape)) # legacy support
+                    # Accept historical field naming used by older VTK outputs.
+                    self.precursor = np.asarray(vtk_obj.cell_data['precursor_density'].reshape(shape))
                 logger.debug('retrieved deposit and precursor data...')
             except Exception as e:
                 logger.exception('Failed to read data from the .vtk FEBID file')
@@ -388,6 +393,10 @@ class Structure(BaseSolidStructure):
         return self.deposit.nonzero()[0].max()
 
     def save_to_vtk(self):
+        """Save current deposit array to a timestamped VTK image file.
+
+        :return: None
+        """
         import time
         grid = pv.ImageData()
         grid.dimensions = np.asarray([self.deposit.shape[2], self.deposit.shape[1],
@@ -398,5 +407,9 @@ class Structure(BaseSolidStructure):
 
     @property
     def substrate_height_abs(self):
+        """Return substrate height in absolute length units.
+
+        :return: Substrate height in nanometers.
+        """
         return self.substrate_height * self.cell_size
 

@@ -88,6 +88,12 @@ def temperature_stencil(grid, k, cp, rho, dt, dl, heat_source=0, solid_index=Non
 
 
 def prepare_solid_index(grid):
+    """Build integer index arrays for nonzero solid cells.
+
+    :param grid: Grid whose nonzero cells represent solid volume.
+    :type grid: numpy.ndarray
+    :return: Tuple of z, y, x index arrays.
+    """
     index = grid.nonzero()
     return np.intc(index[0]), np.intc(index[1]), np.intc(index[2])
 

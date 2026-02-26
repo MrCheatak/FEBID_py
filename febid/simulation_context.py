@@ -7,6 +7,8 @@ from typing import Optional, Tuple, Any
 
 @dataclass
 class SimulationParameters:
+    """Store validated user-facing simulation input parameters."""
+
     structure_source: str = 'vtk'  # 'vtk', 'geom', or 'auto'
     vtk_filename: Optional[str] = None
     geom_parameters_filename: Optional[str] = None
@@ -37,6 +39,10 @@ class SimulationParameters:
     # Add more fields as needed
 
     def validate(self) -> None:
+        """Validate enum-like parameter values for structure and pattern sources.
+
+        :return: None
+        """
         # Example validation logic
         if self.structure_source not in {'vtk', 'geom', 'auto'}:
             raise ValueError(f"Invalid structure_source: {self.structure_source}")
@@ -46,6 +52,8 @@ class SimulationParameters:
 
 @dataclass
 class SimulationContext:
+    """Carry runtime objects and configuration shared across simulation components."""
+
     structure: Structure = None
     precursorParams: object = None
     settings: object = None

@@ -233,8 +233,6 @@ class DataViewManager:
         """
         Defines a slice encapsulating the whole surface from just above the
         substrate to the max structure height.
-
-        (Logic from Process._irradiated_area_2d)
         """
         return np.s_[self.substrate_height - 1:self.max_z, :, :]
 
@@ -248,8 +246,6 @@ class DataViewManager:
         """
         Defines a tighter 3D slice of the currently irradiated area based on
         the beam matrix.
-
-        (Logic from Process.__irradiated_area_3d)
         """
         if self._index_deposition_2d[0].size == 0:
             # Handle case with no irradiation
@@ -267,8 +263,6 @@ class DataViewManager:
         """
         Transforms the deposition indices from the 2D view's coordinate system
         to the 3D view's coordinate system.
-
-        (Logic from Process.__generate_deposition_index)
         """
         if self._index_deposition_2d[0].size == 0:
             return (np.array([]), np.array([]), np.array([]))
@@ -287,8 +281,6 @@ class DataViewManager:
         """
         Returns a flattened array of the beam flux values at the specific
         locations where deposition will occur.
-
-        (Logic from Process.__flatten_beam_matrix_effective)
         """
         beam_matrix_3d_view = self.beam_matrix[self._slice_irradiated_3d]
         self.beam_matrix_deposition_flat = beam_matrix_3d_view[self._index_deposition_3d]
@@ -298,8 +290,6 @@ class DataViewManager:
         """
         Returns a flattened array of the beam flux values for all surface
         and semi-surface cells.
-
-        (Logic from Process.__flatten_beam_matrix_surface)
         """
         # Get aligned views local and new beam matrix arrays
         beam_matrix_2d_view = self.beam_matrix[self._slice_irradiated_2d]
@@ -376,7 +366,7 @@ class DataViewManager:
 
         Parameters:
             temp_manager: TemperatureManager for temperature-dependent coefficients.
-                         If None, tau and D will be None (backward compatibility).
+                         If None, tau and D are set to None.
 
         Returns:
             PrecursorDensityView with appropriate arrays for current mode.
@@ -409,7 +399,7 @@ class DataViewManager:
 
             D = D_2d  # D stays 2D or scalar for RDE view
         else:
-            # Backward compatibility: None if no temp_manager provided
+            # No temperature manager available.
             tau = None
             D = None
 
@@ -447,7 +437,7 @@ class DataViewManager:
 
         Parameters:
             temp_manager: TemperatureManager for temperature-dependent coefficients.
-                         If None, D will be None (backward compatibility).
+                         If None, D is set to None.
 
         Returns:
             DiffusionView with appropriate arrays and surface indices.
@@ -466,7 +456,7 @@ class DataViewManager:
             else:
                 D = D_full  # Scalar
         else:
-            # Backward compatibility
+            # No temperature manager available.
             D = None
 
         # ALWAYS use the actual fancy index tuple for surface cells (diffusion needs this)

@@ -18,6 +18,20 @@ class RenderWindow(QMainWindow):
     Class for the visualization of the FEBID process
     """
     def __init__(self, process_obj, syncHelper, displayed_data='precursor',  show=False, app=None):
+        """Initialize visualization window and rendering backend.
+
+        :param process_obj: Process object providing live simulation arrays.
+        :type process_obj: object
+        :param syncHelper: Shared synchronization helper controlling simulation loop lifecycle.
+        :type syncHelper: object
+        :param displayed_data: Name of structure field to display.
+        :type displayed_data: str
+        :param show: Whether to show the plotter immediately.
+        :type show: bool
+        :param app: Optional Qt application instance.
+        :type app: object
+        :return: None
+        """
         super().__init__()
         self.setWindowTitle("FEBID process")
         self.app = app
@@ -146,8 +160,7 @@ class RenderWindow(QMainWindow):
             speed = pr.t / time_spent
             height = (pr.max_z - pr.substrate_height) * pr.structure.cell_size
 
-            # Stage 6: Use SimulationStats interface directly (read-only, thread-safe)
-            # SimulationStats handles all rate calculations and volume tracking
+            # Read derived metrics from the centralized statistics object.
             total_V = int(pr.stats.deposited_volume)
             growth_rate = int(pr.stats.growth_rate) if pr.stats.growth_rate > 0 else 0
             max_T = pr.structure.temperature.max()
