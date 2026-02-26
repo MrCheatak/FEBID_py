@@ -114,6 +114,7 @@ class SimulationResultsCPU_GPU:
 
     @property
     def filled_cells(self):
+        """Return filled cells."""
         return self.process.filled_cells
 
 
@@ -133,8 +134,6 @@ class TestGPUFacade:
     """
     Test suite comparing CPU (PhysicsEngine) and GPU (GPUFacade) FEBID simulations.
 
-    Stage 4 refactoring validation: ensures GPU implementation produces
-    numerically identical results to CPU implementation.
     """
     # Class-level tolerance constant
     # GPU uses float32, so we allow slightly higher tolerance than CPU-CPU comparison
@@ -464,14 +463,15 @@ class TestGPUFacade:
                               acceleration_enabled: bool) -> Tuple[SimulationResultsCPU_GPU, SimulationResultsCPU_GPU]:
         """
         Get cached simulation results or run new simulation.
-
-        Args:
-            case_name: Name of the test case
-            D_override: Diffusion coefficient override
-            acceleration_enabled: Enable acceleration grid
-
-        Returns:
-            Tuple of (CPU results, GPU results)
+        
+        :param case_name: Name of the test case
+        :type case_name: str
+        :param D_override: Diffusion coefficient override
+        :type D_override: float
+        :param acceleration_enabled: Enable acceleration grid
+        :type acceleration_enabled: bool
+        
+        :return: Tuple of (CPU results, GPU results)
         """
         cache_key = (case_name, D_override, acceleration_enabled)
 
@@ -497,13 +497,13 @@ class TestGPUFacade:
                        results_gpu: SimulationResultsCPU_GPU) -> List[MetricResult]:
         """
         Extract three metrics from simulation results.
-
-        Args:
-            results_cpu: CPU simulation results
-            results_gpu: GPU simulation results
-
-        Returns:
-            List of MetricResult objects [volume, center_coverage, edge_coverage]
+        
+        :param results_cpu: CPU simulation results
+        :type results_cpu: SimulationResultsCPU_GPU
+        :param results_gpu: GPU simulation results
+        :type results_gpu: SimulationResultsCPU_GPU
+        
+        :return: List of MetricResult objects [volume, center_coverage, edge_coverage]
         """
         metrics = []
 
@@ -557,9 +557,9 @@ class TestGPUFacade:
     def _assert_metric(self, metric: MetricResult):
         """
         Assert that a metric passes the tolerance test.
-
-        Args:
-            metric: MetricResult to test
+        
+        :param metric: MetricResult to test
+        :type metric: MetricResult
         """
         assert metric.passed, (
             f"{metric.metric_name} failed: "
@@ -572,14 +572,15 @@ class TestGPUFacade:
                                acceleration_enabled: bool = True, ca_enabled: bool = False) -> Tuple[SimulationResultsCPU_GPU, SimulationResultsCPU_GPU]:
         """
         Run both CPU and GPU simulations and return results.
-
-        Args:
-            D_override: Override diffusion coefficient (None = use file value)
-            case_name: Name for this test case
-            acceleration_enabled: Enable acceleration grid
-
-        Returns:
-            Tuple of (CPU results, GPU results)
+        
+        :param D_override: Override diffusion coefficient (None = use file value)
+        :type D_override: float
+        :param case_name: Name for this test case
+        :type case_name: str
+        :param acceleration_enabled: Enable acceleration grid
+        :type acceleration_enabled: bool
+        
+        :return: Tuple of (CPU results, GPU results)
         """
         params = self.params.copy()
 
@@ -620,19 +621,27 @@ class TestGPUFacade:
                       structure_override: Structure = None, ca_enabled: bool = False) -> SimulationResultsCPU_GPU:
         """
         Run a single simulation with specified device (CPU or GPU).
-
-        Args:
-            params: Test parameters
-            precursor: Precursor config
-            printing_path: Pattern path
-            settings: Beam settings
-            case_name: Test case name
-            use_gpu: Use GPU if True, CPU if False
-            acceleration_enabled: Enable acceleration grid
-            structure_override: Optional pre-configured Structure (for semi-surface tests)
-
-        Returns:
-            SimulationResultsCPU_GPU with results
+        
+        :param params: Test parameters
+        :type params: dict
+        :param precursor: Precursor config
+        :type precursor: dict
+        :param printing_path: Pattern path
+        :type printing_path: np.ndarray
+        :param settings: Beam settings
+        :type settings: dict
+        :param case_name: Test case name
+        :type case_name: str
+        :param use_gpu: Use GPU if True, CPU if False
+        :type use_gpu: bool
+        :param acceleration_enabled: Enable acceleration grid
+        :type acceleration_enabled: bool
+        :param structure_override: Optional pre-configured Structure (for semi-surface tests)
+        :type structure_override: Structure
+        :param ca_enabled: True to enable cell filling updates via CA, False by default
+        :type ca_enabled: bool
+        
+        :return: SimulationResultsCPU_GPU with results
         """
         device_type = "GPU" if use_gpu else "CPU"
 
@@ -765,9 +774,9 @@ class TestGPUFacade:
     def plot_comparison(self, results: List[Tuple[SimulationResultsCPU_GPU, SimulationResultsCPU_GPU]]):
         """
         Plot precursor coverage profiles for CPU vs GPU.
-
-        Args:
-            results: List of tuples (CPU results, GPU results) for each case
+        
+        :param results: List of tuples (CPU results, GPU results) for each case
+        :type results: list
         """
         fig, axes = plt.subplots(1, len(results), figsize=(6*len(results), 5))
 
@@ -842,6 +851,7 @@ class TestGPUFacade:
                 progress_bar.update((process.dt * process.deposition_scaling * 1e6))
 
     def setup_progress_bar(self, printing_path, deposition_scaling=1):
+        """Create a progress bar that tracks simulated exposure time."""
         total_time = int(printing_path[:, 2].sum() * deposition_scaling * 1e6)
         bar_format = "{desc}: {percentage:.1f}%|{bar}| {n:.0f}/{total_fmt} [{elapsed}<{remaining}, {rate_fmt}{postfix}]"
         progress_bar = tqdm(total=total_time, desc='Patterning', position=0, unit='µs',
@@ -849,11 +859,13 @@ class TestGPUFacade:
         return progress_bar
 
     def setup_mc_sim(self, precursor, settings, structure):
+        """Initialize the Monte Carlo simulator for the current structure."""
         mc_config = prepare_ms_config(precursor, settings, structure)
         sim = MC_Simulation(structure, mc_config)
         return sim
 
     def setup_rde_sim(self, params, precursor, settings, structure, acceleration_enabled=True):
+        """Initialize the reaction-diffusion deposition process."""
         equation_values = prepare_equation_values(precursor, settings)
 
         # Determine device
@@ -874,6 +886,7 @@ class TestGPUFacade:
         return process
 
     def setup_domain(self, params):
+        """Build a simulation structure from test volume parameters."""
         cell_size = params['cell_size']
         xdim = params['width'] // cell_size
         ydim = params['length'] // cell_size

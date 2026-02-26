@@ -443,13 +443,13 @@ class TestSimulationVolume:
     def get_or_run_simulation(self, case_name: str, D_override: float) -> tuple[SimulationResults1D, SimulationResults3D]:
         """
         Get cached simulation results or run new simulation.
-
-        Args:
-            case_name: Name of the test case
-            D_override: Diffusion coefficient override (None = use file value)
-
-        Returns:
-            Tuple of (SimulationResults1D, SimulationResults3D)
+        
+        :param case_name:
+        :type case_name: Name of the test case
+        :param D_override:
+        :type D_override: Diffusion coefficient override (None = use file value)
+        
+        :return: Tuple of (SimulationResults1D, SimulationResults3D)
         """
         cache_key = (case_name, D_override)
 
@@ -470,13 +470,13 @@ class TestSimulationVolume:
     def extract_metrics(self, results_1d: SimulationResults1D, results_3d: SimulationResults3D) -> List[MetricResult]:
         """
         Extract three metrics from simulation results.
-
-        Args:
-            results_1d: SimulationResults1D object
-            results_3d: SimulationResults3D object
-
-        Returns:
-            List of MetricResult objects [volume, center_coverage, edge_coverage]
+        
+        :param results_1d:
+        :type results_1d: SimulationResults1D object
+        :param results_3d:
+        :type results_3d: SimulationResults3D object
+        
+        :return: List of MetricResult objects [volume, center_coverage, edge_coverage]
         """
         metrics = []
 
@@ -531,9 +531,9 @@ class TestSimulationVolume:
         """
         Assert that a metric passes the tolerance test.
         (Private method - not a pytest test)
-
-        Args:
-            metric: MetricResult to test
+        
+        :param metric:
+        :type metric: MetricResult to test
         """
         assert metric.passed, (
             f"{metric.metric_name} failed: "
@@ -545,14 +545,15 @@ class TestSimulationVolume:
     def run_simulation(self, D_override: float = None, case_name: str = "", ca: bool = False) -> tuple[SimulationResults1D, SimulationResults3D]:
         """
         Run both 1D and 3D simulations and return results.
-
-        Args:
-            D_override: Override diffusion coefficient (None = use file value)
-            case_name: Name for this test case
-            ca: Enable cellular automata
-
-        Returns:
-            Tuple of (SimulationResults1D, SimulationResults3D)
+        
+        :param D_override:
+        :type D_override: Override diffusion coefficient (None = use file value)
+        :param case_name:
+        :type case_name: Name for this test case
+        :param ca:
+        :type ca: Enable cellular automata
+        
+        :return: Tuple of (SimulationResults1D, SimulationResults3D)
         """
         params = self.params
 
@@ -576,7 +577,19 @@ class TestSimulationVolume:
         # Return both results
         return results_1d, results_3d
 
-    def run_3d_sim(self, ca, params, precursor, printing_path, settings, case_name: str = "", acceleration_enabled=True, structure=None) -> SimulationResults3D:
+    def run_3d_sim(
+        self,
+        ca,
+        params,
+        precursor,
+        printing_path,
+        settings,
+        case_name: str = "",
+        acceleration_enabled=True,
+        structure=None,
+        dt_factor: float = 1.0
+    ) -> SimulationResults3D:
+        """Run a 3D FEBID simulation and return collected metrics."""
         print("\n" + "=" * 60)
         print("3D FEBID SIMULATION")
         print("=" * 60)
@@ -747,10 +760,11 @@ class TestSimulationVolume:
     def print_report(self, results: List[tuple[SimulationResults1D, SimulationResults3D]], all_metrics: List[List[MetricResult]]):
         """
         Print a comprehensive report comparing all cases in table format.
-
-        Args:
-            results: List of tuples (SimulationResults1D, SimulationResults3D) for each case
-            all_metrics: List of metric lists for each case
+        
+        :param results:
+        :type results: List of tuples (SimulationResults1D, SimulationResults3D) for each case
+        :param all_metrics:
+        :type all_metrics: List of metric lists for each case
         """
         print("\n" + "="*120)
         print("COMPREHENSIVE TEST REPORT: 1D vs 3D FEBID SIMULATION COMPARISON")
@@ -805,9 +819,9 @@ class TestSimulationVolume:
     def plot_comparison(self, results: List[tuple[SimulationResults1D, SimulationResults3D]]):
         """
         Plot precursor coverage profiles for all cases.
-
-        Args:
-            results: List of tuples (SimulationResults1D, SimulationResults3D) for each case
+        
+        :param results:
+        :type results: List of tuples (SimulationResults1D, SimulationResults3D) for each case
         """
         fig, axes = plt.subplots(1, len(results), figsize=(6*len(results), 5))
 
@@ -921,15 +935,17 @@ class TestSimulationVolume:
     def setup_1d_params(self, params, precursor, settings, printing_path):
         """
         Create 1D FEBID simulation parameters from 3D simulation configuration.
-
-        Args:
-            params: Test case parameters
-            precursor: Precursor YAML config
-            settings: Settings YAML config
-            printing_path: Pattern printing path array
-
-        Returns:
-            Params: 1D simulation parameters object
+        
+        :param params:
+        :type params: Test case parameters
+        :param precursor:
+        :type precursor: Precursor YAML config
+        :param settings:
+        :type settings: Settings YAML config
+        :param printing_path:
+        :type printing_path: Pattern printing path array
+        
+        :return: Params: 1D simulation parameters object
         """
         # Extract physical parameters from YAML configs
         gauss_dev = settings.get('gauss_dev', 3.5)  # nm, beam standard deviation

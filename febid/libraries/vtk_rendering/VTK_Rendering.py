@@ -34,11 +34,13 @@ class SetVisibilityCallback:
     """
 
     def __init__(self, plotter:pvqt.BackgroundPlotter, actor):
+        """Initialize the set visibility callback instance."""
         self.plotter = plotter
         self.actor = actor
         self.scalar_bar = True if actor.mapper.array_name else False
 
     def __call__(self, state):
+        """Invoke the callable behavior of this object."""
         self.actor.SetVisibility(state)
         if self.scalar_bar:
             if state:
@@ -146,6 +148,7 @@ class Render:
 
     def show_mc_result(self, grid=None, pe_traj=None, surface_flux=None, se_traj=None, heat_t=None,
                        heat_pe=None, heat_se=None, t=None, sim_time=None, beam=None, cam_pos=None, interactive=True):
+        """Render Monte Carlo outputs in the VTK scene."""
         pe_traj = copy.deepcopy(pe_traj)
         se_traj = copy.deepcopy(se_traj)
         if grid is not None:
@@ -233,6 +236,7 @@ class Render:
 
     def __prepare_obj(self, obj, name, cmap, color, show_scalar_bar=True, clim=None, below_color=None, above_color=None,
                       n_colors=256, log_scale=False, opacity=0.5, nan_opacity=0.5, show_edges=None, texture=None):
+        """Add a prepared mesh to the plotter and configure UI bindings."""
         while True:
             try:
                 if not cmap:
@@ -354,6 +358,7 @@ class Render:
         return mesh  # .tube(radius=radius) # making line thicker
 
     def update_mask(self, mask):
+        """Update hidden-cell rendering flags from the provided mask."""
         index = np.zeros_like(mask, dtype=np.uint8)
         index[mask == 0] = vtkDataSetAttributes.HIDDENCELL
         last_scalars = self.p.mesh.array_names[0]

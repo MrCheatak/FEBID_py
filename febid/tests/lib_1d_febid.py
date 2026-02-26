@@ -34,24 +34,24 @@ OuterBC = Literal["neumann", "dirichlet"]
 class Params:
     """
     Parameter container for the 1D FEBID radial reaction-diffusion solver.
-
-    Attributes:
-        D (float): Surface diffusivity [nm^2/s]
-        S (float): Sticking coefficient (dimensionless)
-        Phi (float): Precursor flux [molecules/(m^2 s)]
-        tau (float): Thermal desorption time [s]
-        sigma (float): Electron-induced dissociation cross-section [nm^2]
-        J0 (float): Peak electron flux [1/m^2]
-        beam_sigma (float): Beam width (1-sigma) [nm]
-        R (float): Simulation domain radius [m]
-        N (int): Number of spatial grid points
-        dt (float): Time step [s]
-        t_end (float): End time [s]
-        outer_bc (OuterBC): Outer boundary condition type
-        theta_outer (float): Value for Dirichlet BC at r=R
-        theta0 (float): Initial coverage (if not start_full)
-        start_full (bool): If True, start with theta=1 everywhere
-        snapshots (Tuple[float, ...]): Times to save snapshots
+    
+    Key attributes:
+    * ``D`` (float): Surface diffusivity [nm^2/s]
+    * ``S`` (float): Sticking coefficient (dimensionless)
+    * ``Phi`` (float): Precursor flux [molecules/(m^2 s)]
+    * ``tau`` (float): Thermal desorption time [s]
+    * ``sigma`` (float): Electron-induced dissociation cross-section [nm^2]
+    * ``J0`` (float): Peak electron flux [1/m^2]
+    * ``beam_sigma`` (float): Beam width (1-sigma) [nm]
+    * ``R`` (float): Simulation domain radius [m]
+    * ``N`` (int): Number of spatial grid points
+    * ``dt`` (float): Time step [s]
+    * ``t_end`` (float): End time [s]
+    * ``outer_bc`` (OuterBC): Outer boundary condition type
+    * ``theta_outer`` (float): Value for Dirichlet BC at r=R
+    * ``theta0`` (float): Initial coverage (if not start_full)
+    * ``start_full`` (bool): If True, start with theta=1 everywhere
+    * ``snapshots`` (Tuple[float, ...]): Times to save snapshots
     """
     D: float = 2e6
     S: float = 1
@@ -77,28 +77,26 @@ class Params:
     def n_replenished(self) -> float:
         """
         Calculate the replenished (steady-state) precursor coverage far from the beam.
-
+        
         This is the equilibrium coverage where adsorption balances thermal desorption
         (no electron-induced depletion).
-
+        
         Formula: n_r = S*Phi / (S*Phi/n0 + 1/tau)
-
-        Returns:
-            float: Replenished precursor coverage [molecules/nm²]
+        
+        :return: float: Replenished precursor coverage [molecules/nm²]
         """
         return self.S * self.Phi / (self.S * self.Phi / self.n0 + 1.0 / self.tau)
 
     def n_depleted(self) -> float:
         """
         Calculate the depleted (steady-state) precursor coverage at the beam center.
-
+        
         This is the equilibrium coverage at r=0 where adsorption balances both
         thermal desorption and electron-induced dissociation.
-
+        
         Formula: n_d = S*Phi / (S*Phi/n0 + 1/tau + sigma*J0)
-
-        Returns:
-            float: Depleted precursor coverage at beam center [molecules/nm²]
+        
+        :return: float: Depleted precursor coverage at beam center [molecules/nm²]
         """
         return self.S * self.Phi / (self.S * self.Phi / self.n0 + 1.0 / self.tau + self.sigma * self.J0)
 
@@ -194,14 +192,15 @@ def select_snapshots_by_center(snaps_all: Dict[float, np.ndarray],
 def gaussian_beam_J(r, J0, sigma_b):
     """
     Returns the electron flux profile J(r) for a Gaussian beam.
-
-    Args:
-        r (np.ndarray): Radial grid points.
-        J0 (float): Peak electron flux [A/m^2].
-        sigma_b (float): Beam width (1-sigma) [m].
-
-    Returns:
-        np.ndarray: Electron flux profile at each r.
+    
+    :param r: Radial grid points.
+    :type r: np.ndarray
+    :param J0: Peak electron flux [A/m^2].
+    :type J0: float
+    :param sigma_b: Beam width (1-sigma) [m].
+    :type sigma_b: float
+    
+    :return: np.ndarray: Electron flux profile at each r.
     """
     return J0 * np.exp(-0.5 * (r / sigma_b) ** 2)
 
@@ -209,17 +208,13 @@ def build_radial_laplacian(R, N):
     """
     Constructs the tridiagonal coefficients for the radial Laplacian operator
     with symmetry at r=0 and user-chosen outer boundary.
-
-    Args:
-        R (float): Simulation domain radius [m].
-        N (int): Number of spatial grid points.
-
-    Returns:
-        Tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
-            r: grid points,
-            a: lower diagonal,
-            b: main diagonal,
-            c: upper diagonal.
+    
+    :param R: Simulation domain radius [m].
+    :type R: float
+    :param N: Number of spatial grid points.
+    :type N: int
+    
+    :return: Tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray]: r: grid points, a: lower diagonal, b: main diagonal, c: upper diagonal.
     """
     dr = R / N
     r = np.linspace(0.0, R, N + 1)
@@ -242,18 +237,23 @@ def apply_outer_bc_tridiag(a, b, c, r, dr, outer_bc, theta_outer=None):
     """
     Modifies the tridiagonal Laplacian coefficients for the outer boundary.
     Supports Neumann (zero-flux) and Dirichlet (fixed value) BCs.
-
-    Args:
-        a (np.ndarray): Lower diagonal of Laplacian.
-        b (np.ndarray): Main diagonal of Laplacian.
-        c (np.ndarray): Upper diagonal of Laplacian.
-        r (np.ndarray): Radial grid points.
-        dr (float): Grid spacing.
-        outer_bc (str): Boundary condition type ("neumann" or "dirichlet").
-        theta_outer (float, optional): Value for Dirichlet BC at r=R.
-
-    Returns:
-        Tuple[np.ndarray, np.ndarray, np.ndarray]: Modified diagonals (a, b, c).
+    
+    :param a: Lower diagonal of Laplacian.
+    :type a: np.ndarray
+    :param b: Main diagonal of Laplacian.
+    :type b: np.ndarray
+    :param c: Upper diagonal of Laplacian.
+    :type c: np.ndarray
+    :param r: Radial grid points.
+    :type r: np.ndarray
+    :param dr: Grid spacing.
+    :type dr: float
+    :param outer_bc: Boundary condition type ("neumann" or "dirichlet").
+    :type outer_bc: str
+    :param theta_outer: Value for Dirichlet BC at r=R.
+    :type theta_outer: float, optional
+    
+    :return: Tuple[np.ndarray, np.ndarray, np.ndarray]: Modified diagonals (a, b, c).
     """
     N = len(r) - 1
     if outer_bc == "neumann":
@@ -272,15 +272,17 @@ def apply_outer_bc_tridiag(a, b, c, r, dr, outer_bc, theta_outer=None):
 def solve_tridiagonal(a, b, c, d):
     """
     Thomas algorithm for solving a tridiagonal system Ax = d.
-
-    Args:
-        a (np.ndarray): Lower diagonal (a[0] unused).
-        b (np.ndarray): Main diagonal.
-        c (np.ndarray): Upper diagonal (c[-1] unused).
-        d (np.ndarray): Right-hand side.
-
-    Returns:
-        np.ndarray: Solution array x.
+    
+    :param a: Lower diagonal (a[0] unused).
+    :type a: np.ndarray
+    :param b: Main diagonal.
+    :type b: np.ndarray
+    :param c: Upper diagonal (c[-1] unused).
+    :type c: np.ndarray
+    :param d: Right-hand side.
+    :type d: np.ndarray
+    
+    :return: np.ndarray: Solution array x.
     """
     n = len(d)
     ac, bc, cc, dc = map(np.array, (a.copy(), b.copy(), c.copy(), d.copy()))
@@ -299,16 +301,17 @@ def advance_imex(theta, r, aL, bL, cL, p, implicit_linear_sinks=True):
     Advances the solution by one IMEX time step.
     Diffusion is treated implicitly, reactions explicitly.
     Optionally, linear sinks (desorption, dissociation) can be treated implicitly.
-
-    Args:
-        theta (np.ndarray): Current surface coverage.
-        r (np.ndarray): Radial grid points.
-        aL, bL, cL (np.ndarray): Laplacian tridiagonal coefficients.
-        p (Params): Simulation parameters.
-        implicit_linear_sinks (bool): If True, treat linear sinks implicitly.
-
-    Returns:
-        np.ndarray: Updated surface coverage after one time step.
+    
+    :param theta: Current surface coverage.
+    :type theta: np.ndarray
+    :param r: Radial grid points. aL, bL, cL (np.ndarray): Laplacian tridiagonal coefficients.
+    :type r: np.ndarray
+    :param p: Simulation parameters.
+    :type p: Params
+    :param implicit_linear_sinks: If True, treat linear sinks implicitly.
+    :type implicit_linear_sinks: bool
+    
+    :return: np.ndarray: Updated surface coverage after one time step.
     """
     dt, D = p.dt, p.D
     if implicit_linear_sinks:
@@ -329,15 +332,17 @@ def advance_imex(theta, r, aL, bL, cL, p, implicit_linear_sinks=True):
 def snapshots_no_diffusion(p: Params, r: np.ndarray, times: Tuple[float, ...], theta_init: np.ndarray) -> Dict[float, np.ndarray]:
     """
     Returns analytical solution snapshots for the ODE case (D=0).
-
-    Args:
-        p (Params): Simulation parameters.
-        r (np.ndarray): Radial grid points.
-        times (Tuple[float, ...]): Times at which to compute snapshots.
-        theta_init (np.ndarray): Initial surface coverage.
-
-    Returns:
-        Dict[float, np.ndarray]: Dictionary mapping time to theta profile.
+    
+    :param p: Simulation parameters.
+    :type p: Params
+    :param r: Radial grid points.
+    :type r: np.ndarray
+    :param times: Times at which to compute snapshots.
+    :type times: Tuple[float, ...]
+    :param theta_init: Initial surface coverage.
+    :type theta_init: np.ndarray
+    
+    :return: Dict[float, np.ndarray]: Dictionary mapping time to theta profile.
     """
     J = gaussian_beam_J(r, p.J0, p.beam_sigma)
     k = p.S * p.Phi / p.n0 + (1.0 / p.tau) + p.sigma * J
@@ -353,15 +358,11 @@ def snapshots_no_diffusion(p: Params, r: np.ndarray, times: Tuple[float, ...], t
 def run_simulation(p: Params):
     """
     Runs the full simulation for the given parameters.
-
-    Args:
-        p (Params): Simulation parameters.
-
-    Returns:
-        Tuple[np.ndarray, Dict[float, np.ndarray], Params]:
-            r: grid points,
-            snaps: dict of {time: theta profile},
-            p: Params object.
+    
+    :param p: Simulation parameters.
+    :type p: Params
+    
+    :return: Tuple[np.ndarray, Dict[float, np.ndarray], Params]: r: grid points, snaps: dict of {time: theta profile}, p: Params object.
     """
     r, aL, bL, cL = build_radial_laplacian(p.R, p.N)
     dr = p.R / p.N
@@ -439,44 +440,27 @@ def run_simulation(p: Params):
 def calculate_deposited_volume(p: Params, return_height_profile: bool = False):
     """
     Calculate the total deposited volume from a radially symmetric 1D FEBID simulation.
-
+    
     The function tracks the height profile h(r,t) over time by accumulating height increments
     at each time step according to:
         dh[i] = θ[i] * σ * J[i] * Va * dt
-
+    
     where:
         - θ[i]: surface coverage at radial position i [molecules/nm²]
         - σ: electron-induced dissociation cross-section [nm²]
         - J[i]: electron flux at position i [electrons/(nm²·s)]
         - Va: volume deposited per precursor molecule [nm³]
         - dt: time step [s]
-
+    
     The total volume is then integrated radially over the cylindrically symmetric domain:
         V_total = 2π ∫₀^R h(r) × r × dr
-
-    Args:
-        p (Params): Simulation parameters containing all physical constants and numerical settings.
-        return_height_profile (bool): If True, returns the final height profile h(r) along with volume.
-
-    Returns:
-        If return_height_profile is False:
-            float: Total deposited volume [nm³]
-        If return_height_profile is True:
-            Tuple[float, np.ndarray, np.ndarray]: (V_total [nm³], r [nm], h(r) [nm])
-
-    Physics:
-        - The deposition rate per unit area is: σ * J(r) * θ(r) [molecules/(nm²·s)]
-        - Multiplying by Va gives height growth rate: dh/dt = σ * J(r) * θ(r) * Va [nm/s]
-        - Integration over cylindrical annuli accounts for radial symmetry
-
-    Example:
-        >>> p = Params(D=2e6, t_end=0.002, Va=0.95)
-        >>> V_total = calculate_deposited_volume(p)
-        >>> print(f"Total deposited volume: {V_total:.2f} nm³")
-
-        >>> V_total, r, h = calculate_deposited_volume(p, return_height_profile=True)
-        >>> # plt.plot(r, h)
-        >>> # plt.xlabel("r [nm]"); plt.ylabel("h [nm]")
+    
+    :param p: Simulation parameters containing all physical constants and numerical settings.
+    :type p: Params
+    :param return_height_profile: If True, returns the final height profile h(r) along with volume.
+    :type return_height_profile: bool
+    
+    :return: If return_height_profile is False: float: Total deposited volume [nm³] If return_height_profile is True: Tuple[float, np.ndarray, np.ndarray]: (V_total [nm³], r [nm], h(r) [nm]) Physics: - The deposition rate per unit area is: σ * J(r) * θ(r) [molecules/(nm²·s)] - Multiplying by Va gives height growth rate: dh/dt = σ * J(r) * θ(r) * Va [nm/s] - Integration over cylindrical annuli accounts for radial symmetry Example: >>> p = Params(D=2e6, t_end=0.002, Va=0.95) >>> V_total = calculate_deposited_volume(p) >>> print(f"Total deposited volume: {V_total:.2f} nm³") >>> V_total, r, h = calculate_deposited_volume(p, return_height_profile=True) >>> # plt.plot(r, h) >>> # plt.xlabel("r [nm]"); plt.ylabel("h [nm]")
     """
     # Build spatial grid and operators
     r, aL, bL, cL = build_radial_laplacian(p.R, p.N)
@@ -566,14 +550,15 @@ def estimate_se_flux_prefactor(i, a, yld):
     """
     Estimate the prefactor for electron flux J0 given
     desired dissociation rate at beam center.
-
-    Args:
-        i (float): Beam current, A.
-        a (float): Gaussian standard deviation, nm.
-        yld (float): Secondary electron yield.
-
-    Returns:
-        float: Estimated pre-factor for Gaussian secondary electron flux J0 [1/(nm²·s)].
+    
+    :param i: Beam current, A.
+    :type i: float
+    :param a: Gaussian standard deviation, nm.
+    :type a: float
+    :param yld: Secondary electron yield.
+    :type yld: float
+    
+    :return: float: Estimated pre-factor for Gaussian secondary electron flux J0 [1/(nm²·s)].
     """
     e = 1.602e-19  # elementary charge, C
     pe_flux = i / e  # primary electrons per second

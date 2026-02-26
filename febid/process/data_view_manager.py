@@ -10,14 +10,15 @@ from febid.process.simulation_state import SimulationState
 
 @dataclass
 class DepositionView:
-    """Everything needed for deposition calculation.
-
-    Attributes:
-        deposit: 3D array view (restricted if acceleration on, full if off)
-        precursor: 3D array view (restricted if acceleration on, full if off)
-        beam_matrix: 1D flattened array (acceleration on) or full 3D array (acceleration off)
-        index: Fancy index tuple (acceleration on) or np.s_[:] (acceleration off)
-        acceleration_enabled: Flag indicating which mode is active
+    """
+    Everything needed for deposition calculation.
+    
+    Key attributes:
+    * ``deposit`` (3D array view (restricted if acceleration on, full if off))
+    * ``precursor`` (3D array view (restricted if acceleration on, full if off))
+    * ``beam_matrix`` (1D flattened array (acceleration on) or full 3D array (acceleration off))
+    * ``index``: Fancy index tuple (acceleration on) or np.s_[:] (acceleration off)
+    * ``acceleration_enabled`` (Flag indicating which mode is active)
     """
     deposit: np.ndarray
     precursor: np.ndarray
@@ -28,15 +29,17 @@ class DepositionView:
 
 @dataclass
 class PrecursorDensityView:
-    """Everything needed for precursor density calculation.
-
-    Attributes:
-        precursor: 2D array view (restricted if acceleration on, full if off)
-        surface: Combined surface + semi_surface boolean array
-        beam_matrix: 1D flattened array (acceleration on) or full 3D array (acceleration off)
-        tau: 1D flattened (acceleration on) or full array or scalar (acceleration off)
-        D: 2D view (restricted if acceleration on) or full array or scalar (acceleration off)
-        acceleration_enabled: Flag indicating which mode is active
+    """
+    Everything needed for precursor density calculation.
+    
+    Key attributes:
+    * ``precursor`` (2D precursor array for the irradiated region)
+    * ``surface`` (surface-only boolean mask)
+    * ``semi_surface_index`` (index tuple for semi-surface cells)
+    * ``beam_matrix`` (flattened beam flux for surface cells)
+    * ``tau`` (residence-time coefficients, array or scalar)
+    * ``D`` (diffusion coefficients, view or scalar)
+    * ``acceleration_enabled`` (flag indicating active mode)
     """
     precursor: np.ndarray
     surface: np.ndarray
@@ -49,14 +52,14 @@ class PrecursorDensityView:
 
 @dataclass
 class DiffusionView:
-    """Everything needed for diffusion calculation.
-
-    Attributes:
-        precursor: 2D array view (restricted if acceleration on, full if off)
-        surface_all: Combined surface + semi_surface boolean array
-        surface_all_index: Fancy index tuple (acceleration on) or np.s_[:] (acceleration off)
-        D: 2D view (restricted if acceleration on) or full array or scalar (acceleration off)
-        acceleration_enabled: Flag indicating which mode is active
+    """
+    Everything needed for diffusion calculation.
+    
+    Key attributes:
+    * ``surface_all`` (combined surface + semi-surface boolean array)
+    * ``surface_all_index`` (fancy index tuple for diffusion-active cells)
+    * ``D`` (diffusion coefficients, view or scalar)
+    * ``acceleration_enabled`` (flag indicating active mode)
     """
     surface_all: np.ndarray
     surface_all_index: Union[Tuple[np.ndarray, np.ndarray, np.ndarray], slice]
@@ -66,20 +69,21 @@ class DiffusionView:
 
 @dataclass
 class SurfaceUpdateView:
-    """Everything needed for cell filling updates.
-
+    """
+    Everything needed for cell filling updates.
+    
     This view always uses basic slicing (not fancy indexing) because cell filling
     operations need full neighborhood access.
-
-    Attributes:
-        deposit: 3D view around irradiated area
-        precursor: 3D view around irradiated area
-        surface: 3D view around irradiated area
-        semi_surface: 3D view around irradiated area
-        ghosts: 3D view around irradiated area
-        temp: 3D view around irradiated area (if temperature tracking enabled)
-        surface_neighbors: 3D view around irradiated area
-        irradiated_area_3d: The slice object for converting local to global indices
+    
+    Key attributes:
+    * ``deposit`` (3D view around irradiated area)
+    * ``precursor`` (3D view around irradiated area)
+    * ``surface`` (3D view around irradiated area)
+    * ``semi_surface`` (3D view around irradiated area)
+    * ``ghosts`` (3D view around irradiated area)
+    * ``temp`` (3D view around irradiated area (if temperature tracking enabled))
+    * ``surface_neighbors`` (3D view around irradiated area)
+    * ``irradiated_area_3d`` (The slice object for converting local to global indices)
     """
     deposit: np.ndarray
     precursor: np.ndarray
@@ -92,10 +96,9 @@ class SurfaceUpdateView:
 
 @dataclass
 class TemperatureRecalcView:
-    """Everything needed for temperature profile recalculation.
-    Attributes:
-
-        """
+    """
+    Everything needed for temperature profile recalculation.
+    """
     deposit: np.ndarray
     temp: np.ndarray
     slice_no_sub: slice
@@ -118,12 +121,11 @@ class DataViewManager:
     def __init__(self, state: SimulationState, acceleration_enabled: bool = True):
         """
         Initializes the DataViewManager.
-
-        Args:
-            state (SimulationState): The simulation state containing structure and all data arrays.
-            acceleration_enabled (bool): Master switch for acceleration grid optimization.
-                If True, generates and caches fancy indices and flattened arrays.
-                If False, uses full-array operations with np.s_[:] indexing.
+        
+        :param state: The simulation state containing structure and all data arrays.
+        :type state: SimulationState
+        :param acceleration_enabled: Master switch for acceleration grid optimization. If True, generates and caches fancy indices and flattened arrays. If False, uses full-array operations with np.s_[:] indexing.
+        :type acceleration_enabled: bool
         """
         self.state = state
         self.acceleration_enabled: bool = acceleration_enabled
@@ -171,12 +173,14 @@ class DataViewManager:
 
     def update_roi(self, beam_matrix: np.ndarray = None):
         """
-        Updates the internal state based on a new beam matrix. This is the
-        primary trigger for re-calculating all dependent views and indices.
+        Compatibility wrapper for legacy callers.
 
-        Args:
-            beam_matrix (np.ndarray, optional): The new secondary electron flux matrix.
-                If None, uses beam_matrix from state.
+        New code should call:
+        1) ``update_after_cell_filling()``
+        2) ``update_after_beam_matrix()``
+        
+        :param beam_matrix: The new secondary electron flux matrix. If None, uses beam_matrix from state.
+        :type beam_matrix: np.ndarray, optional
         """
         if beam_matrix is not None:
             if beam_matrix.shape != self.structure.shape:
@@ -313,19 +317,18 @@ class DataViewManager:
     def get_deposition_view(self) -> DepositionView:
         """
         Returns a DepositionView for deposition calculations.
-
+        
         When acceleration_enabled=True:
             - Uses tight 3D bounding box around irradiated area
             - Returns fancy index tuple for sparse access
             - beam_matrix is 1D flattened array
-
+        
         When acceleration_enabled=False:
             - Uses full 2D slice (substrate_height:max_z)
             - Returns np.s_[:] for full-array access
             - beam_matrix is full 3D array
-
-        Returns:
-            DepositionView with appropriate arrays and indices for current mode.
+        
+        :return: DepositionView with appropriate arrays and indices for current mode.
         """
         if self.acceleration_enabled:
             # Acceleration ON: optimized with fancy indexing
@@ -350,26 +353,24 @@ class DataViewManager:
     def get_precursor_density_view(self, temp_manager = None) -> PrecursorDensityView:
         """
         Returns a PrecursorDensityView for precursor density (RDE) calculations.
-
+        
         Note: The `surface` attribute in this view is surface_bool (not surface_all).
         Semi-surface cells are handled separately via semi_surface_index.
-
+        
         When acceleration_enabled=True:
             - Uses tight 2D bounding box around irradiated area
             - beam_matrix is 1D flattened array (for surface cells only)
             - tau is 1D flattened for surface cells ONLY (if temp tracking) or scalar
-
+        
         When acceleration_enabled=False:
             - Uses full 2D slice (substrate_height:max_z)
             - beam_matrix is full 3D array
             - tau is full array (if temp tracking) or scalar
-
-        Parameters:
-            temp_manager: TemperatureManager for temperature-dependent coefficients.
-                         If None, tau and D are set to None.
-
-        Returns:
-            PrecursorDensityView with appropriate arrays for current mode.
+        
+        :param temp_manager: If None, tau and D are set to None.
+        :type temp_manager: TemperatureManager for temperature-dependent coefficients.
+        
+        :return: PrecursorDensityView with appropriate arrays for current mode.
         """
         # Get temperature-dependent coefficients from TemperatureManager
         if temp_manager is not None:
@@ -422,28 +423,24 @@ class DataViewManager:
     def get_diffusion_view(self, temp_manager = None) -> DiffusionView:
         """
         Returns a DiffusionView for diffusion (FTCS) calculations.
-
-        Note: surface_all_index is ALWAYS a fancy index tuple (never np.s_[:])
-        because the diffusion algorithm needs to identify surface cells
-        regardless of acceleration mode.
-
+        
+        Note: surface_all_index is always a fancy index tuple because diffusion
+        is evaluated only on surface+semi-surface cells.
+        
         When acceleration_enabled=True:
             - Uses tight 2D bounding box around irradiated area
             - D is 2D view (if temp tracking) or scalar
-
+        
         When acceleration_enabled=False:
             - Uses full 2D slice (substrate_height:max_z)
             - D is full array (if temp tracking) or scalar
-
-        Parameters:
-            temp_manager: TemperatureManager for temperature-dependent coefficients.
-                         If None, D is set to None.
-
-        Returns:
-            DiffusionView with appropriate arrays and surface indices.
+        
+        :param temp_manager: If None, D is set to None.
+        :type temp_manager: TemperatureManager for temperature-dependent coefficients.
+        
+        :return: DiffusionView with appropriate arrays and surface indices.
         """
         slice_2d = self._slice_irradiated_2d
-        precursor_2d = self.structure.precursor[slice_2d]
         surface_all = self._surface_all[slice_2d]
 
         # Get temperature-dependent diffusion coefficient
@@ -470,12 +467,11 @@ class DataViewManager:
     def get_surface_update_view(self) -> SurfaceUpdateView:
         """
         Returns a SurfaceUpdateView for cell filling updates.
-
+        
         This view always uses basic slicing (not fancy indexing) because cell filling
         operations need full neighborhood access for the cellular automata.
-
-        Returns:
-            SurfaceUpdateView with 3D views around the irradiated area.
+        
+        :return: SurfaceUpdateView with 3D views around the irradiated area.
         """
         # Always use the 3D slice (whether tight or full depends on acceleration mode)
         slice_3d = self._slice_irradiated_3d
@@ -533,15 +529,12 @@ class DataViewManager:
         surface_2d_view = self.structure.surface_bool[self._slice_irradiated_2d]
         semi_surface_2d_view = self.structure.semi_surface_bool[self._slice_irradiated_2d]
 
-        # Sequence is important
-        # 1. Erasing previous combined surface array
-        # 2. Getting two new indexes
+        # Sequence is important: regenerate surface and semi-surface first.
         self._index_surface_2d = self.get_index(surface_2d_view)
         self.n_surface_cells = self._index_surface_2d[0].size
         self._index_semi_surface_2d = self.get_index(semi_surface_2d_view)
         self.n_semi_surface_cells = self._index_semi_surface_2d[0].size
-        self._index_surface_all_2d_prev = self._index_surface_all_2d
-        # 3. Combining indexes
+        # Then combine indexes for diffusion access.
         self._index_surface_all_2d = concat_index(self._index_surface_2d, self._index_semi_surface_2d)
 
     def update_after_beam_matrix(self):

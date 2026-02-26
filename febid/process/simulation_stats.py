@@ -57,20 +57,19 @@ class SimulationStats:
 
     def __init__(self, state, temp_manager=None, gathering_enabled=True,
                  stats_frequency=0.1, validate_on_gather=False):
-        """Initialize SimulationStats.
-
-        Parameters
-        ----------
-        state : SimulationState
-            Reference to simulation data
-        temp_manager : TemperatureManager, optional
-            Temperature manager (if thermal effects enabled)
-        gathering_enabled : bool, default=True
-            Master switch for statistics gathering
-        stats_frequency : float, default=0.1
-            Time interval between gather() calls (seconds)
-        validate_on_gather : bool, default=False
-            Enable validation checks for debugging
+        """
+        Initialize SimulationStats.
+        
+        :param state: Reference to simulation data
+        :type state: SimulationState
+        :param temp_manager: Temperature manager (if thermal effects enabled)
+        :type temp_manager: TemperatureManager, optional
+        :param gathering_enabled: Master switch for statistics gathering
+        :type gathering_enabled: bool, default=True
+        :param stats_frequency: Time interval between gather() calls (seconds)
+        :type stats_frequency: float, default=0.1
+        :param validate_on_gather: Enable validation checks for debugging
+        :type validate_on_gather: bool, default=False
         """
         self.state = state
         self.temp_manager = temp_manager
@@ -106,18 +105,17 @@ class SimulationStats:
                    f"frequency={stats_frequency}s")
 
     def gather(self, t: float, filled_cells: int) -> None:
-        """Calculate and cache all enabled statistics.
-
+        """
+        Calculate and cache all enabled statistics.
+        
         Called by external orchestrator (Process.gather_stats() or SimulationPipeline)
         when it's time to update statistics. Performs expensive calculations once
         and caches results for daemon threads to read.
-
-        Parameters
-        ----------
-        t : float
-            Current simulation time (seconds)
-        filled_cells : int
-            Number of filled cells (deposit >= 1.0)
+        
+        :param t: Current simulation time (seconds)
+        :type t: float
+        :param filled_cells: Number of filled cells (deposit >= 1.0)
+        :type filled_cells: int
         """
         if not self.gathering_enabled:
             return
@@ -149,16 +147,15 @@ class SimulationStats:
             self._validate_stats()
 
     def _update_rates(self, t: float, filled_cells: int) -> None:
-        """Update rate calculations with minimum time window validation.
-
+        """
+        Update rate calculations with minimum time window validation.
+        
         Improvement #3: Prevents noisy/infinite rates from tiny time steps.
-
-        Parameters
-        ----------
-        t : float
-            Current simulation time
-        filled_cells : int
-            Current number of filled cells
+        
+        :param t: Current simulation time
+        :type t: float
+        :param filled_cells: Current number of filled cells
+        :type filled_cells: int
         """
         dt = t - self._t_prev
 
@@ -174,14 +171,12 @@ class SimulationStats:
         self._vol_prev = filled_cells
 
     def _calculate_volume(self) -> float:
-        """Calculate total deposited volume.
-
+        """
+        Calculate total deposited volume.
+        
         EXPENSIVE: Scans arrays over irradiated area.
-
-        Returns
-        -------
-        float
-            Total deposited volume (nm³)
+        
+        :return: (float) Total deposited volume (nm³)
         """
         # Get irradiated area slice
         s = self._get_irradiated_area_slice()
@@ -197,14 +192,12 @@ class SimulationStats:
         return filled_volume + partial_volume
 
     def _calculate_min_precursor(self) -> float:
-        """Calculate minimum precursor coverage on surface.
-
+        """
+        Calculate minimum precursor coverage on surface.
+        
         EXPENSIVE: Scans arrays over irradiated area.
-
-        Returns
-        -------
-        float
-            Minimum precursor density on surface (1/nm²)
+        
+        :return: (float) Minimum precursor density on surface (1/nm²)
         """
         # Get irradiated area slice
         s = self._get_irradiated_area_slice()
@@ -220,12 +213,10 @@ class SimulationStats:
         return surface_precursor.min()
 
     def _get_irradiated_area_slice(self):
-        """Get slice encapsulating the irradiated surface area.
-
-        Returns
-        -------
-        slice
-            3D slice from substrate height to max z coordinate
+        """
+        Get slice encapsulating the irradiated surface area.
+        
+        :return: (slice) 2D slice from substrate height to max z coordinate
         """
         return np.s_[self.state.substrate_height - 1:self.state.max_z, :, :]
 
@@ -302,12 +293,10 @@ class SimulationStats:
 
     @property
     def data_age(self) -> float:
-        """Time elapsed since last gather (for debugging/logging).
-
-        Returns
-        -------
-        float
-            Time since last gather (seconds). Returns 0 if never gathered.
+        """
+        Time elapsed since last gather (for debugging/logging).
+        
+        :return: (float) Time since last gather (seconds). Returns 0 if never gathered.
         """
         if self._gather_call_count == 0:
             return 0.0
@@ -348,14 +337,12 @@ class SimulationStats:
     # ========== Convenience Methods ==========
 
     def get_monitoring_data(self) -> dict:
-        """Get all cached statistics as a dictionary.
-
+        """
+        Get all cached statistics as a dictionary.
+        
         Useful for visualization, logging, or serialization.
-
-        Returns
-        -------
-        dict
-            Dictionary with all cached statistics
+        
+        :return: (dict) Dictionary with all cached statistics
         """
         return {
             'time': self._cached_time,

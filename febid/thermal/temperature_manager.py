@@ -37,15 +37,13 @@ class TemperatureManager:
     def __init__(self, state: SimulationState, view_manager: DataViewManager, step_volume=10000.0) -> None:
         """
         Initialize TemperatureManager.
-
-        Parameters
-        ----------
-        state : SimulationState
-            Simulation state containing structure and arrays
-        view_manager : DataViewManager
-            View manager for spatial slices and indices
-        step_volume : float, optional
-            Temperature recalculation interval based on deposited volume
+        
+        :param state: Simulation state containing structure and arrays
+        :type state: SimulationState
+        :param view_manager: View manager for spatial slices and indices
+        :type view_manager: DataViewManager
+        :param step_volume: Temperature recalculation interval based on deposited volume
+        :type step_volume: float, optional
         """
         self.state = state
         self.view_manager = view_manager
@@ -100,15 +98,13 @@ class TemperatureManager:
 
     def update_temperature_field(self, heating: np.ndarray) -> None:
         """
-        Phase 2: Recalculate temperature field and update coefficients with new temperatures.
-
+        Recalculate temperature field and update coefficients with new temperatures.
+        
         Called after MC simulation when heating data available.
         Full temperature solve + coefficient updates with fresh temperature values.
-
-        Parameters
-        ----------
-        heating : np.ndarray
-            Volumetric heat source array from MC simulation
+        
+        :param heating: Volumetric heat source array from MC simulation
+        :type heating: np.ndarray
         """
         self._update_solid_index()  # Pre-cache indices for solver
 
@@ -126,13 +122,11 @@ class TemperatureManager:
     def check_and_request_recalculation(self, filled_cells: int) -> None:
         """
         Check if temperature recalculation is needed based on volume threshold.
-
+        
         Called from cell_filled_routine() to set recalculation flag.
-
-        Parameters
-        ----------
-        filled_cells : int
-            Total number of filled cells so far
+        
+        :param filled_cells: Total number of filled cells so far
+        :type filled_cells: int
         """
         # Trigger recalc if more cells filled than threshold
         # Structure should be at least 5 cells high to avoid early recalcs during initial growth phase
@@ -145,13 +139,11 @@ class TemperatureManager:
     def initialize_cell_temperature(self, cell: tuple) -> None:
         """
         Initialize temperature of newly filled cell by averaging surroundings.
-
-        Parameters
-        ----------
-        cell : tuple
-            (z, y, x) cell coordinates
-        view : np.ndarray
-            Temperature array view (from SurfaceUpdateView)
+        
+        :param cell: (z, y, x) cell coordinates
+        :type cell: tuple
+        :param view: Temperature array view (from SurfaceUpdateView)
+        :type view: np.ndarray
         """
         temp_array = self.state.structure.temperature
         temp_slice, _ = get_3d_slice(cell, temp_array.shape, 2)
@@ -164,13 +156,11 @@ class TemperatureManager:
     def initialize_surface_cell_temperature(self, cell: tuple) -> None:
         """
         Initialize temperature of newly filled cell by averaging surroundings.
-
-        Parameters
-        ----------
-        cell : tuple
-            (z, y, x) cell coordinates
-        view : np.ndarray
-            Temperature array view (from SurfaceUpdateView)
+        
+        :param cell: (z, y, x) cell coordinates
+        :type cell: tuple
+        :param view: Temperature array view (from SurfaceUpdateView)
+        :type view: np.ndarray
         """
         temp_array = self.state.surface_temp
         temp_array[cell] = 0
@@ -188,13 +178,11 @@ class TemperatureManager:
     def initialize_D_local(self, cell: tuple) -> None:
         """
         Initialize temperature of newly filled cell by averaging surroundings.
-
-        Parameters
-        ----------
-        cell : tuple
-            (z, y, x) absolute cell coordinates
-        view : np.ndarray
-            Temperature array view (from SurfaceUpdateView)
+        
+        :param cell: (z, y, x) absolute cell coordinates
+        :type cell: tuple
+        :param view: Temperature array view (from SurfaceUpdateView)
+        :type view: np.ndarray
         """
         temp_array = self.state.surface_temp
         D_array = self.state.D_temp
@@ -212,13 +200,11 @@ class TemperatureManager:
     def initialize_tau_local(self, cell: tuple) -> None:
         """
         Initialize temperature of newly filled cell by averaging surroundings.
-
-        Parameters
-        ----------
-        cell : tuple
-            (z, y, x) absolute cell coordinates
-        view : np.ndarray
-            Temperature array view (from SurfaceUpdateView)
+        
+        :param cell: (z, y, x) absolute cell coordinates
+        :type cell: tuple
+        :param view: Temperature array view (from SurfaceUpdateView)
+        :type view: np.ndarray
         """
         temp_array = self.state.surface_temp
         tau_array = self.state.tau_temp
@@ -238,12 +224,8 @@ class TemperatureManager:
     def get_D(self) -> Union[float, np.ndarray]:
         """
         Get diffusion coefficient: scalar or full array (no slicing).
-
-        Returns
-        -------
-        Union[float, np.ndarray]
-            If temp OFF: Scalar constant precursor.D
-            If temp ON: Full array state.D_temp (DataViewManager will slice)
+        
+        :return: (Union[float, np.ndarray]) If temp OFF: Scalar constant precursor.D If temp ON: Full array state.D_temp (DataViewManager will slice)
         """
         if self.enabled:
             return self.state.D_temp  # Full array
@@ -253,12 +235,8 @@ class TemperatureManager:
     def get_tau(self) -> Union[float, np.ndarray]:
         """
         Get residence time: scalar or full array (no slicing).
-
-        Returns
-        -------
-        Union[float, np.ndarray]
-            If temp OFF: Scalar constant precursor.tau
-            If temp ON: Full array state.tau_temp (DataViewManager will slice)
+        
+        :return: (Union[float, np.ndarray]) If temp OFF: Scalar constant precursor.tau If temp ON: Full array state.tau_temp (DataViewManager will slice)
         """
         if self.enabled:
             return self.state.tau_temp  # Full array
@@ -290,11 +268,9 @@ class TemperatureManager:
     def _solve_heat_equation(self, heating: np.ndarray) -> None:
         """
         Run steady-state heat transfer solver.
-
-        Parameters
-        ----------
-        heating : np.ndarray
-            Volumetric heat source array
+        
+        :param heating: Volumetric heat source array
+        :type heating: np.ndarray
         """
         from timeit import default_timer as df
 

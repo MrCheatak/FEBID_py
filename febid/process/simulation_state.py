@@ -22,17 +22,15 @@ class SimulationState:
                  heat_cond: float, room_temp: float = 294):
         """
         Initialize simulation state.
-
-        Parameters
-        ----------
-        structure : Structure
-            The 3D structure object containing main arrays
-        model : ContinuumModel
-            Physics model with beam and precursor parameters
-        heat_cond : float
-            Thermal conductivity
-        room_temp : float, optional
-            Room temperature in Kelvin (default: 294)
+        
+        :param structure: The 3D structure object containing main arrays
+        :type structure: Structure
+        :param model: Physics model with beam and precursor parameters
+        :type model: ContinuumModel
+        :param heat_cond: Thermal conductivity
+        :type heat_cond: float
+        :param room_temp: Room temperature in Kelvin (default: 294)
+        :type room_temp: float, optional
         """
         # Core references
         self.structure = structure

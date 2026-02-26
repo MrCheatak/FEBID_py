@@ -42,15 +42,13 @@ class PhysicsEngine:
                  temp_manager: TemperatureManager):
         """
         Initialize PhysicsEngine.
-
-        Parameters
-        ----------
-        state : SimulationState
-            Read-only access to simulation data
-        view_manager : DataViewManager
-            Provides optimized views and indices
-        temp_manager : TemperatureManager
-            Provides temperature-dependent coefficients
+        
+        :param state: Read-only access to simulation data
+        :type state: SimulationState
+        :param view_manager: Provides optimized views and indices
+        :type view_manager: DataViewManager
+        :param temp_manager: Provides temperature-dependent coefficients
+        :type temp_manager: TemperatureManager
         """
         self.state = state
         self.view_manager = view_manager
@@ -61,15 +59,13 @@ class PhysicsEngine:
     def compute_deposition(self, dt: float) -> None:
         """
         Calculate deposition increment for all irradiated cells over time step.
-
+        
         Uses uniform expression approach that works for both acceleration modes:
         - Acceleration ON: view.index is fancy tuple, beam_matrix is 1D
         - Acceleration OFF: view.index is np.s_[:], beam_matrix is 3D
-
-        Parameters
-        ----------
-        dt : float
-            Time step in seconds
+        
+        :param dt: Time step in seconds
+        :type dt: float
         """
         view: DepositionView = self.view_manager.get_deposition_view()
 
@@ -85,13 +81,11 @@ class PhysicsEngine:
     def compute_precursor_density(self, dt: float) -> None:
         """
         Calculate precursor density increment for all surface cells.
-
+        
         Solves the reaction-diffusion equation using RK4 integration with FTCS diffusion.
-
-        Parameters
-        ----------
-        dt : float
-            Time step in seconds
+        
+        :param dt: Time step in seconds
+        :type dt: float
         """
         view: PrecursorDensityView = self.view_manager.get_precursor_density_view(self.temp_manager)
 
@@ -102,13 +96,10 @@ class PhysicsEngine:
     def check_cells_filled(self) -> bool:
         """
         Check if any deposit cells are fully filled (deposit >= 1.0).
-
+        
         Searches in reverse order (faster for bottom-up growth).
-
-        Returns
-        -------
-        bool
-            True if any cells are filled
+        
+        :return: (bool) True if any cells are filled
         """
         view = self.view_manager.get_deposition_view()
         surface_cells = view.deposit[view.index]
@@ -118,21 +109,16 @@ class PhysicsEngine:
     def _rk4_with_ftcs(self, view: PrecursorDensityView, dt: float) -> np.ndarray:
         """
         RK4 integration with FTCS diffusion for precursor density evolution.
-
+        
         Calculates k1, k2, k3, k4 coefficients for Runge-Kutta 4th order integration,
         with diffusion calculated via FTCS at each stage.
-
-        Parameters
-        ----------
-        view : PrecursorDensityView
-            View containing precursor, beam_matrix, surface, tau, D
-        dt : float
-            Time step in seconds
-
-        Returns
-        -------
-        np.ndarray
-            Precursor density increment (1D flat array)
+        
+        :param view: View containing precursor, beam_matrix, surface, tau, D
+        :type view: PrecursorDensityView
+        :param dt: Time step in seconds
+        :type dt: float
+        
+        :return: (np.ndarray) Precursor density increment (1D flat array)
         """
         beam_matrix = view.beam_matrix
         surface = view.surface
@@ -193,24 +179,19 @@ class PhysicsEngine:
              tau: np.ndarray = None) -> np.ndarray:
         """
         RK4 integration without diffusion (simplified version).
-
+        
         Used when diffusion coefficient D = 0.
-
-        Parameters
-        ----------
-        precursor : np.ndarray
-            Flat precursor array
-        beam_matrix : np.ndarray
-            Flat surface electron flux array
-        dt : float
-            Time step in seconds
-        tau : np.ndarray or float, optional
-            Residence time (if None, fetches from view_manager)
-
-        Returns
-        -------
-        np.ndarray
-            Precursor density increment
+        
+        :param precursor: Flat precursor array
+        :type precursor: np.ndarray
+        :param beam_matrix: Flat surface electron flux array
+        :type beam_matrix: np.ndarray
+        :param dt: Time step in seconds
+        :type dt: float
+        :param tau: Residence time (if None, fetches from view_manager)
+        :type tau: np.ndarray or float, optional
+        
+        :return: (np.ndarray) Precursor density increment
         """
         k1 = self._precursor_density_increment(precursor, beam_matrix, dt, tau=tau)
         k2 = self._precursor_density_increment(precursor, beam_matrix, dt / 2, addon=k1 / 2, tau=tau)
@@ -224,28 +205,23 @@ class PhysicsEngine:
                                      addon: float = 0.0, tau: np.ndarray = None) -> np.ndarray:
         """
         Calculate precursor density increment for RDE.
-
+        
         Includes adsorption, desorption, dissociation, and diffusion terms.
-
-        Parameters
-        ----------
-        precursor : np.ndarray
-            Flat precursor array
-        beam_matrix : np.ndarray
-            Flat surface electron flux array
-        dt : float
-            Time step in seconds
-        diffusion_matrix : float or np.ndarray, optional
-            Diffusion term from FTCS
-        addon : float or np.ndarray, optional
-            Runge-Kutta intermediate term
-        tau : np.ndarray or float, optional
-            Residence time (if None, fetches from view_manager)
-
-        Returns
-        -------
-        np.ndarray
-            Precursor density increment
+        
+        :param precursor: Flat precursor array
+        :type precursor: np.ndarray
+        :param beam_matrix: Flat surface electron flux array
+        :type beam_matrix: np.ndarray
+        :param dt: Time step in seconds
+        :type dt: float
+        :param diffusion_matrix: Diffusion term from FTCS
+        :type diffusion_matrix: float or np.ndarray, optional
+        :param addon: Runge-Kutta intermediate term
+        :type addon: float or np.ndarray, optional
+        :param tau: Residence time (if None, fetches from view_manager)
+        :type tau: np.ndarray or float, optional
+        
+        :return: (np.ndarray) Precursor density increment
         """
         # Get tau from parameter or from view if not provided
         if tau is None:
@@ -282,24 +258,19 @@ class PhysicsEngine:
                    add: float = 0, flat: bool = False) -> np.ndarray:
         """
         Calculate diffusion term via FTCS scheme.
-
-        Parameters
-        ----------
-        grid : np.ndarray
-            Precursor coverage array
-        surface : np.ndarray
-            Boolean surface array
-        dt : float
-            Time step in seconds
-        add : float or np.ndarray, optional
-            Runge-Kutta intermediate term
-        flat : bool, optional
-            If True, return flattened array
-
-        Returns
-        -------
-        np.ndarray
-            Diffusion term
+        
+        :param grid: Precursor coverage array
+        :type grid: np.ndarray
+        :param surface: Boolean surface array
+        :type surface: np.ndarray
+        :param dt: Time step in seconds
+        :type dt: float
+        :param add: Runge-Kutta intermediate term
+        :type add: float or np.ndarray, optional
+        :param flat: If True, return flattened array
+        :type flat: bool, optional
+        
+        :return: (np.ndarray) Diffusion term
         """
         # Get diffusion view with D coefficient from TemperatureManager
         view: DiffusionView = self.view_manager.get_diffusion_view(self.temp_manager)
