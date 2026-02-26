@@ -44,7 +44,7 @@ class GPU:
 
         self.buffers = {}  # dictionary relating the arrays to the buffers
         self.beam_matrix = None
-        self.beam_matrix_buf
+        self.beam_matrix_buf = None
 
     def reset_timing(self):
         """Reset accumulated GPU kernel timing counters.

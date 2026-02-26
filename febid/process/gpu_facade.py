@@ -334,7 +334,7 @@ class GPUFacade:
         :type blocking: bool, optional
         """
         # Check if beam matrix buffer exists - if not, load for first time
-        if not hasattr(self.knl, 'beam_matrix_buf'):
+        if self.knl.beam_matrix_buf is None:
             self.knl.load_beam_matrix(beam_matrix, blocking=blocking)
         else:
             self.knl.update_beam_matrix(beam_matrix, blocking=blocking)
