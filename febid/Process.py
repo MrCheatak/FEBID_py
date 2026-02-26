@@ -493,7 +493,8 @@ class Process:
 
         :return:
         """
-        temp_2d = self.state.surface_temp[self.view_manager._slice_irradiated_2d]
+        view = self.view_manager.get_temperature_recalc_view()
+        temp_2d = view.temp
         return temp_2d.max()
 
     @property
@@ -505,9 +506,10 @@ class Process:
 
         :return: Deposited volume (nm³)
         """
-        s = self.view_manager._slice_irradiated_2d
-        deposit = self.structure.deposit[s]
-        surface = self.structure.surface_bool[s]
+        view1 = self.view_manager.get_temperature_recalc_view()
+        view2 = self.view_manager.get_precursor_density_view()
+        deposit = view1.deposit
+        surface = view2.surface
         return (self.filled_cells + deposit[surface].sum()) * self.state.cell_V
 
     @property
@@ -517,9 +519,9 @@ class Process:
 
         :return:
         """
-        s = self.view_manager._slice_irradiated_3d
-        precursor = self.structure.precursor[s]
-        surface = self.structure.surface_bool[s]
+        view = self.view_manager.get_precursor_density_view()
+        precursor = view.precursor
+        surface = view.surface
         return precursor[surface].min()
 
     @property
