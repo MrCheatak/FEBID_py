@@ -100,7 +100,6 @@ class Process:
         # Statistics
         self.filled_cells = 0  # current number of filled cells
         self.max_T = 0  # cached maximum temperature for reporting
-        self._stats_frequency = 1e-3  # s, default calculation of stats and offloading from GPU for visualisation
         self.x0 = 0
         self.y0 = 0
         self.full_cells = None  # indices of the filled cells, used for beam matrix update
@@ -113,7 +112,6 @@ class Process:
         self.device = device
 
         self.displayed_data = None
-        self.stats_gathering = None
 
         # Initialization sequence
         self.__set_structure(structure)
@@ -126,13 +124,9 @@ class Process:
         self.temp_manager = TemperatureManager(self.state, self.view_manager)
 
         # Initialize simulation statistics
-        stats_enabled = self.stats_gathering if self.stats_gathering is not None else True
-        stats_freq = getattr(self, '_stats_frequency', 1e-3)
         self.stats = SimulationStats(
             state=self.state,
             temp_manager=self.temp_manager,
-            gathering_enabled=stats_enabled,
-            stats_frequency=stats_freq
         )
 
         # Initialize CPU physics engine
@@ -593,6 +587,16 @@ class Process:
     def stats_frequency(self, val):
         """Set time interval between statistics gathering."""
         self.stats.stats_frequency = val
+
+    @property
+    def stats_gathering(self):
+        """Enable/disable periodic statistics collection in the engine loop."""
+        return self.stats.gathering_enabled
+
+    @stats_gathering.setter
+    def stats_gathering(self, enabled):
+        enabled = bool(enabled)
+        self.stats.gathering_enabled = enabled
 
     def gather_stats(self):
         """

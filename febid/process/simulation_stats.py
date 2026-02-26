@@ -55,7 +55,7 @@ class SimulationStats:
         Enable validation checks for debugging (default: False)
     """
 
-    def __init__(self, state, temp_manager=None, gathering_enabled=True,
+    def __init__(self, state, temp_manager=None, gathering_enabled=False,
                  stats_frequency=0.1, validate_on_gather=False):
         """
         Initialize SimulationStats.
