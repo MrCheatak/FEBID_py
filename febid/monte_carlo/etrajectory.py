@@ -29,6 +29,16 @@ class Electron():
     """
 
     def __init__(self, x, y, parent):
+        """Initialize electron state at beam-entry coordinates.
+
+        :param x: Initial x coordinate in nanometers.
+        :type x: float
+        :param y: Initial y coordinate in nanometers.
+        :type y: float
+        :param parent: Parent trajectory simulator providing shared settings.
+        :type parent: ETrajectory
+        :return: None
+        """
         # Python uses dictionaries to represent class attributes, which causes significant memory usage
         # __slots__ attribute forces Python to use a small array for attribute storage, which reduces amount
         # of memory required for every copy of the class.
@@ -69,6 +79,12 @@ class Electron():
 
     @coordinates.setter
     def coordinates(self, value):
+        """Update current coordinates and preserve previous point state.
+
+        :param value: New coordinate tuple in `(z, y, x)` order.
+        :type value: tuple
+        :return: None
+        """
         self.x_prev = self.point_prev[2] = self.x
         self.y_prev = self.point_prev[1] = self.y
         self.z_prev = self.point_prev[0] = self.z
@@ -87,6 +103,10 @@ class Electron():
 
     @property
     def direction(self):
+        """Return displacement vector from previous to current position.
+
+        :return: Direction vector in `(z, y, x)` order.
+        """
         return self.point - self.point_prev
 
     @property
@@ -210,11 +230,29 @@ class Electron():
         return check is True
 
     def get_next_point(self, a, step):
+        """Sample a scattering event and advance to the next point.
+
+        :param a: Screening parameter controlling scattering-angle distribution.
+        :type a: float
+        :param step: Electron free path length in nanometers.
+        :type step: float
+        :return: True when point remains inside chamber bounds, otherwise False.
+        """
         self.__generate_angles(a)
         self.__get_direction()
         return self.__get_next_point(step)
 
     def get_direction(self, ctheta=None, stheta=None, psi=None):
+        """Update and return direction cosines for current scattering angles.
+
+        :param ctheta: Cosine of scattering angle.
+        :type ctheta: float
+        :param stheta: Sine of scattering angle.
+        :type stheta: float
+        :param psi: Azimuthal angle in radians.
+        :type psi: float
+        :return: None
+        """
         return self.__get_direction(ctheta, stheta, psi)
 
 
@@ -224,6 +262,10 @@ class ETrajectory(MC_Sim_Base):
     """
 
     def __init__(self):
+        """Initialize trajectory simulator state and default beam/material settings.
+
+        :return: None
+        """
         self.passes = []  # keeps the last result of the electron trajectory simulation
 
         rnd.seed()
@@ -253,8 +295,7 @@ class ETrajectory(MC_Sim_Base):
         :param params: contains all input parameters for the simulation
         :param stat: number of simulated trajectories
         """
-        #TODO: material tracking can be more universal
-        # instead of using deponat and substrate variables, there can be a dictionary, where substrate is always last
+        # Material models are currently represented by explicit deposit/substrate members.
         self.E0 = params['E0']
         self.Emin = params['Emin']
         self.I0 = params['I0']
@@ -274,6 +315,10 @@ class ETrajectory(MC_Sim_Base):
         self.__calculate_attributes()
 
     def __calculate_attributes(self):
+        """Derive chamber geometry attributes from current grid and cell size.
+
+        :return: None
+        """
         self.x0, self.y0, self.z0 = self.grid.shape[2] * self.cell_size / 2, self.grid.shape[1] * self.cell_size / 2, \
                                     self.grid.shape[0] * self.cell_size - 1
         self.zdim, self.ydim, self.xdim = self.grid.shape
@@ -771,6 +816,14 @@ class ETrajectory(MC_Sim_Base):
         return self.passes
 
     def get_crossing_point(self, coords, curr_material):
+        """Compute next material-interface crossing point along electron direction.
+
+        :param coords: Electron state holder with previous/current points.
+        :type coords: Electron
+        :param curr_material: Material marker expected for traversal.
+        :type curr_material: int
+        :return: Crossing point coordinates or current endpoint when none is found.
+        """
         # STUB: this function is a part of precise solid material tracking
         #  Misses corresponding Cython function!
         p0 = np.asarray(coords.coordinates_prev)
@@ -1121,6 +1174,14 @@ class ETrajectory(MC_Sim_Base):
         return self.material.A / (self.NA * self.material.rho * 1.0E-21 * self._getSigma(coords, a))
 
     def _getLambda_in(self, material=nan, Emin=0.1):
+        """Compute inelastic mean free path estimate for current electron energy.
+
+        :param material: Unused material override placeholder.
+        :type material: object
+        :param Emin: Minimum energy threshold for inelastic interactions.
+        :type Emin: float
+        :return: Estimated total mean free path.
+        """
         mfp1, mfp2, mfp3 = 0, 0, 0
         FSE = False  # enable tracking of secondary electrons
         if self.E > Emin:

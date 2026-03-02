@@ -48,7 +48,7 @@ def process_trajectories(points, energies, mask):
     pn[pn==p0] += rnd.choice((0.000001, -0.000001)) # protection against duplicate coordinates
     # p0, pn = pnp[:-1], pnp[1:]
     # pairs = np.stack((p0,pn))
-    # TODO: Thrown 'axis don't match array' exception :
+    # The transpose-based alternative below is kept disabled due to axis mismatch.
     # pairs = np.transpose(pairs, axes=(1,0,2))[mask.nonzero()]
     # np.delete(pairs, (mask==0), axis=0)
     # result = pairs[mask.nonzero()]
@@ -105,6 +105,12 @@ class ETrajMap3d(MC_Sim_Base):
         self.segment_min_length = segment_min_length
 
     def __arr_min(self, x):
+        """Return minimum of three values and its index.
+
+        :param x: Length-3 sequence of scalar values.
+        :type x: numpy.ndarray
+        :return: Tuple of minimum value and index.
+        """
         if x[0] >= x[1]:
             if x[1] >= x[2]:
                 return x[2], 2
@@ -292,6 +298,26 @@ class ETrajMap3d(MC_Sim_Base):
 
     def _run_traversal_and_save_intersection_coords(self, coords, direction, max_traversed_cells, n_se, pn, sign,
                                                     step_t, t):
+        """Trace SE rays and store segment endpoints for debugging/analysis.
+
+        :param coords: SE source coordinates.
+        :type coords: numpy.ndarray
+        :param direction: Unit direction vectors.
+        :type direction: numpy.ndarray
+        :param max_traversed_cells: Traversal budget per ray.
+        :type max_traversed_cells: int
+        :param n_se: Emitted SE counts per source.
+        :type n_se: numpy.ndarray
+        :param pn: Ray end coordinates.
+        :type pn: numpy.ndarray
+        :param sign: Direction-sign correction array for traversal.
+        :type sign: numpy.ndarray
+        :param step_t: Parametric step increment per axis.
+        :type step_t: numpy.ndarray
+        :param t: Initial parametric intersection distances.
+        :type t: numpy.ndarray
+        :return: None
+        """
         traversal.generate_flux(self.flux, self.surface.view(dtype=np.uint8), self.cell_size, coords, pn, direction,
                                 sign, t, step_t, n_se, max_traversed_cells)  # Cython script
         self.coords = np.empty((coords.shape[0], 2, 3))
@@ -299,6 +325,18 @@ class ETrajMap3d(MC_Sim_Base):
         self.coords[:, 1] = pn[...]
 
     def _prepapre_for_cell_traversal(self, coords, delta, direction, lambda_escape):
+        """Prepare ray endpoints and traversal coefficients for SE transport.
+
+        :param coords: SE source coordinates.
+        :type coords: numpy.ndarray
+        :param delta: Source offsets inside enclosing cells.
+        :type delta: numpy.ndarray
+        :param direction: Unit direction vectors.
+        :type direction: numpy.ndarray
+        :param lambda_escape: Escape path lengths for each SE source.
+        :type lambda_escape: numpy.ndarray
+        :return: Traversal parameters used by the ray-voxel kernel.
+        """
         length = lambda_escape  # explicitly says that every vector has same length that equals SE escape path
         direction[:, 0] *= length
         direction[:, 1] *= length
@@ -313,6 +351,16 @@ class ETrajMap3d(MC_Sim_Base):
         return max_traversed_cells, pn, step_t, t
 
     def _get_isotropic_se_sources(self, coords_all, dEs, in_index):
+        """Compute escape lengths and SE yields for included emission sources.
+
+        :param coords_all: Integer coordinates of all SE source cells.
+        :type coords_all: numpy.ndarray
+        :param dEs: Energy losses assigned to included sources.
+        :type dEs: numpy.ndarray
+        :param in_index: Indices of included sources near surface.
+        :type in_index: numpy.ndarray
+        :return: Tuple of escape lengths and emitted SE counts.
+        """
         coords_ind = coords_all[:, in_index]
         cell_material = self.grid[coords_ind[0], coords_ind[1], coords_ind[2]]
         e = np.empty_like(cell_material)
@@ -325,6 +373,14 @@ class ETrajMap3d(MC_Sim_Base):
         return lambda_escape, n_se
 
     def _generate_random_directions(self, coords, dEs):
+        """Generate isotropic random direction vectors for SE emission points.
+
+        :param coords: Included SE source coordinates.
+        :type coords: numpy.ndarray
+        :param dEs: Energy-loss values per source.
+        :type dEs: numpy.ndarray
+        :return: Tuple of offsets, directions, and traversal-sign corrections.
+        """
         rng = np.random.default_rng()
         direction = rng.normal(0, 10, (dEs.shape[0], 3))  # creates spherically randomly distributed vectors
         L = np.empty_like(dEs)
@@ -339,11 +395,26 @@ class ETrajMap3d(MC_Sim_Base):
         return delta, direction, sign
 
     def _get_included_trajectories(self):
+        """Filter SE sources to those located within the surface-neighbor shell.
+
+        :return: Included coordinates, all integer coords, included energies, and included indices.
+        """
         self.se_coords_all = coords_all = np.int32(
             ne.evaluate('a/b', global_dict={'a': self.coords_all.T, 'b': self.cell_size}))
         # Selecting only cells in surface proximity
         neighbors = self.s_neighb
-        self.se_coords_included = include = neighbors[coords_all[0], coords_all[1], coords_all[2]]
+        try:
+            self.se_coords_included = include = neighbors[coords_all[0], coords_all[1], coords_all[2]]
+        except IndexError:
+            logger.warning('Some SE source coordinates are out of bounds for surface neighbor array. They will be excluded from SE flux calculation.')
+            shape = neighbors.shape
+            x, y, z = coords_all
+            maskx = x >= shape[2]
+            masky = y >= shape[1]
+            maskz = z >= shape[0]
+            mask = maskx | masky | maskz
+            coords_all_filtered = np.delete(coords_all, np.where(mask), axis=1)
+            self.se_coords_included = include = neighbors[coords_all_filtered[0], coords_all_filtered[1], coords_all_filtered[2]]
         in_index = include.nonzero()[0]
         coords = self.coords_all[in_index]
         dEs = self.dEs_all[in_index]
