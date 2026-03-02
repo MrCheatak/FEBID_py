@@ -65,7 +65,7 @@ class SimulationResultsCPU_GPU:
     @property
     def V(self) -> float:
         """Total deposited volume - extracted from process."""
-        return self.process._deposited_vol
+        return self.process.stats._calculate_volume()
 
     @property
     def theta_center(self) -> float:
@@ -691,7 +691,7 @@ class TestGPUFacade:
 
         # Print results (after retrieving from GPU if needed)
         print(f"\n{device_type} Simulation Results:")
-        print(f"  - Total deposited volume: {process._deposited_vol:.6f} nm³")
+        print(f"  - Total deposited volume: {process.stats._calculate_volume():.6f} nm³")
         print(f"  - Execution time: {execution_time:.3f} s")
 
         # Get coverage values

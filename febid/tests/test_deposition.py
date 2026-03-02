@@ -143,7 +143,7 @@ class SimulationResults3D(SimulationResults):
     @property
     def V(self) -> float:
         """Total deposited volume - extracted from process."""
-        return self.process._deposited_vol
+        return self.process.stats._calculate_volume()
 
     @property
     def theta_center(self) -> float:
@@ -898,7 +898,7 @@ class TestSimulationVolume:
         theta_edge_3d = structure.precursor[structure.substrate_height, 0, 0]
 
         print(f"\n3D Simulation Results:")
-        print(f"  - Total deposited volume: {process._deposited_vol:.3f} nm³")
+        print(f"  - Total deposited volume: {process.stats._calculate_volume():.3f} nm³")
         print(f"  - Precursor coverage at center: {theta_center_3d:.4f} molecules/nm²")
         print(f"  - Precursor coverage at edge: {theta_edge_3d:.4f} molecules/nm²")
         print(f"  - Coverage ratio (center/edge): {theta_center_3d / theta_edge_3d:.4f}" if theta_edge_3d > 0 else "")

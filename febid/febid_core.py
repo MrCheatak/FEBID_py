@@ -114,6 +114,7 @@ class SimulationManager:
         """
         self.syncHelper.is_stopped = True
         self.syncHelper.run_flag = True
+        self.syncHelper.wake_stats()
         self._running.clear()
         self.printing.join()
         self._join_threads()

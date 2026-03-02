@@ -481,44 +481,6 @@ class Process:
 
     # Properties
     @property
-    def max_temperature(self):
-        """
-        Get the highest current temperature of the structure.
-
-        :return:
-        """
-        view = self.view_manager.get_temperature_recalc_view()
-        temp_2d = view.temp
-        return temp_2d.max()
-
-    @property
-    def _deposited_vol(self):
-        """
-        Get total deposited volume.
-
-        NOTE: This property is used by diagnostic scripts.
-
-        :return: Deposited volume (nm³)
-        """
-        view1 = self.view_manager.get_temperature_recalc_view()
-        view2 = self.view_manager.get_precursor_density_view()
-        deposit = view1.deposit
-        surface = view2.surface
-        return (self.filled_cells + deposit[surface].sum()) * self.state.cell_V
-
-    @property
-    def precursor_min(self):
-        """
-        Get the lowest precursor density at the surface.
-
-        :return:
-        """
-        view = self.view_manager.get_precursor_density_view()
-        precursor = view.precursor
-        surface = view.surface
-        return precursor[surface].min()
-
-    @property
     def dt_diff(self):
         """
         Returns a time step for diffusion process, s

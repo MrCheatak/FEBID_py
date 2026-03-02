@@ -144,6 +144,7 @@ class TimeStepper:
         # Trigger periodic statistics collection.
         if self.pr.stats_gathering and self.time_passed_total % self.pr.stats_frequency < self._dt * 1.5:
             self.pr.gather_stats()
+            self.sync.notify_stats()
 
         # tick threads
         self.sync.timer = self.time_passed_total
@@ -221,6 +222,7 @@ class SimulationPipeline:
         run_flag.is_success = not run_flag.is_stopped
         run_flag.run_flag = True
         run_flag.notify()
+        run_flag.wake_stats()
         run_flag.event.set()
 
         self.logger.info("Simulation finished successfully." if run_flag.is_success else "Simulation ended early.")
@@ -281,6 +283,7 @@ class SimulationPipeline:
         """
         self.logger.info("Stop requested.")
         self.context.syncHelper.is_stopped = True
+        self.context.syncHelper.wake_stats()
 
     def is_running(self):
         """Report whether the simulation loop is currently active.

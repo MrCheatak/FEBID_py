@@ -7,7 +7,7 @@ import time
 import timeit
 from math import floor, log
 from threading import Thread, Condition, Event
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 
 import numpy as np
 import pandas as pd
@@ -25,11 +25,13 @@ class SynchronizationHelper:
     Also contains timer that counts intrinsic simulation time.
     """
     run_flag: bool  # this flag is used to stop the thread
-    loop_tick: Condition = Condition()  # this allows the thread to pause instead of constantly looping
-    event = Event()  # this is used to signal other threads that the thread has stopped
+    loop_tick: Condition = field(default_factory=Condition)  # this allows threads to pause instead of constantly looping
+    stats_tick: Condition = field(default_factory=Condition)  # signal channel for stats updates
+    event: Event = field(default_factory=Event)  # this is used to signal other threads that the thread has stopped
     is_success: bool = False  # this flag is used to signal the thread has finished successfully
     is_stopped: bool = False  # this flag is used to signal the thread has stopped
     _current_time: float = 0
+    _stats_epoch: int = 0
 
     @property
     def timer(self):
@@ -54,15 +56,31 @@ class SynchronizationHelper:
         Notify all threads waiting on the loop tick.
         This is used to ensure that all threads are synchronized at the end of each time step.
         """
-        self.loop_tick.acquire()
-        self.loop_tick.notify_all()
-        self.loop_tick.release()
+        with self.loop_tick:
+            self.loop_tick.notify_all()
+
+    @property
+    def stats_epoch(self):
+        """Return current stats-update sequence number."""
+        return self._stats_epoch
+
+    def notify_stats(self):
+        """Signal that a new stats sample has been gathered."""
+        with self.stats_tick:
+            self._stats_epoch += 1
+            self.stats_tick.notify_all()
+
+    def wake_stats(self):
+        """Wake statistics waiters without incrementing sample sequence."""
+        with self.stats_tick:
+            self.stats_tick.notify_all()
 
     def reset(self):
         """
         Reset the timer and the run flag.
         """
         self._current_time = 0
+        self._stats_epoch = 0
         self.run_flag = False
         self.is_success = False
         self.is_stopped = False
@@ -213,6 +231,23 @@ class Statistics(MonitoringDaemon):
         filename = self.filename
         self.data.to_excel(filename, startrow=self.last_row, sheet_name=self.sheet_name, header=True)
         self.last_row = 1
+
+    def run(self):
+        """Run statistics writer in event-driven mode (wake on gathered stats samples)."""
+        logger.info(f'Starting {self.purpose} daemon.')
+        last_epoch = self.run_flag.stats_epoch
+        while not self.run_flag:
+            with self.run_flag.stats_tick:
+                self.run_flag.stats_tick.wait_for(
+                    lambda: self.run_flag or self.run_flag.stats_epoch > last_epoch,
+                    timeout=0.1
+                )
+                if self.run_flag:
+                    break
+                last_epoch = self.run_flag.stats_epoch
+            self.looped_func()
+        self.looped_func(end=True)
+        logger.info(f'Closing {self.purpose} daemon.')
 
     def add_stat(self, name, first_value=0):
         """
