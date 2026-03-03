@@ -39,13 +39,26 @@ class MonteCarloExecutor:
         :return: None
         """
         start = timeit.default_timer()
-        self.beam_matrix = self.sim.run_simulation(y, x, self.process.request_temp_recalc)
+        i = 0
+        while i < 1000:
+            try:
+                self.beam_matrix = self.sim.run_simulation(y, x, self.process.request_temp_recalc)
+                break
+            except IndexError:
+                logger.warning("An uncaught exception was encountered during Monte Carlo execution.")
+                logger.warning(f"Retrying for the {i} time...")
+                i += 1
+                if i >= 1000:
+                    logger.error("Exceeded number of retrials for Monte Carlo. Stopping simulation...")
+                    return False
+
         logger.info(f'Finished MC in {(timeit.default_timer() - start):.3f} s')
         if self.beam_matrix.max() <= 1:
             logger.warning("No surface flux!", RuntimeWarning)
             self.process.set_beam_matrix(1)
         else:
             self.process.set_beam_matrix(self.beam_matrix)
+        return True
 
     def update_structure(self):
         """
@@ -215,7 +228,9 @@ class SimulationPipeline:
             if run_flag.is_stopped:
                 self.logger.warning(f"Simulation stopped at step {i}/{len(path)}.")
                 break
-            self.mc_executor.step(y, x)
+            mc_success = self.mc_executor.step(y, x)
+            if not mc_success:
+                self.stop()
             self.heat_solver.step()
             self.run_step(x, y, dwell_time)
 
@@ -274,7 +289,9 @@ class SimulationPipeline:
             if pr.device:
                 pr.gpu_facade.update_structure_partial(cells=pr.last_full_cells, blocking=True)
 
-        self.mc_executor.step(y, x)  # run MC sim. and retrieve SE surface flux and update beam matrix
+        mc_success = self.mc_executor.step(y, x)  # run MC sim. and retrieve SE surface flux and update beam matrix
+        if not mc_success:
+            self.stop()
 
     def stop(self):
         """Request graceful termination of the simulation loop.
