@@ -38,15 +38,19 @@ class Starter:
         self.syncHelper = None
 
 
-    def start(self):
+    def initialize_simulation_context(self, start=True):
         """
-        Compile simulation parameters and start the simulation
+        Build and initialize simulation context and start optionally the simulation.
+
+        :params start: if True, the simulation starts directly.
         """
         self._params.validate()
         self._create_simulation_volume()
         self._create_printing_path()
         self._open_settings_and_precursor_params()
-        self._run_febid_interface()
+        self.compile_simulation_context()
+        if start:
+            self.start_sim()
         return self.simulation_manager
 
     def start_mc(self, **kwargs):
@@ -238,7 +242,7 @@ class Starter:
             logger.exception(msg)
             raise
 
-    def _run_febid_interface(self):
+    def compile_simulation_context(self):
         """
         Compile simulation parameters and start the simulation
         """
@@ -305,9 +309,10 @@ class Starter:
 
         self.simulation_manager = SimulationManager(self.context)
         self.simulation_manager.initialize()
-        self.simulation_manager.run()
-
         self.syncHelper = self.simulation_manager.syncHelper
+
+    def start_sim(self):
+        self.simulation_manager.run()
 
     def _run_mc_interface(self, **kwargs):
         """

@@ -41,7 +41,7 @@ def start_no_ui(config_f=None):
     :param config_f: configuration file
     :return:
     """
-    Starter(config_f).start()
+    Starter(config_f).initialize_simulation_context()
 
 
 def welcome():
@@ -53,7 +53,7 @@ def welcome():
         'show_file': febid.show_file.show_structure,
         'show_animation': febid.show_animation.render_animation,
         'gui': start_ui,
-        'no_gui': Starter().start
+        'no_gui': Starter().initialize_simulation_context
     }
     if len(sys.argv) > 1:
         command = sys.argv[1]

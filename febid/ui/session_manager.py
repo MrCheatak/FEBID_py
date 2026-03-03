@@ -130,7 +130,7 @@ class SessionManager:
         if module == 'febid':
             # Pass dataclass to starter if needed, else use dict
             self.starter.params = self.to_dataclass()
-            return self.starter.start()
+            return self.starter.initialize_simulation_context()
         elif module == 'monte_carlo':
             self.starter.params = self.to_dataclass()
             self.starter.start_mc(**kwargs)
