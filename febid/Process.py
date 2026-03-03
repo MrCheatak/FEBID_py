@@ -381,6 +381,7 @@ class Process:
 
             # Recreate state arrays with new size
             self.state.beam_matrix = np.zeros_like(self.structure.deposit, dtype=np.int32)
+            self.state.beam_matrix_surface = np.zeros_like(self.structure.deposit, dtype=np.int32)
             self.state.surface_temp = np.zeros_like(self.structure.temperature)
             self.state.D_temp = np.zeros_like(self.structure.precursor)
             self.state.tau_temp = np.zeros_like(self.structure.precursor)

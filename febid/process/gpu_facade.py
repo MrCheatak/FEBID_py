@@ -350,28 +350,24 @@ class GPUFacade:
         """
         self.knl.reload_beam_matrix(beam_matrix, blocking=blocking)
 
-    def release_buffers(self) -> None:
-        """
-        Release all GPU buffers.
-
-        Used before structure resize to free GPU memory.
-        """
-        self.knl._GPU__release_all_buffers()
-
     def reinitialize_after_resize(self) -> None:
         """
         Reinitialize GPU after structure resize.
 
         This releases old buffers and creates new ones with the new structure size.
         """
-        # Release old buffers
-        self.release_buffers()
-
-        # Reinitialize with new size
-        self.initialize_kernels()
+        s = self.state.structure
+        prec = s.precursor
+        dep = s.deposit
+        surf_all = self.state.surface_all
+        surf = s.surface_bool
+        semi_surf = s.semi_surface_bool
+        ghost = s.ghosts_bool
+        irr_ind_2d = self._get_irradiated_indices()
+        self.knl.set_updated_structure(prec, dep, surf_all, surf, semi_surf, ghost, irr_ind_2d, True)
 
         # Reload beam matrix with new size
-        self.set_beam_matrix(self.state.beam_matrix)
+        self.reload_beam_matrix(self.state.beam_matrix, True)
 
     def synchronize(self) -> None:
         """

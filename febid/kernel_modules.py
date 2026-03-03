@@ -107,16 +107,17 @@ class GPU:
         Compiled functions are stored in the class as attributes and can be called directly.
         kernels must be stored in the 'kernels' folder in the same directory as this file.
         """
-        f = open(os.path.dirname(os.path.realpath(__file__)) + r'\kernels\dep_prec_den.cl', 'r', encoding='utf-8')
+        kernels_folder = '/kernels'
+        f = open(os.path.dirname(os.path.realpath(__file__)) + os.path.join(kernels_folder, 'dep_prec_den.cl'), 'r', encoding='utf-8')
         kernels_prec_den = ''.join(f.readlines())  # get path to kernel code
         f.close()
-        f = open(os.path.dirname(os.path.realpath(__file__)) + r'\kernels\up_surface.cl', 'r', encoding='utf-8')
+        f = open(os.path.dirname(os.path.realpath(__file__)) + os.path.join(kernels_folder, 'up_surface.cl'), 'r', encoding='utf-8')
         kernels_up_surf = ''.join(f.readlines())  # get path to kernel code
         f.close()
-        f = open(os.path.dirname(os.path.realpath(__file__)) + r'\kernels\return_slice.cl', 'r', encoding='utf-8')
+        f = open(os.path.dirname(os.path.realpath(__file__)) + os.path.join(kernels_folder, 'return_slice.cl'), 'r', encoding='utf-8')
         kernels_ret_slice = ''.join(f.readlines())  # get path to kernel code
         f.close()
-        f = open(os.path.dirname(os.path.realpath(__file__)) + r'\kernels\ret_slice_bool.cl', 'r', encoding='utf-8')
+        f = open(os.path.dirname(os.path.realpath(__file__)) + os.path.join(kernels_folder, 'ret_slice_bool.cl'), 'r', encoding='utf-8')
         kernels_ret_slice_b = ''.join(f.readlines())  # get path to kernel code
         f.close()
 
