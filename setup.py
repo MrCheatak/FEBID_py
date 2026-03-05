@@ -71,7 +71,7 @@ setuptools.setup(
     license='APGL-3.0',
     packages=['febid', 'febid.monte_carlo', 'febid.monte_carlo.compiled', 'febid.ui', 'febid.libraries.vtk_rendering',
               'febid.libraries.rolling', 'febid.libraries.ray_traversal', 'febid.libraries.pde', 'febid.process',
-              'febid.tests', 'febid.thermal',
+              'febid.tests', 'febid.thermal', 'febid.kernels',
               ],
     package_data = {'': ['*.pyx', 'ui/last_session_stub.yml', 'kernels/*.cl']},
     include_package_data=True,

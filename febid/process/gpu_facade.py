@@ -9,7 +9,7 @@ import numpy as np
 from febid.process.simulation_state import SimulationState
 from febid.process.data_view_manager import DataViewManager
 from febid.thermal.temperature_manager import TemperatureManager
-from febid.kernel_modules import GPU
+from febid.kernels.kernel_modules import GPU
 from febid.logging_config import setup_logger
 
 logger = setup_logger(__name__)
@@ -378,6 +378,13 @@ class GPUFacade:
         self.knl.queue.finish()
         self._tail_event = None
 
+    def enable_timing(self, enabled: bool = True, reset: bool = True) -> None:
+        """Enable/disable kernel timing collection in low-level GPU module."""
+        self.knl.enable_timing(enabled=enabled, reset=reset)
+
+    def get_timing(self) -> dict:
+        """Return accumulated GPU kernel timing counters."""
+        return self.knl.get_timing()
 
     def get_dimensions(self) -> tuple:
         """
