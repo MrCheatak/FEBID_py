@@ -1,8 +1,9 @@
 import os, sys
 import traceback
+from importlib.metadata import PackageNotFoundError, version
 
 from PyQt5.QtWidgets import QApplication, QMainWindow, QMessageBox, QLineEdit
-from PyQt5 import QtWidgets
+from PyQt5 import QtCore, QtWidgets
 from PyQt5.QtCore import pyqtSignal, pyqtSlot
 
 from febid.ui.main_window import Ui_MainWindow as UI_MainPanel
@@ -413,6 +414,29 @@ class MainPanel(QMainWindow, UI_MainPanel):
         self.checkbox_load_last_session.setToolTip(file)
         self.change_state_load_last_session(True)
 
+    @pyqtSlot(bool)
+    def on_actionAbout_triggered(self, checked=False):
+        """Show About dialog with application and runtime details."""
+        app_version = self.__get_app_version()
+        about_text = (
+            "<h3>3D FEBID Simulation</h3>"
+            "<p>Direct-write nano- and microscale chemical vapor deposition simulator.</p>"
+            f"<p><b>Version:</b> {app_version}<br>"
+            f"<b>Python:</b> {sys.version.split()[0]}<br>"
+            "<b>Developers:</b> Alexander Kuprava, Michael Huth<br>"
+            "<b>Affiliation:</b> Institute of Physics, Goethe University, "
+            "Frankfurt am Main, Germany</p>"
+            "<p><b>Source:</b> https://github.com/MrCheatak/FEBID_py</p>"
+        )
+
+        dialog = QtWidgets.QMessageBox(self)
+        dialog.setWindowTitle("About FEBID")
+        dialog.setIcon(QMessageBox.Information)
+        dialog.setTextFormat(QtCore.Qt.RichText)
+        dialog.setText(about_text)
+        dialog.setStandardButtons(QMessageBox.Ok)
+        dialog.exec()
+
     def start_febid(self):
         """
         Start FEBID simulation
@@ -653,6 +677,14 @@ class MainPanel(QMainWindow, UI_MainPanel):
         msgBox.setStandardButtons(QMessageBox.Ok)
         msgBox.setIcon(icon)
         msgBox.exec()
+
+    @staticmethod
+    def __get_app_version():
+        """Return installed package version or fallback string."""
+        try:
+            return version("febid")
+        except PackageNotFoundError:
+            return "development"
 
     def read_yaml(self, file):
         """
