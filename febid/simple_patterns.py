@@ -5,6 +5,10 @@ import math
 import numpy as np
 from pandas import read_csv
 
+from febid.logging_config import setup_logger
+# Setup logger
+logger = setup_logger(__name__)
+
 MAX_UNIT = 65535  # 16-bit stream-fle resolution
 STREAM_FILE_DWELL_TIME_UNIT = 1E-7  # s
 X_DIM_MIN = 100  # nm
@@ -68,16 +72,21 @@ def open_stream_file(file, hfw, offset=200, collapse=False):
             delim = ' '  # delimiter between the columns
             header = 3  # number of lines to skip in the beginning
             columns = (0, 1, 2)  # numbers of columns to get
-            print(f'Reading stream-file {file}  ...')
+            logger.info(f'Reading stream-file {file}  ...')
             data = read_csv(file, dtype=np.float64, comment='#', delimiter=delim, skiprows=header, nrows=n_lines-1, usecols=columns).to_numpy()
-            print('Done!')
+            logger.info('Stream file loaded!')
+    except IOError:
+        logger.exception(f'File {file} is not a stream file!')
+        raise
     except UnicodeDecodeError:
-        raise FileNotFoundError('Corrupted stream file!')
+        logger.exception(f'File {file} is corrupted or not a stream file.')
+        raise
     except FileNotFoundError:
-        raise FileNotFoundError('File not found!')
+        logger.exception(f'File {file} not found.')
+        raise
     except Exception as e:
-        print(f'Error: {e.args}')
-        raise e
+        logger.exception(f'Unknown error while reading stream file {file}.')
+        raise
 
     # Converting to simulation units
     unit_pitch = pixel_pitch(hfw)  # nm/pixel
@@ -156,11 +165,10 @@ def analyze_pattern(file, hfw):
                 speed = round(l / t)
                 stages.append((f'{speed} nm/s', t))
                 i += 1
-    print(f'Total patterning time: {total_time:.4f} s')
-    print('Stages: |', end='')
+    message = f'Total patterning time: {total_time:.4f} s\nStages: |'
     for stage, d in stages:
-        print(f'{stage}, {d:.4f} | ', end='')
-    print(' ')
+        message += f'{stage}, {d:.4f} | '
+    logger.info(message)
 
 def generate_pattern(pattern, loops, dwell_time, x, y, params=(1,1), step=1):
     """

@@ -241,3 +241,13 @@ def concat_index(arr1, arr2):
     if arr2 is None:
         return arr1
     return tuple(np.concatenate((arr1[i], arr2[i])) for i in range(len(arr1)))
+
+
+def cast_index_to_int(index):
+    """
+    Cast the index to int type (C-friendly).
+
+    :param index: The index to cast
+    :return: The cast index
+    """
+    return tuple(np.array(i, dtype=np.intc) for i in index)

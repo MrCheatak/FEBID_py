@@ -1,182 +1,50 @@
 import os, sys
 import traceback
-from threading import Thread
+from importlib.metadata import PackageNotFoundError, version
 
 from PyQt5.QtWidgets import QApplication, QMainWindow, QMessageBox, QLineEdit
-from PyQt5 import QtWidgets
+from PyQt5 import QtCore, QtWidgets
+from PyQt5.QtCore import pyqtSignal, pyqtSlot
 
 from febid.ui.main_window import Ui_MainWindow as UI_MainPanel
 
 import pyvista as pv
 import yaml
-from ruamel.yaml import YAML, CommentedMap
 
-from febid.start import Starter
 from febid.Structure import Structure
 from febid.libraries.vtk_rendering.VTK_Rendering import read_field_data
-from febid.febid_core import flag
 
 from febid.ui.process_viz import RenderWindow
-
-
-class SessionHandler:
-    """
-    Class for creating, loading and saving sessions (interface configuration)
-    """
-    def __init__(self):
-        self.params = CommentedMap()
-        self.starter = Starter()
-        self.starter.params = self.params
-        self.default_config_stub = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'last_session_stub.yml')
-
-    def load_session(self, filename):
-        """
-        Load session configuration from a file
-
-        :param filename: full file name
-        """
-        try:
-            with open(filename, mode='rb') as f:
-                params = yaml.load(f, Loader=yaml.FullLoader)
-                self.params.update(params)
-        except FileNotFoundError as e:
-            print('Session file not found')
-            raise e
-
-    def create_session(self, params):
-        """
-        Create new session configuration and set it up
-
-        :param params: session configuration parameters
-        """
-        self.load_empty_config()
-        for param in params:
-            self.set_parameter(param, params[param])
-
-    def load_empty_config(self):
-        """
-        Configuration file template
-
-        :return:
-        """
-        self.load_session(self.default_config_stub)
-
-    def save_session(self, filename):
-        """
-        Save current configuration to a file
-
-        :param filename: full file name
-        """
-        # self.filename = filename
-        yml = YAML()
-        with open(filename, mode='wb') as f:
-            yml.dump(self.params, f, )
-
-    def set_parameter(self, name, value):
-        """
-        Set the value of a parameter in the session configuration.
-
-        :param name: parameter name
-        :param value: parameter value
-        """
-        if name in self.params:
-            self.params[name] = value
-
-    def start(self, module='febid', **kwargs):
-        """
-        Start the simulation
-
-        :return:
-        """
-        if module == 'febid':
-            return self.starter.start()
-        elif module == 'monte_carlo':
-            self.starter.start_mc(**kwargs)
-        else:
-            raise ValueError(f'Unknown module: {module}')
-
-    def stop(self):
-        """
-        Stop the simulation
-
-        :return:
-        """
-        self.starter.stop()
-
-
-class UI_Group(list):
-    """
-    A collection of UI elements.
-    """
-
-    def __init__(self, *args):
-        super().__init__()
-        if type(args[0]) in [set, list, tuple]:
-            self.extend(args[0])
-        else:
-            for arg in args:
-                self.append(arg)
-
-    def set(self):
-        """
-        Convert to set
-        """
-        return set(self)
-
-    def disable(self):
-        """
-        Disable UI element.
-
-        :return:
-        """
-        for element in self:
-            element.setEnabled(False)
-
-    def enable(self):
-        """
-        Enable UI element.
-        :return:
-        """
-        for element in self:
-            element.setEnabled(True)
-
-
-class RadioButtonGroup(UI_Group):
-    """
-    A collection of bound radio buttons.
-    """
-    def __init__(self, *args, names=None):
-        super().__init__(*args)
-        self.names = names
-
-    def setChecked(self, param):
-        """
-        Check one of the radio buttons based on its name.
-
-        :param param: name of the button to check
-        :return:
-        """
-        index = self.names.index(param)
-        self[index].setChecked(True)
-
-    def getChecked(self):
-        """
-        Get the name of the checked button.
-
-        :return: name of checked button
-        """
-        for i, button in enumerate(self):
-            if button.isChecked():
-                return self.names[i]
+from febid.logging_config import setup_logger
+from febid.ui.session_manager import SessionManager
+from febid.ui.app_controller import ApplicationController
+from febid.ui.ui_helper import UIHelper, RadioButtonGroup
+# Setup logger
+logger = setup_logger(__name__)
 
 
 class MainPanel(QMainWindow, UI_MainPanel):
     """
     Main control panel window class
     """
+    # Define signals that the view can emit
+    start_simulation_requested = pyqtSignal(dict)
+    stop_simulation_requested = pyqtSignal()
+
     def __init__(self, app=None, config_filename=None, parent=None):
+        """Initialize main control panel, session state, and UI bindings.
+
+        :param app: Optional Qt application instance.
+        :type app: QApplication
+        :param config_filename: Optional session file loaded on startup.
+        :type config_filename: str
+        :param parent: Optional parent widget.
+        :type parent: QWidget
+        :return: None
+        """
         super().__init__(parent)
         self.app = app
+        self.controller = None  # Will be set when controller registers
         self.initialized = False
         self.setupUi(self)
         self.setWindowTitle('FEBID Control Panel')
@@ -186,14 +54,17 @@ class MainPanel(QMainWindow, UI_MainPanel):
         self.groupBox_visualization.setVisible(False)
         self.show()
         # self.tab_switched(self.tabWidget.currentIndex())
-        self.__group_interface_elements()
-        self.__aggregate_radio_buttons()
+        self.ui_helper = UIHelper(self)
+        # Getting radio buttons for compatability with UIConfigMapper
+        self.radio_buttons_structure_source = self.ui_helper.radio_buttons_structure_source
+        self.radio_buttons_pattern_source = self.ui_helper.radio_buttons_pattern_source
+
         # Parameters
         if config_filename is not None:
             self.last_session_filename = config_filename
         else:
             self.last_session_filename = 'last_session.yml'
-        self.session_handler = SessionHandler()
+        self.session_handler: SessionManager = SessionManager()
         self.save_flag = False
         self.structure_source = 'vtk'  # vtk, geom or auto
         self.pattern_source = 'simple'  # simple or stream_file
@@ -211,6 +82,7 @@ class MainPanel(QMainWindow, UI_MainPanel):
         self.displayed_data = 'precursor' # Name of the data tp be visualized
         self.frame_rate_control_tick_size = 0.1  # s
 
+        self.config_mapper = UIConfigMapper(self)  # Pass self (the UI) to the mapper
         self.load_last_session()
         self.update_ui()
 
@@ -236,6 +108,12 @@ class MainPanel(QMainWindow, UI_MainPanel):
 
     # Slots
     def change_state_load_last_session(self, param=None):
+        """Toggle auto-loading of the last session file.
+
+        :param param: Truthy value enables loading at startup.
+        :type param: bool
+        :return: None
+        """
         switch = True if param else False
         self.checkbox_load_last_session.setChecked(switch)
         self.save_flag = switch
@@ -244,29 +122,21 @@ class MainPanel(QMainWindow, UI_MainPanel):
         self.__save_parameter('load_last_session', switch)
 
     def vtk_chosen(self):
+        """Switch structure-source mode to VTK input.
+
+        :return: None
+        """
         self.structure_source = 'vtk'
-        # Changing FEBID tab interface
-        self.choice_vtk_file.setChecked(True)
-        self.ui_sim_volume.disable()
-        self.ui_vtk_choice.enable()
-
-        # Changing MC tab interface
-        self.choice_vtk_file_mc.setChecked(True)
-        self.ui_sim_volume_mc.disable()
-        self.ui_vtk_choice_mc.enable()
-
+        self.ui_helper.set_vtk_chosen()
         self.__save_parameter('structure_source', self.structure_source)
 
     def geom_parameters_chosen(self):
-        # Changing FEBID tab interface
-        self.choice_geom_parameters_file.setChecked(True)
-        self.ui_sim_volume.disable()
-        self.ui_geom_choice.enable()
+        """Switch structure-source mode to geometry parameters.
 
-        # Changing MC tab interface
-        self.choice_geom_parameters_file_mc.setChecked(True)
-        self.ui_sim_volume_mc.disable()
-        self.ui_geom_choice_mc.enable()
+        :return: None
+        """
+        self.structure_source = 'geom'
+        self.ui_helper.set_geom_chosen()
 
         # Auto-switching to Simple patterns option
         self.choice_simple_pattern.setChecked(True)
@@ -275,18 +145,12 @@ class MainPanel(QMainWindow, UI_MainPanel):
         self.__save_parameter('structure_source', 'geom')
 
     def auto_chosen(self):
-        # Changing FEBID tab interface
-        self.choice_auto.setChecked(True)
-        self.ui_sim_volume.disable()
-        self.ui_auto_choice.enable()
+        """Switch structure-source mode to auto volume generation.
 
-        # Changing MC tab interface
-        self.choice_geom_parameters_file_mc.setAutoExclusive(False)
-        self.choice_geom_parameters_file_mc.setChecked(False)
-        self.choice_geom_parameters_file_mc.setAutoExclusive(True)
-        self.choice_vtk_file_mc.setAutoExclusive(False)
-        self.choice_vtk_file_mc.setChecked(False)
-        self.choice_vtk_file_mc.setAutoExclusive(True)
+        :return: None
+        """
+        self.structure_source = 'auto'
+        self.ui_helper.set_auto_chosen()
 
         # Auto-switching to Stream-file option
         self.choice_stream_file.setChecked(True)
@@ -295,42 +159,39 @@ class MainPanel(QMainWindow, UI_MainPanel):
         self.__save_parameter('structure_source', 'auto')
 
     def simple_pattern_chosen(self):
-        # Changing FEBID tab interface
-        self.choice_simple_pattern.setChecked(True)
-        self.ui_pattern.disable()
-        self.ui_simple_patterns.enable()
+        """Switch path-source mode to built-in simple patterns.
+
+        :return: None
+        """
+        self.ui_helper.set_simple_pattern_chosen()
         self.__save_parameter('pattern_source', 'simple')
 
     def stream_file_chosen(self):
-        # Changing FEBID tab interface
-        self.choice_stream_file.setChecked(True)
-        self.ui_pattern.disable()
-        self.ui_stream_file.enable()
+        """Switch path-source mode to stream-file input.
+
+        :return: None
+        """
+        self.ui_helper.set_stream_file_chosen()
         self.__save_parameter('pattern_source', 'stream_file')
 
     def pattern_selection_changed(self, current=''):
-        if current == 'Point':
-            self.ui_pattern_param1.enable()
-            self.ui_pattern_param2.enable()
-        if current == 'Line':
-            self.ui_pattern_param1.enable()
-            self.ui_pattern_param2.disable()
-        if current == 'Rectangle':
-            self.ui_pattern_param1.enable()
-            self.ui_pattern_param2.enable()
-        if current == 'Square':
-            self.ui_pattern_param1.enable()
-            self.ui_pattern_param2.disable()
-        if current == 'Triangle':
-            self.ui_pattern_param1.enable()
-            self.ui_pattern_param2.disable()
-        if current == 'Circle':
-            self.ui_pattern_param1.enable()
-            self.ui_pattern_param2.disable()
+        """Handle pattern selection changes and persist the selected pattern.
+
+        :param current: Newly selected pattern name.
+        :type current: str
+        :return: None
+        """
+        self.ui_helper.set_simple_pattern_change(current)
         self.pattern = current
         self.__save_parameter('pattern', current)
 
     def open_vtk_file(self, file=''):
+        """Load VTK file, extract dimensions, and update related UI/session fields.
+
+        :param file: Path to VTK file; dialog is used when empty.
+        :type file: str
+        :return: None
+        """
         # For both tabs:
         #  Check if the specified file is a valid .vtk file
         #  Insert parameters into fields
@@ -344,11 +205,16 @@ class MainPanel(QMainWindow, UI_MainPanel):
         except Exception as e:
             self.__view_message('File read error',
                                 'Specified file is not a valid VTK file. Please choose a valid .vtk file.')
-            print("Was unable to open .vtk file. Following error occurred:")
-            print(e.args)
+            logger.exception("Was unable to open .vtk file.")
         self.statusBar().showMessage('VTK file loaded')
 
     def open_geom_parameters_file(self, file=''):
+        """Load geometry-parameter YAML and apply values to FEBID controls.
+
+        :param file: Path to geometry YAML file; dialog is used when empty.
+        :type file: str
+        :return: None
+        """
         if not file:
             file = self.__get_file_name_from_dialog()
             if not file:
@@ -358,12 +224,17 @@ class MainPanel(QMainWindow, UI_MainPanel):
                 params = yaml.load(f, Loader=yaml.FullLoader)
             self.__save_parameter('geom_parameters_filename', file)
             # Setting FEBID panel
-            self.set_interface_from_config(params)
+            self.config_mapper.apply_config_to_ui(params)
         except Exception as e:
-            print("Was unable to open .yml geometry parameters file. Following error occurred:")
-            print(e.args)
+            logger.exception("Was unable to open .yml geometry parameters file.")
 
     def open_stream_file(self, file=''):
+        """Set stream-file path used for pattern import.
+
+        :param file: Path to stream file; dialog is used when empty.
+        :type file: str
+        :return: None
+        """
         if not file:
             file = self.__get_file_name_from_dialog()
             if not file:
@@ -373,6 +244,12 @@ class MainPanel(QMainWindow, UI_MainPanel):
         self.__save_parameter('stream_file_filename', file)
 
     def open_settings_file(self, file=''):
+        """Load beam/settings YAML and mirror key values in the UI.
+
+        :param file: Path to settings YAML; dialog is used when empty.
+        :type file: str
+        :return: None
+        """
         if not file:
             file = self.__get_file_name_from_dialog()
             if not file:
@@ -391,11 +268,16 @@ class MainPanel(QMainWindow, UI_MainPanel):
         except Exception as e:
             self.__view_message('File read error',
                                 'Specified file is not a valid settings file. Please choose a valid .yml file.')
-            print("Was unable to open .yaml settings file. Following error occurred:")
-            print(e.args)
+            logger.exception("Was unable to open .yaml settings file.")
         self.statusBar().showMessage('Settings loaded')
 
     def open_precursor_parameters_file(self, file=''):
+        """Load precursor-parameter YAML and persist selected file path.
+
+        :param file: Path to precursor YAML; dialog is used when empty.
+        :type file: str
+        :return: None
+        """
         if not file:
             file = self.__get_file_name_from_dialog()
             if not file:
@@ -410,54 +292,67 @@ class MainPanel(QMainWindow, UI_MainPanel):
         except Exception as e:
             self.__view_message('File read error',
                                 'Specified file is not a valid parameters file. Please choose a valid .yml file.')
-            print("Was unable to open .yml precursor parameters file. Following error occurred:")
-            print(e.args)
+            logger.exception("Was unable to open .yml precursor parameters file.")
         self.statusBar().showMessage('Precursor parameters loaded')
 
     def change_state_save_sim_data(self, param=None):
+        """Toggle periodic simulation-data export controls and state.
+
+        :param param: Truthy value enables simulation-data export.
+        :type param: bool
+        :return: None
+        """
         switch = bool(param)
-        self.checkbox_save_simulation_data.setChecked(switch)
-        if switch:
-            self.ui_sim_data_interval.enable()
-        else:
-            self.ui_sim_data_interval.disable()
-        if switch or self.checkbox_save_snapshots.isChecked():
-            self.ui_unique_name.enable()
-            self.ui_save_folder.enable()
-        else:
-            self.ui_unique_name.disable()
-            self.ui_save_folder.disable()
+        self.ui_helper.set_state_save_sim_data(switch)
         self.__save_parameter('save_simulation_data', switch)
 
     def change_state_save_snapshots(self, param=None):
+        """Toggle structure-snapshot export controls and state.
+
+        :param param: Truthy value enables snapshot export.
+        :type param: bool
+        :return: None
+        """
         switch = bool(param)
-        self.checkbox_save_snapshots.setChecked(switch)
-        if switch:
-            self.ui_snapshot.enable()
-        else:
-            self.ui_snapshot.disable()
-        if switch or self.checkbox_save_snapshots.isChecked():
-            self.ui_unique_name.enable()
-            self.ui_save_folder.enable()
-        else:
-            self.ui_unique_name.disable()
-            self.ui_save_folder.disable()
+        self.ui_helper.set_state_save_snapshots(switch)
         self.__save_parameter('save_structure_snapshot', switch)
 
     def change_state_temperature_tracking(self, param):
+        """Toggle temperature-tracking option in UI and session state.
+
+        :param param: Truthy value enables temperature tracking.
+        :type param: bool
+        :return: None
+        """
         switch = bool(param)
         self.checkbox_temperature_tracking.setChecked(switch)
         self.__save_parameter('temperature_tracking', switch)
 
     def unique_name_changed(self):
+        """Persist current run-name value from the UI.
+
+        :return: None
+        """
         self.__save_parameter('unique_name', self.input_unique_name.text())
 
     def change_state_gpu(self, param):
+        """Toggle GPU execution flag in UI and session state.
+
+        :param param: Truthy value enables GPU mode.
+        :type param: bool
+        :return: None
+        """
         switch = bool(param)
         self.checkbox_gpu.setChecked(switch)
         self.__save_parameter('gpu', switch)
 
     def open_save_directory(self, directory=''):
+        """Select and persist directory used for simulation outputs.
+
+        :param directory: Target directory; chooser dialog is used when empty.
+        :type directory: str
+        :return: None
+        """
         if not directory:
             directory = QtWidgets.QFileDialog.getExistingDirectory()
             if not directory:
@@ -467,6 +362,12 @@ class MainPanel(QMainWindow, UI_MainPanel):
         self.__save_parameter('save_directory', directory)
 
     def tab_switched(self, current):
+        """Resize window for FEBID or Monte Carlo tab layouts.
+
+        :param current: Active tab index.
+        :type current: int
+        :return: None
+        """
         if current == 0:
             self.resize(self.width(), 684)
         if current == 1:
@@ -513,32 +414,52 @@ class MainPanel(QMainWindow, UI_MainPanel):
         self.checkbox_load_last_session.setToolTip(file)
         self.change_state_load_last_session(True)
 
+    @pyqtSlot(bool)
+    def on_actionAbout_triggered(self, checked=False):
+        """Show About dialog with application and runtime details."""
+        app_version = self.__get_app_version()
+        about_text = (
+            "<h3>3D FEBID Simulation</h3>"
+            "<p>Direct-write nano- and microscale chemical vapor deposition simulator.</p>"
+            f"<p><b>Version:</b> {app_version}<br>"
+            f"<b>Python:</b> {sys.version.split()[0]}<br>"
+            "<b>Developers:</b> Alexander Kuprava, Michael Huth<br>"
+            "<b>Affiliation:</b> Institute of Physics, Goethe University, "
+            "Frankfurt am Main, Germany</p>"
+            "<p><b>Source:</b> https://github.com/MrCheatak/FEBID_py</p>"
+        )
+
+        dialog = QtWidgets.QMessageBox(self)
+        dialog.setWindowTitle("About FEBID")
+        dialog.setIcon(QMessageBox.Information)
+        dialog.setTextFormat(QtCore.Qt.RichText)
+        dialog.setText(about_text)
+        dialog.setStandardButtons(QMessageBox.Ok)
+        dialog.exec()
+
     def start_febid(self):
         """
         Start FEBID simulation
         """
+        # Collect parameters from UI and update session config (dict-like)
+        params = self.config_mapper.get_config_from_ui()
         try:
-            return_val = self.session_handler.start()
+            self.start_simulation_requested.emit(params)
             self.groupBox_visualization.setVisible(True)
         except Exception as e:
             self.__exception_handler(e)
+            return
         self.start_febid_button.setVisible(False)
         self.stop_febid_button.setVisible(True)
 
-        def wait_for_success():
-            flag.event.wait()
-            if flag.is_success:
-                self.on_finish('Simulation finished')
 
-        thread = Thread(target=wait_for_success)
-        thread.start()
         self.statusBar().showMessage('Simulation running')
 
     def stop_febid(self):
         """
         Stop FEBID simulation
         """
-        self.session_handler.stop()
+        self.stop_simulation_requested.emit()
         self.on_finish('Simulation stopped')
 
     def start_mc(self):
@@ -564,22 +485,34 @@ class MainPanel(QMainWindow, UI_MainPanel):
         if type(self.viz) is RenderWindow:
             if self.viz.isVisible():
                 return
-        self.session_handler.starter.process_obj.displayed_data = self.displayed_data # enables data acquisition from GPU
-        self.viz = RenderWindow(self.session_handler.starter.process_obj, displayed_data=self.displayed_data, show=True,
-                                app=self.app)
+        self.session_handler.starter.context.process.displayed_data = self.displayed_data # enables data acquisition from GPU
+        self.viz = RenderWindow(self.session_handler.starter.context.process, self.session_handler.starter.syncHelper,
+                                displayed_data=self.displayed_data, show=True, app=self.app)
         self.viz.start(frame_rate=self.frame_rate)
 
     def precursor_coverage_viz_chosen(self):
+        """Set visualization mode to precursor coverage.
+
+        :return: None
+        """
         self.choice_precursor_coverage_viz.setChecked(True)
         self.displayed_data = 'precursor'
-        pass
 
     def surface_deposit_viz_chosen(self):
+        """Set visualization mode to deposited volume map.
+
+        :return: None
+        """
         self.choice_surface_deposit_viz.setChecked(True)
         self.displayed_data = 'deposit'
-        pass
 
     def frame_rate_slider_moved(self, tick):
+        """Update visualization frame rate from slider ticks.
+
+        :param tick: Slider tick value.
+        :type tick: int
+        :return: None
+        """
         frame_rate = tick * self.frame_rate_control_tick_size
         self.display_frame_rate.setText(str(f'{frame_rate:.1f}'))
         self.frame_rate = frame_rate
@@ -600,193 +533,48 @@ class MainPanel(QMainWindow, UI_MainPanel):
         """
         if not filename:
             filename = self.last_session_filename
-        print('Trying to load last session...', end='')
         if os.path.exists(filename):
-            self.session_handler.load_session(filename)
-            self.set_interface_from_config(self.session_handler.params)
-            self.__set_structure_source(self.session_handler.params['structure_source'])
-            self.__set_pattern_source(self.session_handler.params['pattern_source'])
+            self.session_handler.load(filename)
+            # Use dict-like config for UI population (preserves comments)
+            self.config_mapper.apply_config_to_ui(self.session_handler.params)
         else:
-            params = self.get_config_from_ui()
-            self.session_handler.create_session(params)
+            params = self.config_mapper.get_config_from_ui()
+            self.session_handler.create(params)
             if self.save_flag:
-                self.session_handler.save_session(filename)
+                self.session_handler.save(filename)
+        logger.info('Loaded last session.')
 
-        print('done!')
-
-    def ui_to_parameters_mapping(self):
-        """
-        Mapping of interface elements to session configuration parameters.
-        :return: mapping dictionary
-        """
-        mapping_of_interface_elements_to_parameters = {
-            'load_last_session': self.checkbox_load_last_session,
-            'structure_source': self.radio_buttons_structure_source,
-            'vtk_filename': self.vtk_filename_display,
-            'geom_parameters_filename': self.geom_parameters_filename,
-            'width': self.input_width,
-            'length': self.input_length,
-            'height': self.input_height,
-            'cell_size': self.input_cell_size,
-            'substrate_height': self.input_substrate_height,
-            'pattern_source': self.radio_buttons_pattern_source,
-            'pattern': self.pattern_selection,
-            'param1': self.input_param1,
-            'param2': self.input_param2,
-            'dwell_time': self.input_dwell_time,
-            'pitch': self.input_pitch,
-            'repeats': self.input_repeats,
-            'stream_file_filename': self.stream_file_filename_display,
-            'hfw': self.input_hfw,
-            'settings_filename': self.settings_filename_display,
-            'precursor_filename': self.precursor_parameters_filename_display,
-            'temperature_tracking': self.checkbox_temperature_tracking,
-            'save_simulation_data': self.checkbox_save_simulation_data,
-            'save_structure_snapshot': self.checkbox_save_snapshots,
-            'simulation_data_interval': self.input_simulation_data_interval,
-            'structure_snapshot_interval': self.input_structure_snapshot_interval,
-            'unique_name': self.input_unique_name,
-            'save_directory': self.save_folder_display,
-            'gpu': self.checkbox_gpu
-        }
-        return mapping_of_interface_elements_to_parameters
-
-    def set_interface_from_config(self, parameters=None):
-        """
-        Insert values from session configuration to UI.
-        If parameters is None, use all parameters from current session configuration.
-        :param parameters: dictionary with parameters
-        """
-        mapping = self.ui_to_parameters_mapping()
-        if parameters is None:
-            param_source = self.session_handler.params
-        else:
-            param_source = parameters
-            mapping = {key: value for key, value in mapping.items() if key in parameters.keys()}
-        for parameter, element in mapping.items():
-            val = param_source[parameter]
-            if element.__class__ == QtWidgets.QCheckBox:
-                element.setChecked(val)
-            elif element.__class__ == QtWidgets.QLineEdit:
-                element.setText(str(val))
-            elif element.__class__ == QtWidgets.QComboBox:
-                element.setCurrentText(str(val))
-            elif element.__class__ == RadioButtonGroup:
-                element.setChecked(val)
-
-    def get_config_from_ui(self):
-        """
-        Retrieve values from UI to session configuration.
-        :return: dictionary with parameters
-        """
-        mapping = self.ui_to_parameters_mapping()
-        params = {}
-        for parameter, element in mapping.items():
-            if element.__class__ == QtWidgets.QCheckBox:
-                params[parameter] = element.isChecked()
-            elif element.__class__ == QtWidgets.QLineEdit:
-                text = element.text()
-                if self.__is_float(text):
-                    val = float(text)
-                    if int(val) - val == 0:
-                        val = int(text)
-                else:
-                    val = text
-                params[parameter] = val
-            elif element.__class__ == QtWidgets.QComboBox:
-                params[parameter] = element.currentText()
-            elif element.__class__ == RadioButtonGroup:
-                params[parameter] = element.getChecked()
-        return params
-
+    @pyqtSlot(str)
     def on_finish(self, message=''):
+        """Restore idle UI state after simulation completion.
+
+        :param message: Status-bar message shown after completion.
+        :type message: str
+        :return: None
+        """
         self.start_febid_button.setVisible(True)
         self.stop_febid_button.setVisible(False)
         self.groupBox_visualization.setVisible(False)
-        flag.reset()
         self.statusBar().showMessage(message)
 
     def on_close(self):
+        """Stop active tasks and close visualization resources.
+
+        :return: None
+        """
         self.session_handler.stop()
         if self.viz is not None:
             self.viz.close()
 
     def closeEvent(self, event):
+        """Handle Qt window-close event and perform cleanup.
+
+        :param event: Qt close event object.
+        :type event: QCloseEvent
+        :return: None
+        """
         self.on_close()
         event.accept()
-
-    # Helper interface functions
-    def __group_interface_elements(self):
-        """
-        Group interface elements for easier enabling/disabling.
-
-        :return:
-        """
-        # Groups of controls on the panel for easier Enabling/Disabling
-
-        # Inputs and their labels
-        self.ui_dimensions = UI_Group(self.input_width, self.input_length, self.input_height,
-                                      self.l_width, self.l_height, self.l_length,
-                                      self.l_dimensions_units)
-        self.ui_dimensions_mc = UI_Group(self.input_width_mc, self.input_length_mc, self.input_height_mc,
-                                         self.l_width_mc, self.l_height_mc, self.l_length_mc,
-                                         self.l_dimensions_units_mc)
-        self.ui_cell_size = UI_Group(self.l_cell_size, self.input_cell_size, self.l_cell_size_units)
-        self.ui_cell_size_mc = UI_Group(self.l_cell_size_mc, self.input_cell_size_mc, self.l_cell_size_units_mc)
-        self.ui_substrate_height = UI_Group(self.l_substrate_height, self.input_substrate_height,
-                                            self.l_substrate_height_units)
-        self.ui_substrate_height_mc = UI_Group(self.l_substrate_height_mc, self.input_substrate_height_mc,
-                                               self.l_substrate_height_units_mc)
-
-        self.ui_pattern_param1 = UI_Group(self.l_param1, self.input_param1, self.l_param1_units)
-        self.ui_pattern_param2 = UI_Group(self.l_param2, self.input_param2, self.l_param2_units)
-        self.ui_dwell_time = UI_Group(self.l_dwell_time, self.input_dwell_time, self.l_dwell_time_units)
-        self.ui_pitch = UI_Group(self.l_pitch, self.input_pitch, self.l_pitc_units)
-        self.ui_repeats = UI_Group(self.l_repeats, self.input_repeats)
-
-        self.ui_hfw = UI_Group(self.l_hfw, self.input_hfw, self.l_hfw_units)
-
-        self.ui_sim_data_interval = UI_Group(self.l_sim_data_interval, self.input_simulation_data_interval,
-                                             self.l_sim_data_interval_units)
-        self.ui_snapshot = UI_Group(self.l_snapshot_interval, self.input_structure_snapshot_interval,
-                                    self.l_snapshot_interval_units)
-        self.ui_unique_name = UI_Group(self.l_unique_name, self.input_unique_name)
-        self.ui_save_folder = UI_Group(self.open_save_folder_button, self.save_folder_display)
-
-        # Grouping elements by their designation
-        self.ui_vtk_choice = UI_Group(self.open_vtk_file_button, self.vtk_filename_display)
-        self.ui_vtk_choice_mc = UI_Group(self.open_vtk_file_button_mc, self.vtk_filename_display_mc)
-
-        self.ui_geom_choice = UI_Group(
-            {self.open_geom_parameters_file_button} | self.ui_dimensions.set() | self.ui_cell_size.set() | \
-            self.ui_substrate_height.set())
-        self.ui_geom_choice_mc = UI_Group({self.open_geom_parameters_file_button_mc} | self.ui_dimensions_mc.set() | \
-                                          self.ui_cell_size_mc.set() | self.ui_substrate_height_mc.set())
-
-        self.ui_auto_choice = UI_Group(self.ui_cell_size.set() | self.ui_substrate_height.set())
-
-        self.ui_simple_patterns = UI_Group(
-            {self.pattern_selection} | self.ui_pattern_param1.set() | self.ui_pattern_param2.set() | \
-            self.ui_dwell_time.set() | self.ui_pitch.set() | self.ui_repeats.set())
-
-        self.ui_stream_file = UI_Group({self.open_stream_file_button} | self.ui_hfw.set())
-
-        # Grouping by the groupBoxes
-        self.ui_sim_volume = UI_Group(self.ui_vtk_choice.set() | self.ui_geom_choice.set() | self.ui_auto_choice.set())
-        self.ui_sim_volume_mc = UI_Group(self.ui_vtk_choice_mc.set() | self.ui_geom_choice_mc.set())
-        self.ui_pattern = UI_Group(self.ui_simple_patterns.set() | self.ui_stream_file.set())
-
-    def __aggregate_radio_buttons(self):
-        """
-        Aggregate radio buttons into a group.
-
-        :return:
-        """
-        self.radio_buttons_structure_source = RadioButtonGroup(self.choice_vtk_file, self.choice_geom_parameters_file,
-                                                               self.choice_auto, names=['vtk', 'geom', 'auto'])
-        self.radio_buttons_pattern_source = RadioButtonGroup(self.choice_simple_pattern, self.choice_stream_file,
-                                                             names=['simple', 'stream_file'])
-        self.radio_buttons_viz_data = None
 
     def __get_file_name_from_dialog(self):
         """
@@ -796,24 +584,6 @@ class MainPanel(QMainWindow, UI_MainPanel):
         """
         file, _ = QtWidgets.QFileDialog.getOpenFileName()
         return file
-
-    def __set_structure_source(self, source_name):
-        """
-        Select the radio button of the specified structure source
-
-        :param source_name:
-        :return:
-        """
-        self.radio_buttons_structure_source.setChecked(source_name)
-
-    def __set_pattern_source(self, source_name):
-        """
-        Select the radio button of the specified pattern source
-
-        :param source_name:
-        :return:
-        """
-        self.radio_buttons_pattern_source.setChecked(source_name)
 
     def __set_dimensions_from_vtk(self, file):
         """
@@ -839,7 +609,7 @@ class MainPanel(QMainWindow, UI_MainPanel):
             'cell_size': cell_size,
             'substrate_height': substrate_height
         }
-        self.set_interface_from_config(interface_set_config)
+        self.config_mapper.apply_config_to_ui(interface_set_config)
         # Setting MC panel
         self.input_width_mc.setText(str(xdim))
         self.input_length_mc.setText(str(ydim))
@@ -860,20 +630,18 @@ class MainPanel(QMainWindow, UI_MainPanel):
         :param value: value of the parameter
         :return:
         """
-        self.session_handler.set_parameter(param_name, value)
+        self.session_handler.set_param(param_name, value)
         if self.save_flag:
-            self.session_handler.save_session(self.last_session_filename)
-
-    @staticmethod
-    def __is_float(element) -> bool:
-        try:
-            float(element)
-            return True
-        except ValueError:
-            return False
+            self.session_handler.save(self.last_session_filename)
 
     @staticmethod
     def __is_int(element) -> bool:
+        """Check whether a value can be converted to integer.
+
+        :param element: Value to test.
+        :type element: object
+        :return: True when conversion to int succeeds.
+        """
         try:
             int(element)
             return True
@@ -882,6 +650,16 @@ class MainPanel(QMainWindow, UI_MainPanel):
 
     @staticmethod
     def __view_message(message="An error occurred", additional_message='', icon='Warning'):
+        """Show a QMessageBox with mapped icon and optional details.
+
+        :param message: Main message text.
+        :type message: str
+        :param additional_message: Secondary informative text.
+        :type additional_message: str
+        :param icon: Icon key (`Warning`, `Question`, `Information`, `Critical`).
+        :type icon: str
+        :return: None
+        """
         icon_mapping = {
             'Warning': QMessageBox.Warning,
             'Question': QMessageBox.Question,
@@ -899,6 +677,14 @@ class MainPanel(QMainWindow, UI_MainPanel):
         msgBox.setStandardButtons(QMessageBox.Ok)
         msgBox.setIcon(icon)
         msgBox.exec()
+
+    @staticmethod
+    def __get_app_version():
+        """Return installed package version or fallback string."""
+        try:
+            return version("febid")
+        except PackageNotFoundError:
+            return "development"
 
     def read_yaml(self, file):
         """
@@ -920,8 +706,8 @@ class MainPanel(QMainWindow, UI_MainPanel):
                         value = entry_splitted[0]
                         unit = ''
                     except Exception as e:
-                        print(f'An error occurred while reading units from YAML file:')
-                        raise e
+                        logger.exception(f'An error occurred while reading units from YAML file.')
+                        raise
                     try:
                         val = int(value)
                     except ValueError:
@@ -937,6 +723,12 @@ class MainPanel(QMainWindow, UI_MainPanel):
         return values, units
 
     def __load_vtk_file(self, file):
+        """Load a VTK file and return populated structure plus stored field metadata.
+
+        :param file: Path to VTK file.
+        :type file: str
+        :return: Tuple of structure instance and parsed field-data payload.
+        """
         structure = Structure()
         vtk_obj = pv.read(file)
         structure.load_from_vtk(vtk_obj)
@@ -944,6 +736,12 @@ class MainPanel(QMainWindow, UI_MainPanel):
         return structure, params
 
     def __exception_handler(self, e):
+        """Display a user-facing message for known and unexpected startup errors.
+
+        :param e: Caught exception.
+        :type e: Exception
+        :return: None
+        """
         known_errnos = {
                         1: 'VTK file not specified. Please choose the file and try again.',
                         2: 'An error occurred while fetching geometry parameters for the simulation volume.',
@@ -966,47 +764,167 @@ class MainPanel(QMainWindow, UI_MainPanel):
             self.__view_message('An unknownerror occurred', traceback_output, icon='Critical')
             # raise e
 
-    # def interface_to_config_map(self):
-    #     """
-    #     Mapping between UI and config file
-    #
-    #     :return:
-    #     """
-    #     self.session['load_last_session'] = self.save_flag
-    #     self.session['structure_source'] = self.structure_source
-    #     self.session['vtk_filename'] = self.vtk_filename
-    #     self.session['geom_parameters_filename'] = self.geom_parameters_filename
-    #     self.session['width'] = int(self.input_width.text())
-    #     self.session['length'] = int(self.input_length.text())
-    #     self.session['height'] = int(self.input_height.text())
-    #     self.session['cell_size'] = int(self.input_cell_size.text())
-    #     self.session['substrate_height'] = int(self.input_substrate_height.text())
-    #     self.session['pattern_source'] = self.pattern_source
-    #     self.session['pattern'] = self.pattern_selection.currentText()
-    #     self.session['param1'] = float(self.input_param1.text())
-    #     self.session['param2'] = float(self.input_param2.text())
-    #     self.session['dwell_time'] = int(self.input_dwell_time.text())
-    #     self.session['pitch'] = int(self.input_pitch.text())
-    #     self.session['repeats'] = int(self.input_repeats.text())
-    #     self.session['stream_file_filename'] = self.stream_file_filename
-    #     self.session['hfw'] = float(self.input_hfw.text())
-    #     self.session['settings_filename'] = self.settings_filename
-    #     self.session['precursor_filename'] = self.precursor_parameters_filename
-    #     self.session['temperature_tracking'] = self.temperature_tracking
-    #     self.session['save_simulation_data'] = self.checkbox_save_simulation_data.isChecked()
-    #     self.session['save_structure_snapshot'] = self.checkbox_save_snapshots.isChecked()
-    #     self.session['simulation_data_interval'] = float(self.input_sim_data_interval.text())
-    #     self.session['structure_snapshot_interval'] = float(self.input_snapshot_interval.text())
-    #     self.session['unique_name'] = self.input_unique_name.text()
-    #     self.session['save_directory'] = self.save_directory
-    #     self.session['show_process'] = self.checkbox_show.isChecked()
+    def validate_config(self):
+        """
+        Validate the current configuration using the dataclass. Show errors to the user if any.
+        """
+        params = self.config_mapper.get_config_from_ui()
+        self.session_handler.set_all_params(params)
+        try:
+            self.session_handler.validate()
+            self.__view_message('Validation successful', 'The configuration is valid.', icon='Information')
+        except Exception as e:
+            self.__exception_handler(e)
+
+    def register_ApplicationController(self, controller: ApplicationController):
+        """
+        Register the application controller to handle application-level events.
+
+        :param controller: ApplicationController instance
+        """
+        self.controller = controller
+        self.start_simulation_requested.connect(controller.on_start_simulation_requested)
+        self.stop_simulation_requested.connect(controller.on_stop_simulation_requested)
+        self.controller.register_view(self)
 
 
 def start(config_filename=None):
+    """Launch the Qt application with main panel and application controller.
+
+    :param config_filename: Optional startup session file.
+    :type config_filename: str
+    :return: None
+    """
     app = QApplication(sys.argv)
     win1 = MainPanel(config_filename)
+    controller = ApplicationController(win1.session_handler)
+    win1.register_ApplicationController(controller)
     sys.exit(app.exec())
 
 
+class UIConfigMapper:
+    """
+    Maps UI elements to configuration parameters.
+    This class is used to simplify the process of updating UI elements based on configuration parameters
+    and vice versa.
+    """
+
+    def __init__(self, ui: MainPanel):
+        """Initialize mapper for synchronizing UI widgets and config parameters.
+
+        :param ui: MainPanel instance containing mapped widgets.
+        :type ui: MainPanel
+        :return: None
+        """
+        self.ui = ui
+        self._mapping = self._get_mapping()
+
+    def _get_mapping(self):
+        """
+        Mapping of interface elements to session configuration parameters.
+        :return: mapping dictionary
+        """
+        mapping_of_interface_elements_to_parameters = {
+            'load_last_session': self.ui.checkbox_load_last_session,
+            'structure_source': self.ui.radio_buttons_structure_source,
+            'vtk_filename': self.ui.vtk_filename_display,
+            'geom_parameters_filename': self.ui.geom_parameters_filename,
+            'width': self.ui.input_width,
+            'length': self.ui.input_length,
+            'height': self.ui.input_height,
+            'cell_size': self.ui.input_cell_size,
+            'substrate_height': self.ui.input_substrate_height,
+            'pattern_source': self.ui.radio_buttons_pattern_source,
+            'pattern': self.ui.pattern_selection,
+            'param1': self.ui.input_param1,
+            'param2': self.ui.input_param2,
+            'dwell_time': self.ui.input_dwell_time,
+            'pitch': self.ui.input_pitch,
+            'repeats': self.ui.input_repeats,
+            'stream_file_filename': self.ui.stream_file_filename_display,
+            'hfw': self.ui.input_hfw,
+            'settings_filename': self.ui.settings_filename_display,
+            'precursor_filename': self.ui.precursor_parameters_filename_display,
+            'temperature_tracking': self.ui.checkbox_temperature_tracking,
+            'save_simulation_data': self.ui.checkbox_save_simulation_data,
+            'save_structure_snapshot': self.ui.checkbox_save_snapshots,
+            'simulation_data_interval': self.ui.input_simulation_data_interval,
+            'structure_snapshot_interval': self.ui.input_structure_snapshot_interval,
+            'unique_name': self.ui.input_unique_name,
+            'save_directory': self.ui.save_folder_display,
+            'gpu': self.ui.checkbox_gpu
+        }
+        return mapping_of_interface_elements_to_parameters
+
+    def apply_config_to_ui(self, config: dict):
+        """
+        Insert values from session configuration into UI widgets.
+
+        :param config: dictionary with widget names and a value to set
+        """
+        for param_name, widget in self._mapping.items():
+            if param_name not in config:
+                continue
+            value = config[param_name]
+            if isinstance(widget, QtWidgets.QCheckBox):
+                widget.setChecked(bool(value))
+            elif isinstance(widget, QtWidgets.QLineEdit):
+                widget.setText(str(value))
+            elif isinstance(widget, QtWidgets.QComboBox):
+                widget.setCurrentText(str(value))
+            elif isinstance(widget, RadioButtonGroup):
+                widget.setChecked(value)
+
+    def get_config_from_ui(self) -> dict:
+        """Reads widget values and returns them as a configuration dictionary."""
+        """
+        Retrieve values from UI to session configuration.
+        :return: dictionary with parameters
+        """
+        mapping = self._mapping
+        params = {}
+        for parameter, element in mapping.items():
+            if element.__class__ == QtWidgets.QCheckBox:
+                params[parameter] = element.isChecked()
+            elif element.__class__ == QtWidgets.QLineEdit:
+                val = self.__infer_type(element)
+                params[parameter] = val
+            elif element.__class__ == QtWidgets.QComboBox:
+                params[parameter] = element.currentText()
+            elif element.__class__ == RadioButtonGroup:
+                params[parameter] = element.getChecked()
+        return params
+
+    def __infer_type(self, element: QtWidgets.QLineEdit):
+        """
+        Infer the type of the value from the UI element text and convert to that type.
+
+        :param element: UI element to read text from
+        :return: value converted to the appropriate type (int, float, or str)
+        """
+        text = element.text()
+        if self.__is_float(text):
+            val = float(text)
+            if int(val) - val == 0:
+                val = int(val)
+        else:
+            val = text
+        return val
+
+    @staticmethod
+    def __is_float(element) -> bool:
+        """Check whether a value can be parsed as float.
+
+        :param element: Value to test.
+        :type element: object
+        :return: True when conversion to float succeeds.
+        """
+        try:
+            float(element)
+            return True
+        except ValueError:
+            return False
+
+        
 if __name__ == "__main__":
     start()

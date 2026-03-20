@@ -15,3 +15,4 @@ from .libraries.vtk_rendering import show_animation_new as show_animation
 from . import ui
 from . import parameter_scanning
 from .simple_patterns import analyze_pattern
+from .kernels import kernel_modules

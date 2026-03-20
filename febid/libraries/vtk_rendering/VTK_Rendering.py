@@ -18,6 +18,9 @@ from tqdm import tqdm
 
 # Local packages
 from febid.Structure import Structure
+from febid.logging_config import setup_logger
+# Setup logger
+logger = setup_logger(__name__)
 
 #### Some colormap(cmap) names: viridis, inferno, plasma, coolwarm, cool, Spectral
 
@@ -31,11 +34,13 @@ class SetVisibilityCallback:
     """
 
     def __init__(self, plotter:pvqt.BackgroundPlotter, actor):
+        """Initialize the set visibility callback instance."""
         self.plotter = plotter
         self.actor = actor
         self.scalar_bar = True if actor.mapper.array_name else False
 
     def __call__(self, state):
+        """Invoke the callable behavior of this object."""
         self.actor.SetVisibility(state)
         if self.scalar_bar:
             if state:
@@ -143,6 +148,7 @@ class Render:
 
     def show_mc_result(self, grid=None, pe_traj=None, surface_flux=None, se_traj=None, heat_t=None,
                        heat_pe=None, heat_se=None, t=None, sim_time=None, beam=None, cam_pos=None, interactive=True):
+        """Render Monte Carlo outputs in the VTK scene."""
         pe_traj = copy.deepcopy(pe_traj)
         se_traj = copy.deepcopy(se_traj)
         if grid is not None:
@@ -230,6 +236,7 @@ class Render:
 
     def __prepare_obj(self, obj, name, cmap, color, show_scalar_bar=True, clim=None, below_color=None, above_color=None,
                       n_colors=256, log_scale=False, opacity=0.5, nan_opacity=0.5, show_edges=None, texture=None):
+        """Add a prepared mesh to the plotter and configure UI bindings."""
         while True:
             try:
                 if not cmap:
@@ -248,7 +255,7 @@ class Render:
                                             )
                     break
             except Exception as e:
-                print(f'Error:{e.args}')
+                logger.error(f'An error occurred while rendering a 3D array:{e.args}', exc_info=e)
                 return
         self.p.add_text(name, font_size=self.font, position=(self.x_pos + 5, self.y_pos),
                         name=name + '_caption')  # captioning button
@@ -291,23 +298,20 @@ class Render:
 
         mesh = pv.PolyData()
         # If energies are provided, they are gonna be used as scalars to color trajectories
-        start = timeit.default_timer()
         if len(energies) != 0:
-            print('Rendering PEs...', end='')
+            logger.info('Rendering PEs...')
             for i in tqdm(range(0, len(traj), step)):  #
                 #     mesh = mesh + self.__render_trajectory(traj[i], energies[i], radius, name)
                 #     mesh[name] = energies
                 mesh_d = self.__render_trajectories(np.asarray(traj[i]), 'line')
                 mesh_d[name] = np.asarray(energies[i])
                 mesh += mesh_d
-            print(f'took {timeit.default_timer() - start}')
         else:
-            print('Rendering SEs...', end='')
+            logger.info('Rendering SEs...')
             # for i in tqdm(range(0, len(traj), step)):
             # mesh = mesh + self.__render_trajectory(traj[i], 0, radius, name)
             traj = traj.reshape(traj.shape[0] * 2, 3)
             mesh = self.__render_trajectories(traj, 'seg')
-            print(f'took {timeit.default_timer() - start}')
         return mesh.tube(
             radius=radius)  # it is important for color mapping to create tubes after all trajectories are added
 
@@ -354,6 +358,7 @@ class Render:
         return mesh  # .tube(radius=radius) # making line thicker
 
     def update_mask(self, mask):
+        """Update hidden-cell rendering flags from the provided mask."""
         index = np.zeros_like(mask, dtype=np.uint8)
         index[mask == 0] = vtkDataSetAttributes.HIDDENCELL
         last_scalars = self.p.mesh.array_names[0]
@@ -371,7 +376,7 @@ class Render:
         :return:
         """
         grid = numpy_to_vtk(arr, self.cell_size, data_name)
-        print("File is saved in the same directory with current python script. Current time is appended")
+        logger.info("File is saved in the same directory with current python script. Current time is appended")
         grid.save(f'{sys.path[0]}{os.sep}{filename}{time.strftime("%H:%M:%S", time.localtime())}.vtk')
 
     def show(self, screenshot=False, show_grid=True, keep_plot=False, interactive_update=False, cam_pos=None):

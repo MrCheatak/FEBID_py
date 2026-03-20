@@ -4,12 +4,13 @@ and utility functions for 3D<->1D index conversion.
 """
 import numpy as np
 import pyopencl as cl
-# import warnings
 import os
 # from pynvml import *
 os.environ['PYOPENCL_COMPILER_OUTPUT'] = '1'
 
 class GPU:
+    """Manage OpenCL context, buffers, and kernels for FEBID GPU computations."""
+
     def __init__(self, device=None):
         """
         platform = cl.get_platforms()
@@ -33,13 +34,72 @@ class GPU:
         devices = platform.get_devices(device_type=cl.device_type.GPU)  # Get GPU devices
         self.ctx = cl.Context(devices=devices)  # Create a context with the selected devices
 
-        self.queue = cl.CommandQueue(self.ctx)
+        self.queue = cl.CommandQueue(self.ctx, properties=cl.command_queue_properties.PROFILING_ENABLE)
         self.max_storage = self.queue.device.max_mem_alloc_size
+        self._timing_enabled = False
+        self._timings = {}
+        self.reset_timing()
 
         self.__open_and_compile_kernels()
 
         self.buffers = {}  # dictionary relating the arrays to the buffers
         self.beam_matrix = None
+        self.beam_matrix_buf = None
+
+    def reset_timing(self):
+        """Reset accumulated GPU kernel timing counters.
+
+        :return: None
+        """
+        self._timings = {
+            'gpu_kernel_dep_s': 0.0,
+            'gpu_kernel_rk4_k1_s': 0.0,
+            'gpu_kernel_rk4_k2_s': 0.0,
+            'gpu_kernel_rk4_k3_s': 0.0,
+            'gpu_kernel_rk4_k4_s': 0.0,
+            'gpu_kernel_rk4_combine_s': 0.0,
+            'gpu_kernel_rk4_total_s': 0.0,
+        }
+
+    def enable_timing(self, enabled=True, reset=True):
+        """Enable or disable kernel-timing collection.
+
+        :param enabled: Flag controlling timing collection.
+        :type enabled: bool
+        :param reset: Reset counters when toggling timing mode.
+        :type reset: bool
+        :return: None
+        """
+        self._timing_enabled = bool(enabled)
+        if reset:
+            self.reset_timing()
+
+    def get_timing(self):
+        """Return a copy of collected timing counters.
+
+        :return: Dictionary with accumulated timing metrics in seconds.
+        """
+        return dict(self._timings)
+
+    def timing_enabled(self):
+        """Report whether timing collection is currently enabled.
+
+        :return: True when kernel timing is enabled.
+        """
+        return self._timing_enabled
+
+    @staticmethod
+    def _event_seconds(event):
+        """Convert OpenCL profiling event duration to seconds.
+
+        :param event: OpenCL event with profiling timestamps.
+        :type event: pyopencl.Event
+        :return: Event duration in seconds, or 0 on unavailable profiling data.
+        """
+        try:
+            return (event.profile.end - event.profile.start) * 1e-9
+        except Exception:
+            return 0.0
 
     def __open_and_compile_kernels(self):
         """
@@ -47,23 +107,29 @@ class GPU:
         Compiled functions are stored in the class as attributes and can be called directly.
         kernels must be stored in the 'kernels' folder in the same directory as this file.
         """
-        f = open(os.path.dirname(os.path.realpath(__file__)) + r'\kernels\dep_prec_den.cl', 'r', encoding='utf-8')
+        base_directory = os.path.dirname(os.path.realpath(__file__))
+        f = open(os.path.join(base_directory, 'dep_prec_den.cl'), 'r', encoding='utf-8')
         kernels_prec_den = ''.join(f.readlines())  # get path to kernel code
         f.close()
-        f = open(os.path.dirname(os.path.realpath(__file__)) + r'\kernels\up_surface.cl', 'r', encoding='utf-8')
+        f = open(os.path.join(base_directory, 'up_surface.cl'), 'r', encoding='utf-8')
         kernels_up_surf = ''.join(f.readlines())  # get path to kernel code
         f.close()
-        f = open(os.path.dirname(os.path.realpath(__file__)) + r'\kernels\return_slice.cl', 'r', encoding='utf-8')
+        f = open(os.path.join(base_directory, 'return_slice.cl'), 'r', encoding='utf-8')
         kernels_ret_slice = ''.join(f.readlines())  # get path to kernel code
         f.close()
-        f = open(os.path.dirname(os.path.realpath(__file__)) + r'\kernels\ret_slice_bool.cl', 'r', encoding='utf-8')
+        f = open(os.path.join(base_directory, 'ret_slice_bool.cl'), 'r', encoding='utf-8')
         kernels_ret_slice_b = ''.join(f.readlines())  # get path to kernel code
         f.close()
 
         # 1. Compile the kernel
         # 2. Create a shortcut to the main function of the kernel
         prg_prec_den = cl.Program(self.ctx, kernels_prec_den).build()  # compile kernel program
-        self.knl_prec_den = prg_prec_den.precursor_coverage  # RDE or precursor density calculation function
+        self.knl_prec_stage_scalar_k1 = prg_prec_den.rk4_stage_scalar_k1  # scalar k1 specialization
+        self.knl_prec_stage_array_k1 = prg_prec_den.rk4_stage_array_k1  # array k1 specialization
+        self.knl_prec_stage_scalar = prg_prec_den.rk4_stage_scalar  # scalar D/tau RK stages
+        self.knl_prec_stage_array = prg_prec_den.rk4_stage_array  # array D/tau RK stages
+        self.knl_prec_stage_scalar_final = prg_prec_den.rk4_stage_scalar_final  # fused final stage + combine
+        self.knl_prec_stage_array_final = prg_prec_den.rk4_stage_array_final  # fused final stage + combine
         self.knl_dep = prg_prec_den.deposition  # deposition function
         prg_up_surf = cl.Program(self.ctx, kernels_up_surf).build()  # compile kernel program
         self.knl_up_surf = prg_up_surf.update  # cellular automaton update function
@@ -118,6 +184,18 @@ class GPU:
         mf = cl.mem_flags
         self.cur_prec = cl.Buffer(self.ctx, mf.READ_WRITE | mf.COPY_HOST_PTR, hostbuf=self.precursor)
         self.next_prec = cl.Buffer(self.ctx, mf.READ_WRITE | mf.COPY_HOST_PTR, hostbuf=self.precursor)
+        self.k1 = np.zeros_like(self.precursor)
+        self.k2 = np.zeros_like(self.precursor)
+        self.k3 = np.zeros_like(self.precursor)
+        self.zero_add = np.zeros_like(self.precursor)
+        self.k1_buf = cl.Buffer(self.ctx, mf.READ_WRITE | mf.COPY_HOST_PTR, hostbuf=self.k1)
+        self.k2_buf = cl.Buffer(self.ctx, mf.READ_WRITE | mf.COPY_HOST_PTR, hostbuf=self.k2)
+        self.k3_buf = cl.Buffer(self.ctx, mf.READ_WRITE | mf.COPY_HOST_PTR, hostbuf=self.k3)
+        self.zero_add_buf = cl.Buffer(self.ctx, mf.READ_ONLY | mf.COPY_HOST_PTR, hostbuf=self.zero_add)
+        self.D_coeff = np.zeros_like(self.precursor)
+        self.tau_coeff = np.ones_like(self.precursor)
+        self.D_coeff_buf = cl.Buffer(self.ctx, mf.READ_WRITE | mf.COPY_HOST_PTR, hostbuf=self.D_coeff)
+        self.tau_coeff_buf = cl.Buffer(self.ctx, mf.READ_WRITE | mf.COPY_HOST_PTR, hostbuf=self.tau_coeff)
         self.surface_all_buf = cl.Buffer(self.ctx, mf.READ_WRITE | mf.COPY_HOST_PTR, hostbuf=self.surface_all)
         self.deposit_buf = cl.Buffer(self.ctx, mf.READ_WRITE | mf.COPY_HOST_PTR, hostbuf=self.deposit)
         self.surf_buf = cl.Buffer(self.ctx, mf.READ_WRITE | mf.COPY_HOST_PTR, hostbuf=self.surface_bool)
@@ -169,6 +247,10 @@ class GPU:
             self.queue.finish()
 
     def _get_required_space(self):
+        """Estimate GPU memory required for current structure and beam buffers.
+
+        :return: Estimated byte count required for GPU allocations.
+        """
         # calculate if storage size is sufficient
         self.req_space = self.precursor.size * self.precursor.itemsize * 2 + self.deposit.size * self.deposit.itemsize
         + self.surface_bool.size * self.surface_bool.itemsize * 4 + 32
@@ -194,6 +276,12 @@ class GPU:
         try:
             self.cur_prec.release()
             self.next_prec.release()
+            self.k1_buf.release()
+            self.k2_buf.release()
+            self.k3_buf.release()
+            self.zero_add_buf.release()
+            self.D_coeff_buf.release()
+            self.tau_coeff_buf.release()
             self.surface_all_buf.release()
             self.deposit_buf.release()
             self.surf_buf.release()
@@ -260,22 +348,117 @@ class GPU:
 
         return deposit, surface
 
-    def precur_den_gpu(self, add, a, F_dt, F_dt_n0_1_tau_dt, sigma_dt, blocking=True):
+    def precur_den_gpu(self, dt, D, F, n0, tau, sigma, cell_size, blocking=False, wait_for=None):
         """
-        Recalculate precursor coverage using reaction equation with diffusion.
+        Recalculate precursor coverage using RK4 + FTCS diffusion at each stage.
         """
-        event = self.knl_prec_den(self.queue, (self.len_lap,), None,
-                                  self.cur_prec, self.next_prec, self.beam_matrix_buf,
-                                  np.int32(self.offset), np.int32(self.zdim_max), np.int32(self.ydim),
-                                  np.int32(self.xdim), np.double(F_dt), np.double(F_dt_n0_1_tau_dt),
-                                  np.double(sigma_dt), self.surface_all_buf, np.double(a),
-                                  self.flag_buf, self.surf_buf, np.int32(self.zdim_min))
+        dt_full = np.double(dt)
+        dt_half = np.double(dt * 0.5)
+        addon_zero = np.double(0.0)
+        addon_half = np.double(0.5)
+        addon_full = np.double(1.0)
+
+        common_dims = (
+            np.int32(self.offset), np.int32(self.zdim_max), np.int32(self.ydim), np.int32(self.xdim)
+        )
+        common_phys = (np.double(F), np.double(n0), np.double(sigma))
+
+        use_array_coeffs = isinstance(D, np.ndarray) or isinstance(tau, np.ndarray)
+        e_k1 = e_k2 = e_k3 = e_final = None
+        if use_array_coeffs:
+            D_flat = D.reshape(-1).astype(np.double, copy=False) if isinstance(D, np.ndarray) else None
+            tau_flat = tau.reshape(-1).astype(np.double, copy=False) if isinstance(tau, np.ndarray) else None
+
+            if D_flat is None:
+                self.D_coeff.fill(float(D))
+            else:
+                self.D_coeff[...] = D_flat
+            if tau_flat is None:
+                self.tau_coeff.fill(float(tau))
+            else:
+                self.tau_coeff[...] = tau_flat
+
+            cl.enqueue_copy(self.queue, self.D_coeff_buf, self.D_coeff, is_blocking=False)
+            cl.enqueue_copy(self.queue, self.tau_coeff_buf, self.tau_coeff, is_blocking=False)
+
+            cell_size_sq = np.double(cell_size * cell_size)
+            e_k1 = self.knl_prec_stage_array_k1(
+                self.queue, (self.len_lap,), None,
+                self.cur_prec, self.k1_buf, self.beam_matrix_buf,
+                *common_dims, *common_phys, dt_full, cell_size_sq,
+                self.D_coeff_buf, self.tau_coeff_buf, self.surface_all_buf, self.surf_buf, np.int32(self.zdim_min),
+                wait_for=wait_for
+            )
+            e_k2 = self.knl_prec_stage_array(
+                self.queue, (self.len_lap,), None,
+                self.cur_prec, self.k1_buf, self.k2_buf, self.beam_matrix_buf,
+                *common_dims, *common_phys, dt_half, cell_size_sq,
+                self.D_coeff_buf, self.tau_coeff_buf, self.surface_all_buf, self.surf_buf, np.int32(self.zdim_min),
+                addon_half, wait_for=[e_k1]
+            )
+            e_k3 = self.knl_prec_stage_array(
+                self.queue, (self.len_lap,), None,
+                self.cur_prec, self.k2_buf, self.k3_buf, self.beam_matrix_buf,
+                *common_dims, *common_phys, dt_half, cell_size_sq,
+                self.D_coeff_buf, self.tau_coeff_buf, self.surface_all_buf, self.surf_buf, np.int32(self.zdim_min),
+                addon_half, wait_for=[e_k2]
+            )
+            e_final = self.knl_prec_stage_array_final(
+                self.queue, (self.len_lap,), None,
+                self.cur_prec, self.k3_buf, self.k1_buf, self.k2_buf, self.k3_buf, self.next_prec, self.beam_matrix_buf,
+                *common_dims, *common_phys, dt_full, cell_size_sq,
+                self.D_coeff_buf, self.tau_coeff_buf, self.surface_all_buf, self.surf_buf, np.int32(self.zdim_min),
+                addon_full, wait_for=[e_k3]
+            )
+        else:
+            a_full = np.double(dt * D / (cell_size * cell_size))
+            a_half = np.double(0.5 * a_full)
+            tau_scalar = np.double(tau)
+
+            e_k1 = self.knl_prec_stage_scalar_k1(
+                self.queue, (self.len_lap,), None,
+                self.cur_prec, self.k1_buf, self.beam_matrix_buf,
+                *common_dims, np.double(F), np.double(n0), tau_scalar, np.double(sigma), dt_full, a_full,
+                self.surface_all_buf, self.surf_buf, np.int32(self.zdim_min), wait_for=wait_for
+            )
+            e_k2 = self.knl_prec_stage_scalar(
+                self.queue, (self.len_lap,), None,
+                self.cur_prec, self.k1_buf, self.k2_buf, self.beam_matrix_buf,
+                *common_dims, np.double(F), np.double(n0), tau_scalar, np.double(sigma), dt_half, a_half,
+                self.surface_all_buf, self.surf_buf, np.int32(self.zdim_min), addon_half, wait_for=[e_k1]
+            )
+            e_k3 = self.knl_prec_stage_scalar(
+                self.queue, (self.len_lap,), None,
+                self.cur_prec, self.k2_buf, self.k3_buf, self.beam_matrix_buf,
+                *common_dims, np.double(F), np.double(n0), tau_scalar, np.double(sigma), dt_half, a_half,
+                self.surface_all_buf, self.surf_buf, np.int32(self.zdim_min), addon_half, wait_for=[e_k2]
+            )
+            e_final = self.knl_prec_stage_scalar_final(
+                self.queue, (self.len_lap,), None,
+                self.cur_prec, self.k3_buf, self.k1_buf, self.k2_buf, self.k3_buf, self.next_prec, self.beam_matrix_buf,
+                *common_dims, np.double(F), np.double(n0), tau_scalar, np.double(sigma), dt_full, a_full,
+                self.surface_all_buf, self.surf_buf, np.int32(self.zdim_min), addon_full, wait_for=[e_k3]
+            )
+
         if blocking:
-            event.wait()
+            e_final.wait()
+        if self._timing_enabled and blocking:
+            t_k1 = self._event_seconds(e_k1)
+            t_k2 = self._event_seconds(e_k2)
+            t_k3 = self._event_seconds(e_k3)
+            t_k4 = self._event_seconds(e_final)
+            t_combine = 0.0
+            self._timings['gpu_kernel_rk4_k1_s'] += t_k1
+            self._timings['gpu_kernel_rk4_k2_s'] += t_k2
+            self._timings['gpu_kernel_rk4_k3_s'] += t_k3
+            self._timings['gpu_kernel_rk4_k4_s'] += t_k4
+            self._timings['gpu_kernel_rk4_combine_s'] += t_combine
+            self._timings['gpu_kernel_rk4_total_s'] += (t_k1 + t_k2 + t_k3 + t_k4 + t_combine)
 
         self.cur_prec, self.next_prec = self.next_prec, self.cur_prec
+        return e_final
 
-    def deposit_gpu(self, const, blocking=True):
+    def deposit_gpu(self, const, blocking=False, wait_for=None):
         """
         Perform deposition and check if any cell is filled.
 
@@ -283,14 +466,23 @@ class GPU:
         """
         event = self.knl_dep(self.queue, (self.len_lap,), None,
                              self.cur_prec, self.beam_matrix_buf, np.int32(self.offset), np.double(const),
-                             self.deposit_buf, self.flag_buf)
+                             self.deposit_buf, self.flag_buf, wait_for=wait_for)
         if blocking:
             event.wait()
+        if self._timing_enabled and blocking:
+            self._timings['gpu_kernel_dep_s'] += self._event_seconds(event)
+        return event
 
-        cl.enqueue_copy(self.queue, self.flag, self.flag_buf)
+    def read_flag(self, wait_for=None, clear=True, blocking=True):
+        """
+        Read and optionally clear the filled-cell flag from GPU memory.
+        """
+        ev = cl.enqueue_copy(self.queue, self.flag, self.flag_buf, wait_for=wait_for)
+        if blocking:
+            ev.wait()
 
-        flag = self.flag[0]
-        if self.flag[0] != 0:
+        flag = int(self.flag[0])
+        if clear and flag != 0:
             self.flag[0] = 0
             cl.enqueue_copy(self.queue, self.flag_buf, self.flag)
         return flag
@@ -372,14 +564,26 @@ class GPU:
 
     @property
     def xdim(self):
+        """Return X dimension of current structure.
+
+        :return: Size of X axis in cells.
+        """
         return self.shape[2]
 
     @property
     def ydim(self):
+        """Return Y dimension of current structure.
+
+        :return: Size of Y axis in cells.
+        """
         return self.shape[1]
 
     @property
     def zdim(self):
+        """Return Z dimension of current structure.
+
+        :return: Size of Z axis in cells.
+        """
         return self.shape[0]
 
     def __set_structure(self, precursor, deposit, surface_all, surf_bool, semi_surface, ghost, irr_ind_2d):

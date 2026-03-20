@@ -28,7 +28,9 @@ def get_diffusion_stability_time(D, dx):
 
 def diffusion_ftcs(grid, surface, D, dt, cell_size, surface_index=None, flat=True, add=0):
     """
-    Calculate diffusion term for the surface cells using stencil approach
+    Calculate diffusion term for the surface cells using stencil approach.
+    If surface index is provided, the values are returned in the same order as the index.
+    Otherwise, the order is determined by the nonzero function and may not be consistent across calls.
 
         Nevertheless the 'surface_index' is an optional argument,
     it is highly recommended to handle index from the caller function
@@ -45,18 +47,18 @@ def diffusion_ftcs(grid, surface, D, dt, cell_size, surface_index=None, flat=Tru
     """
     if surface_index is None:
         surface_index = prepare_surface_index(surface)
-    grid[surface] += add
+    grid[surface_index] += add
     grid_out = laplace_term_stencil(grid, surface_index)
     # stencil_debug(grid_out, grid, *surface_index)
-    grid[surface] -= add
+    grid[surface_index] -= add
     if type(D) in [int, float]:
         a = dt * D / (cell_size * cell_size)
     else:
-        a = dt * D[surface] / (cell_size * cell_size)
+        a = dt * D[surface_index] / (cell_size * cell_size)
     if flat:
-        return grid_out[surface] * a
+        return grid_out[surface_index] * a
     else:
-        grid_out[surface] *= a
+        grid_out[surface_index] *= a
         return grid_out
 
 
@@ -85,6 +87,20 @@ def prepare_surface_index(surface: np.ndarray):
 
 
 def stencil_debug(grid_out, grid, z_index, y_index, x_index):
+    """Debug helper that re-evaluates stencil contributions on selected cells.
+
+    :param grid_out: Output grid receiving accumulated stencil values.
+    :type grid_out: numpy.ndarray
+    :param grid: Input scalar field.
+    :type grid: numpy.ndarray
+    :param z_index: Z indices of cells to inspect.
+    :type z_index: numpy.ndarray
+    :param y_index: Y indices of cells to inspect.
+    :type y_index: numpy.ndarray
+    :param x_index: X indices of cells to inspect.
+    :type x_index: numpy.ndarray
+    :return: None
+    """
     xdim, ydim, zdim = grid.shape
     shape = (zdim, ydim, xdim)
     l = z_index.size

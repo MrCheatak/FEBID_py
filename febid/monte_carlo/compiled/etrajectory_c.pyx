@@ -335,9 +335,9 @@ cpdef list start_sim(double E0, double Emin, double[:] y0, double[:] x0, int cel
         vector[vector[double]] t, e, m
         SimulationVolume vol
         list passes
-    print('Caching materials...', end='')
+    # print('Caching materials...', end='')
     materials = get_materials(materials_py)
-    print('Getting volume parameters...', end='')
+    # print('Getting volume parameters...', end='')
     vol = SimulationVolume.__new__(SimulationVolume, grid, surface, cell_dim)
     # print('Initialized Elements and Volume successfully...')
     # print(vol.cell_dim, vol.shape, vol.shape_abs, vol.z_top)

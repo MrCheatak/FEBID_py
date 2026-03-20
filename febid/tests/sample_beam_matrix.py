@@ -1,7 +1,10 @@
+from typing_extensions import Unpack
+
 import numpy as np
 from febid.Structure import Structure
+from .lib_1d_febid import estimate_se_flux_prefactor
 
-def test_beam_matrix(x, y, sim, pr, resized=False):
+def test_beam_matrix(x, y, sim, pr, yld=0.67, resized=False):
     """
     Generate a Gaussian beam matrix. For testing purposes only.
 
@@ -17,9 +20,14 @@ def test_beam_matrix(x, y, sim, pr, resized=False):
         beam_matrix_buff = None
         filled_cells_init = None
     else:
-        beam_matrix_buff = pr.beam_matrix
-        filled_cells_init = pr.full_cells
-    beam_matrix = sample_beam_matrix(x, y, sim.pe_sim.sigma, pr.structure,
+        try:
+            beam_matrix_buff = pr._beam_matrix
+            filled_cells_init = pr.last_full_cells
+        except AttributeError:
+            beam_matrix_buff = pr.beam_matrix
+            filled_cells_init = pr.last_full_cells
+    f0 = estimate_se_flux_prefactor(sim.pe_sim.I0, sim.pe_sim.sigma, yld)
+    beam_matrix = sample_beam_matrix(x, y, sim.pe_sim.sigma, pr.structure, f0,
                                      beam_matrix_buff=beam_matrix_buff,
                                      filled_cells_init=filled_cells_init)
     return beam_matrix
@@ -40,8 +48,11 @@ def sample_beam_matrix(x_pos, y_pos, a, structure:Structure, f0=1e6, beam_matrix
     # Generate a 2D Gaussian PDF matrix
     _, ydim, xdim = structure.shape
     _, ydim_abs, xdim_abs = structure.shape_abs
-    x = np.linspace(0, xdim_abs, xdim) - x_pos
-    y = np.linspace(0, ydim_abs, ydim) - y_pos
+    cell_size = structure.cell_size
+    # Use cell-centered coordinates to ensure proper integration and alignment
+    # Grid points represent centers of cells: [cell_size/2, 3*cell_size/2, 5*cell_size/2, ...]
+    x = np.arange(xdim) * cell_size + cell_size/2 - x_pos
+    y = np.arange(ydim) * cell_size + cell_size/2 - y_pos
     x, y = np.meshgrid(x, y)
     d = np.sqrt(x * x + y * y)
     gaussian_2d = (np.exp(-(d ** 2 / (2 * a ** 2))) * f0).astype(np.int32)
@@ -51,9 +62,9 @@ def sample_beam_matrix(x_pos, y_pos, a, structure:Structure, f0=1e6, beam_matrix
     else:
         beam_matrix = np.zeros(structure.shape, dtype=np.int32)
     # Clear filled cells and project the values from the 2D Gaussian onto the 3D structure using surface_bool
-    if filled_cells_init is not None:
-
-        beam_matrix[*filled_cells_init.T] = 0
+    if filled_cells_init is not None and len(filled_cells_init) > 0:
+        filled_cells_init = np.array(filled_cells_init) if not isinstance(filled_cells_init, np.ndarray) else filled_cells_init
+        beam_matrix[tuple(filled_cells_init.T)] = 0
         for n in range(len(filled_cells_init)):
             filled_cells_T = filled_cells_init.T
             slice_3d = np.s_[filled_cells_T[0,n] - 1:filled_cells_T[0,n] + 2,
@@ -75,3 +86,15 @@ def sample_beam_matrix(x_pos, y_pos, a, structure:Structure, f0=1e6, beam_matrix
             beam_matrix_view = beam_matrix[:, n, j]
             beam_matrix_view[index] = gaussian_2d[n, j]
     return beam_matrix.astype(np.int32)
+
+
+def se_flux_prefactor(sim, yld=0.67):
+    """
+    Estimate secondary electron flux pre-exponential factor for the given simulation.
+
+    :param sim: MC simulation object
+    :param yld: secondary electron yield
+    :return: float
+    """
+    f0_se = estimate_se_flux_prefactor(sim.pe_sim.ie, sim.pe_sim.sigma, yld)
+    return f0_se

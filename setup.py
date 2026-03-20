@@ -2,7 +2,7 @@ import sys, setuptools
 
 from Cython.Build import cythonize
 import numpy as np
-from distutils.extension import Extension
+from setuptools import Extension
 from Cython.Compiler.Options import get_directive_defaults
 directive_defaults = get_directive_defaults()
 # directive_defaults['linetrace'] = True
@@ -60,7 +60,7 @@ with open('requirements.txt') as f:
     requirements = f.read().splitlines()
 setuptools.setup(
     name='febid',
-    version='0.10.0',
+    version='0.11.0',
     author='Alexander Kuprava, Michael Huth',
     author_email='sandro1742@gmail.com',
     description='FEBID process simulator',
@@ -68,13 +68,15 @@ setuptools.setup(
     long_description_content_type="text/markdown",
     url='https://github.com/MrCheatak/FEBID_py',
     project_urls = {},
-    license='APGL-3.0',
+    license='AGPL-3.0',
     packages=['febid', 'febid.monte_carlo', 'febid.monte_carlo.compiled', 'febid.ui', 'febid.libraries.vtk_rendering',
-              'febid.libraries.rolling', 'febid.libraries.ray_traversal', 'febid.libraries.pde'],
+              'febid.libraries.rolling', 'febid.libraries.ray_traversal', 'febid.libraries.pde', 'febid.process',
+              'febid.tests', 'febid.thermal', 'febid.kernels',
+              ],
     package_data = {'': ['*.pyx', 'ui/last_session_stub.yml', 'kernels/*.cl']},
     include_package_data=True,
     install_requires=requirements,
     ext_modules=cythonize(ext_modules),
     include_dirs=[np.get_include()],
-    pyhton_requires='>=3.9',
+    python_requires='>=3.9',
 )

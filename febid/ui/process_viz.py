@@ -8,17 +8,34 @@ import numpy as np
 from PyQt5.QtWidgets import QMainWindow
 
 from febid.libraries.vtk_rendering.VTK_Rendering import Render
-from febid.febid_core import flag
+from febid.logging_config import setup_logger
+# Setup logger
+logger = setup_logger(__name__)
 
 
 class RenderWindow(QMainWindow):
     """
     Class for the visualization of the FEBID process
     """
-    def __init__(self, process_obj, displayed_data='precursor', show=False, app=None):
+    def __init__(self, process_obj, syncHelper, displayed_data='precursor',  show=False, app=None):
+        """Initialize visualization window and rendering backend.
+
+        :param process_obj: Process object providing live simulation arrays.
+        :type process_obj: object
+        :param syncHelper: Shared synchronization helper controlling simulation loop lifecycle.
+        :type syncHelper: object
+        :param displayed_data: Name of structure field to display.
+        :type displayed_data: str
+        :param show: Whether to show the plotter immediately.
+        :type show: bool
+        :param app: Optional Qt application instance.
+        :type app: object
+        :return: None
+        """
         super().__init__()
         self.setWindowTitle("FEBID process")
         self.app = app
+        self.syncHelper = syncHelper
         # The object of the simulation process state
         self.process_obj = process_obj
         self.displayed_data = displayed_data
@@ -64,7 +81,7 @@ class RenderWindow(QMainWindow):
         # Event loop
         def update(data, mask):
             self.scalar_bar_timer = timeit.default_timer()
-            while self.render.p.isVisible() and not flag:
+            while self.render.p.isVisible() and not self.syncHelper:
                 now = timeit.default_timer()
                 if pr.redraw:
                     mask = pr.structure.surface_bool
@@ -100,8 +117,7 @@ class RenderWindow(QMainWindow):
             try:
                 rn.p.button_widgets.clear()
             except Exception as e:
-                print('Something went wrong while clearing widgets from the scene...')
-                print(e.args)
+                logger.exception('Something went wrong while clearing widgets from the scene...')
             rn.p.clear()
             # Putting an arrow to indicate beam position
             start = np.array([0, 0, 100]).reshape(1, 3)  # position of the center of the arrow
@@ -118,8 +134,7 @@ class RenderWindow(QMainWindow):
             rn.p.add_text('.', position='upper_left', font_size=12, name='time')
             rn.p.add_text('.', position='upper_right', font_size=12, name='stats')
         except Exception as e:
-            print('An error occurred while creating the scene.')
-            print(e.args)
+            logger.error(f'An error occurred while creating the scene.')
 
     def __update_graphical(self, data, mask, time_spent):
         """
@@ -144,17 +159,10 @@ class RenderWindow(QMainWindow):
             time_real = str(datetime.timedelta(seconds=int(time_spent)))
             speed = pr.t / time_spent
             height = (pr.max_z - pr.substrate_height) * pr.structure.cell_size
-            total_V = int(pr.dep_vol)
-            delta_t = pr.t - pr._t_prev
-            delta_V = total_V - pr._vol_prev
-            if delta_t == 0 or delta_V == 0:
-                growth_rate = pr.growth_rate
-            else:
-                growth_rate = delta_V / delta_t
-                growth_rate = int(growth_rate)
-                pr.growth_rate = growth_rate
-            pr._t_prev += delta_t
-            pr._vol_prev = total_V
+
+            # Read derived metrics from the centralized statistics object.
+            total_V = int(pr.stats.deposited_volume)
+            growth_rate = int(pr.stats.growth_rate) if pr.stats.growth_rate > 0 else 0
             max_T = pr.structure.temperature.max()
             # Updating displayed text
             time_text = (f'Time: {time_real} \n'  # showing real time passed
@@ -179,9 +187,9 @@ class RenderWindow(QMainWindow):
                 self.scalar_bar_timer += self.scalar_bar_framerate
         except Exception as e:
             if not rn.p.isVisible():
-                print('The scene window was closed.')
+                logger.error('The scene window was unexpectedly closed.', exc_info=e)
             else:
-                warnings.warn(f"Failed to redraw the scene.\n"
+                logger.warn(f"Failed to redraw the scene.\n"
                               f"{e.args}")
                 pr.redraw = True
 
