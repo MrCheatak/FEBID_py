@@ -2,8 +2,6 @@
 Module for continuous process data recording
 """
 import random as rnd
-import sys
-import time
 import timeit
 from math import floor, log
 from threading import Thread, Condition, Event
@@ -226,6 +224,7 @@ class Statistics(MonitoringDaemon):
         self.record_interval = record_interval
         self.last_row = 0  # last row recorded previously
         self.time = timeit.default_timer()
+        self._next_record_time = self._initial_record_time()
 
         # Creating new file, old file is overwritten
         filename = self.filename
@@ -245,9 +244,48 @@ class Statistics(MonitoringDaemon):
                 if self.run_flag:
                     break
                 last_epoch = self.run_flag.stats_epoch
+            current_time = self.observed_obj.t
+            if not self._is_record_due(current_time):
+                continue
             self.looped_func()
+            self._advance_record_schedule(current_time)
         self.looped_func(end=True)
         logger.info(f'Closing {self.purpose} daemon.')
+
+    @staticmethod
+    def _schedule_tolerance(*values):
+        """Return a tiny absolute tolerance for float-based schedule comparisons."""
+        scale = max([1.0, *[abs(value) for value in values if value is not None]])
+        return 1e-12 * scale
+
+    def _initial_record_time(self):
+        """Return the first scheduled simulation-time boundary for recording."""
+        if self.refresh_rate is None:
+            return None
+
+        refresh_rate = float(self.refresh_rate)
+        if refresh_rate <= 0:
+            return None
+
+        return self.start_time_sim + refresh_rate
+
+    def _is_record_due(self, current_time):
+        """Return True when the configured record interval boundary has been crossed."""
+        if self._next_record_time is None:
+            return True
+
+        epsilon = self._schedule_tolerance(current_time, self._next_record_time, self.refresh_rate)
+        return current_time + epsilon >= self._next_record_time
+
+    def _advance_record_schedule(self, current_time):
+        """Advance the next scheduled record time beyond the provided sample time."""
+        if self._next_record_time is None:
+            return
+
+        refresh_rate = float(self.refresh_rate)
+        epsilon = self._schedule_tolerance(current_time, self._next_record_time, refresh_rate)
+        while self._next_record_time <= current_time + epsilon:
+            self._next_record_time += refresh_rate
 
     def add_stat(self, name, first_value=0):
         """

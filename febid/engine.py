@@ -1,4 +1,5 @@
 import datetime
+import math
 import timeit
 import warnings
 
@@ -119,6 +120,8 @@ class TimeStepper:
         self._dt = self.pr.dt
         self.last_loop = False
         self.progress_bar = None
+        self._next_stats_time = self._initial_stats_time()
+        self._stats_schedule_freq = self.pr.stats_frequency if self._next_stats_time is not None else None
         self.__setup_progress_bar()
 
     def get_dt(self, dwell_time):
@@ -154,16 +157,70 @@ class TimeStepper:
             d_it = self._dt * self.scaling * 1e6
             self.progress_bar.update(min(d_it, self.progress_bar.total - self.progress_bar.n))
 
-        # Trigger periodic statistics collection.
-        if self.pr.stats_gathering and self.time_passed_total % self.pr.stats_frequency < self._dt * 1.5:
-            self.pr.gather_stats()
-            self.sync.notify_stats()
+        # Trigger periodic statistics collection from a monotonic schedule.
+        self._trigger_stats_if_due()
 
         # tick threads
         self.sync.timer = self.time_passed_total
         # Allow only one tick of the loop for daemons per one tick of simulation
         self.sync.notify()
         self.pr.reset_dt()  # reset the time step for the next iteration
+
+    @staticmethod
+    def _schedule_tolerance(*values):
+        """Return a tiny absolute tolerance for float-based schedule comparisons."""
+        scale = max([1.0, *[abs(value) for value in values if value is not None]])
+        return 1e-12 * scale
+
+    def _initial_stats_time(self):
+        """Return the first scheduled stats boundary for the current run."""
+        if not self.pr.stats_gathering:
+            return None
+
+        freq = float(self.pr.stats_frequency)
+        if freq <= 0:
+            return None
+
+        return freq
+
+    def _sync_stats_schedule(self):
+        """Align the next stats trigger time with the current stats frequency."""
+        if not self.pr.stats_gathering:
+            self._next_stats_time = None
+            self._stats_schedule_freq = None
+            return None
+
+        freq = float(self.pr.stats_frequency)
+        if freq <= 0:
+            self._next_stats_time = None
+            self._stats_schedule_freq = None
+            return None
+
+        if self._next_stats_time is None:
+            self._next_stats_time = freq
+            self._stats_schedule_freq = freq
+        elif self._stats_schedule_freq != freq:
+            completed_intervals = math.floor(self.time_passed_total / freq)
+            self._next_stats_time = (completed_intervals + 1) * freq
+            self._stats_schedule_freq = freq
+
+        return freq
+
+    def _trigger_stats_if_due(self):
+        """Gather stats once when the next scheduled interval boundary is crossed."""
+        freq = self._sync_stats_schedule()
+        if freq is None:
+            return
+
+        epsilon = self._schedule_tolerance(self.time_passed_total, self._next_stats_time, freq)
+        if self.time_passed_total + epsilon < self._next_stats_time:
+            return
+
+        self.pr.gather_stats()
+        self.sync.notify_stats()
+
+        while self._next_stats_time <= self.time_passed_total + epsilon:
+            self._next_stats_time += freq
 
     def __setup_progress_bar(self):
         """Create a progress bar scaled to total simulated patterning time.
